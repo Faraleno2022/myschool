@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block title %}Liste des Élèves - {{ block.super }}{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item active">Élèves</li>
+{% endblock %}
+
+{% block page_actions %}
+    <div>
+        <a href="{% url 'eleves:ajouter_eleve' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>Ajouter un élève
+        </a>
+        <a href="{% url 'eleves:statistiques_eleves' %}" class="btn btn-outline-info">
+            <i class="fas fa-chart-pie me-1"></i>Statistiques
+        </a>
+    </div>
+{% endblock %}
+
+{% block content %}
+    <!-- Zone dynamique: stats + résultats -->
+    <div id="zone-eleves">
+        {% include 'eleves/partials/_liste_eleves_zone.html' %}
+    </div>
+
+    <!-- Formulaire de recherche -->
+    <div class="card mb-4">
+        <div class="card-header">
+            <h5 class="card-title mb-0">
+                <i class="fas fa-search me-2"></i>Rechercher des élèves
+            </h5>
+        </div>
+        <div class="card-body">
+            <form id="recherche-eleves-form" method="get" class="row g-3">
+                {{ form_recherche.as_p }}
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-search me-1"></i>Rechercher
+                    </button>
+                    <a id="btn-effacer" href="{% url 'eleves:liste_eleves' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-times me-1"></i>Effacer
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    {# La zone ci-dessus contient aussi les résultats; rien à dupliquer ici #}
+
+    <!-- Modals de confirmation de suppression -->
+    {# Modals sont inclus dans le partial via l'include #}
+
+    <script>
+    (function() {
+        const input = document.querySelector('input[name="recherche"]');
+        const form = document.getElementById('recherche-eleves-form');
+        const zone = document.getElementById('zone-eleves');
+        const btnEffacer = document.getElementById('btn-effacer');
+
+        if (!input || !form || !zone) return;
+
+        const debounce = (fn, delay = 300) => {
+            let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+        };
+
+        function buildUrl(baseHref) {
+            const url = new URL(baseHref || window.location.href, window.location.origin);
+            url.searchParams.set('partial', '1');
+            const q = (input.value || '').trim();
+            if (q) url.searchParams.set('recherche', q); else url.searchParams.delete('recherche');
+            return url.toString();
+        }
+
+        async function fetchResults(targetUrl) {
+            const url = targetUrl || buildUrl();
+            const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const html = await resp.text();
+            zone.innerHTML = html;
+        }
+
+        const onInput = debounce(() => fetchResults(), 300);
+        input.addEventListener('input', onInput);
+
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            fetchResults();
+        });
+
+        if (btnEffacer) {
+            btnEffacer.addEventListener('click', function(e) {
+                e.preventDefault();
+                input.value = '';
+                fetchResults(buildUrl(this.href));
+                history.replaceState({}, '', this.href);
+            });
+        }
+
+        // Pagination dynamique via délégation
+        zone.addEventListener('click', function(e) {
+            const link = e.target.closest('a.page-link');
+            if (!link) return;
+            e.preventDefault();
+            fetchResults(link.href);
+        });
+    })();
+    </script>
+{% endblock %}

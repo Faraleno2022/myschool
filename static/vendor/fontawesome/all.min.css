@@ -1,0 +1,21 @@
+/* Local placeholder for Font Awesome to allow offline operation.
+   Icons may not render without webfonts; this stylesheet prevents 404s and layout breaks. */
+.fas, .fa, .far, .fab { display: inline-block; width: 1em; text-align: center; }
+/* Optional: map a few common icons to basic symbols */
+.fa-home:before { content: "\2302"; }
+.fa-users:before { content: "\263A"; }
+.fa-money-bill:before { content: "\0024"; }
+.fa-receipt:before { content: "\2709"; }
+.fa-money-check-alt:before { content: "\0024"; }
+.fa-chart-bar:before { content: "\25A0"; }
+.fa-user:before { content: "\263A"; }
+.fa-cog:before { content: "\2699"; }
+.fa-sign-out-alt:before { content: "\21AA"; }
+.fa-sign-in-alt:before { content: "\21A9"; }
+.fa-exclamation-triangle:before { content: "!"; }
+.fa-check-circle:before { content: "\2713"; }
+.fa-exclamation-circle:before { content: "!"; }
+.fa-info-circle:before { content: "i"; }
+.fa-school:before { content: "\1F3EB"; }
+.fa-phone:before { content: "\260E"; }
+.fa-envelope:before { content: "@"; }

@@ -1,0 +1,185 @@
+{# Partial: results card (table + pagination + delete modals) #}
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="card-title mb-0">
+            <i class="fas fa-list me-2"></i>Liste des élèves
+        </h5>
+        <small class="text-muted">{{ page_obj.paginator.count }} élève(s) trouvé(s)</small>
+    </div>
+    <div class="card-body p-0">
+        {% if page_obj %}
+            <div class="table-responsive table-container-scrollable">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Photo</th>
+                            <th>Matricule</th>
+                            <th>Nom Complet</th>
+                            <th>Classe</th>
+                            <th>Responsable</th>
+                            <th>Statut</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for eleve in page_obj %}
+                            <tr>
+                                <td>
+                                    {% if eleve.photo %}
+                                        <img src="{{ eleve.photo.url }}" alt="Photo" class="rounded-circle" width="40" height="40" style="object-fit: cover;">
+                                    {% else %}
+                                        <div class="bg-secondary rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px;">
+                                            <i class="fas fa-user text-white"></i>
+                                        </div>
+                                    {% endif %}
+                                </td>
+                                <td><strong>{{ eleve.matricule }}</strong></td>
+                                <td>
+                                    <div>
+                                        <strong>{{ eleve.nom_complet }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            <i class="fas fa-{% if eleve.sexe == 'M' %}mars{% else %}venus{% endif %} me-1"></i>
+                                            {{ eleve.get_sexe_display }} - {{ eleve.age }} ans
+                                        </small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ eleve.classe.nom }}</span>
+                                    <br>
+                                    <small class="text-muted">{{ eleve.classe.ecole.nom }}</small>
+                                </td>
+                                <td>
+                                    <div>
+                                        <strong>{{ eleve.responsable_principal.nom_complet }}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            <i class="fas fa-phone me-1"></i>{{ eleve.responsable_principal.telephone }}
+                                        </small>
+                                    </div>
+                                </td>
+                                <td>
+                                    {% if eleve.statut == 'ACTIF' %}
+                                        <span class="badge bg-success">{{ eleve.get_statut_display }}</span>
+                                    {% elif eleve.statut == 'SUSPENDU' %}
+                                        <span class="badge bg-warning">{{ eleve.get_statut_display }}</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">{{ eleve.get_statut_display }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm" role="group">
+                                        <a href="{% url 'eleves:detail_eleve' eleve.id %}" class="btn btn-outline-primary" title="Voir détails">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                        <a href="{% url 'eleves:modifier_eleve' eleve.id %}" class="btn btn-outline-warning" title="Modifier">
+                                            <i class="fas fa-edit"></i>
+                                        </a>
+                                        {% if eleve.statut != 'EXCLU' %}
+                                        <button type="button" class="btn btn-outline-danger" title="Supprimer" 
+                                                data-bs-toggle="modal" data-bs-target="#confirmDeleteModal{{ eleve.id }}">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {# Pagination #}
+            {% if page_obj.has_other_pages %}
+                <div class="card-footer">
+                    <nav aria-label="Navigation des pages">
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if page_obj.has_previous %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?partial=1&page=1{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
+                                        <i class="fas fa-angle-double-left"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?partial=1&page={{ page_obj.previous_page_number }}{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
+                                        <i class="fas fa-angle-left"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                            
+                            <li class="page-item active">
+                                <span class="page-link">
+                                    Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+                                </span>
+                            </li>
+                            
+                            {% if page_obj.has_next %}
+                                <li class="page-item">
+                                    <a class="page-link" href="?partial=1&page={{ page_obj.next_page_number }}{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
+                                        <i class="fas fa-angle-right"></i>
+                                    </a>
+                                </li>
+                                <li class="page-item">
+                                    <a class="page-link" href="?partial=1&page={{ page_obj.paginator.num_pages }}{% if request.GET.recherche %}&recherche={{ request.GET.recherche }}{% endif %}">
+                                        <i class="fas fa-angle-double-right"></i>
+                                    </a>
+                                </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">Aucun élève trouvé</h5>
+                <p class="text-muted">Commencez par ajouter des élèves à votre école.</p>
+                <a href="{% url 'eleves:ajouter_eleve' %}" class="btn btn-primary">
+                    <i class="fas fa-plus me-1"></i>Ajouter le premier élève
+                </a>
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Modals de confirmation de suppression #}
+{% for eleve in page_obj %}
+    {% if eleve.statut != 'EXCLU' %}
+    <div class="modal fade" id="confirmDeleteModal{{ eleve.id }}" tabindex="-1" aria-labelledby="confirmDeleteModalLabel{{ eleve.id }}" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-danger text-white">
+                    <h5 class="modal-title" id="confirmDeleteModalLabel{{ eleve.id }}">
+                        <i class="fas fa-exclamation-triangle"></i> Confirmer la suppression
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p class="mb-3">
+                        <strong>Attention !</strong> Vous êtes sur le point de supprimer l'élève :
+                    </p>
+                    <div class="alert alert-warning">
+                        <i class="fas fa-user"></i> <strong>{{ eleve.prenom }} {{ eleve.nom }}</strong><br>
+                        <small>Matricule : {{ eleve.matricule }} - Classe : {{ eleve.classe.nom }}</small>
+                    </div>
+                    <p class="text-muted">
+                        <i class="fas fa-info-circle"></i> 
+                        Cette action changera le statut de l'élève vers "Exclu". L'élève ne sera pas définitivement supprimé.
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times"></i> Annuler
+                    </button>
+                    <form method="post" action="{% url 'eleves:supprimer_eleve' eleve.pk %}" style="display: inline;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> Confirmer la suppression
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endfor %}

@@ -1,0 +1,290 @@
+"""
+Fonctions utilitaires pour le module Rapports
+"""
+from datetime import datetime, date, timedelta
+from decimal import Decimal
+from django.db.models import Sum, Count
+from io import BytesIO
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+
+from eleves.models import Eleve, Ecole
+from paiements.models import Paiement
+from depenses.models import Depense
+from salaires.models import Enseignant, EtatSalaire
+from utilisateurs.utils import user_is_admin, user_school
+from django.contrib.staticfiles import finders
+from django.conf import settings
+
+
+def _get_logo_path():
+    """Retourne le chemin absolu du logo dans staticfiles."""
+    # Chemin par défaut utilisé dans les templates
+    candidate = 'logos/logo.png'
+    path = finders.find(candidate)
+    return path or ''
+
+
+def _draw_header_and_watermark(c, doc):
+    """Dessine l'entête (logo + titre) et un filigrane logo géant sur chaque page.
+
+    - Filigrane: logo agrandi (~500% largeur) centré, faible opacité si disponible
+    - Entête: logo à gauche + nom de l'établissement
+    """
+    width, height = A4
+    logo_path = _get_logo_path()
+
+    c.saveState()
+    try:
+        # Filigrane
+        if logo_path:
+            # Taille ~500%: on couvre 1.5x la largeur de page (grand watermark)
+            wm_width = width * 1.5
+            wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
+            wm_x = (width - wm_width) / 2
+            wm_y = (height - wm_height) / 2
+
+            # Opacité faible si supportée
+            try:
+                c.setFillAlpha(0.08)
+            except Exception:
+                # Certaines versions de reportlab ne supportent pas l'alpha, on continue sans transparence
+                pass
+
+            # Légère rotation pour l'effet filigrane
+            c.translate(width / 2.0, height / 2.0)
+            c.rotate(30)
+            c.translate(-width / 2.0, -height / 2.0)
+
+            c.drawImage(
+                logo_path,
+                wm_x,
+                wm_y,
+                width=wm_width,
+                height=wm_height,
+                preserveAspectRatio=True,
+                mask='auto'
+            )
+    finally:
+        # Restaurer l'état avant de dessiner l'entête
+        c.restoreState()
+
+    # Entête (après restauration, pas d'opacité)
+    c.saveState()
+    try:
+        margin_x = 40
+        margin_y = 30
+        if logo_path:
+            c.drawImage(logo_path, margin_x, height - margin_y - 30, width=60, height=30, preserveAspectRatio=True, mask='auto')
+
+        # Titre à droite du logo
+        c.setFillColor(colors.HexColor('#0d47a1'))
+        c.setFont('Helvetica-Bold', 14)
+        c.drawString(margin_x + 70, height - margin_y - 10, "École Moderne HADJA KANFING DIANÉ")
+
+        # Ligne de séparation
+        c.setStrokeColor(colors.HexColor('#0d47a1'))
+        c.setLineWidth(0.7)
+        c.line(margin_x, height - margin_y - 38, width - margin_x, height - margin_y - 38)
+    finally:
+        c.restoreState()
+
+def collecter_donnees_periode(debut, fin, type_periode, user=None):
+    """Collecte les données pour une période donnée"""
+    donnees = {
+        'debut': debut,
+        'fin': fin,
+        'type': type_periode,
+        'ecoles': {},
+        # Dépenses non reliées à l'école: on les calcule une seule fois au niveau global
+        'depenses_globales': {
+            'nombre': 0,
+            'montant_total': Decimal('0')
+        }
+    }
+
+    # Restreindre le périmètre des écoles selon l'utilisateur
+    ecoles_qs = Ecole.objects.all()
+    if user is not None and not user_is_admin(user):
+        ecole_user = user_school(user)
+        ecoles_qs = ecoles_qs.filter(id=getattr(ecole_user, 'id', None)) if ecole_user else Ecole.objects.none()
+
+    # Dépenses de la période (GLOBAL - pas de relation à Ecole)
+    depenses_periode_global = Depense.objects.filter(
+        date_facture__range=[debut, fin],
+        statut='VALIDEE'
+    )
+    donnees['depenses_globales']['nombre'] = depenses_periode_global.count()
+    donnees['depenses_globales']['montant_total'] = depenses_periode_global.aggregate(
+        total=Sum('montant_ttc')
+    )['total'] or Decimal('0')
+
+    for ecole in ecoles_qs:
+        donnees_ecole = {
+            'nom': ecole.nom,
+            'nouveaux_eleves': Eleve.objects.filter(
+                classe__ecole=ecole,
+                date_inscription__range=[debut, fin]
+            ).count(),
+            'paiements': {
+                'nombre': 0,
+                'montant_total': Decimal('0'),
+                'frais_inscription': Decimal('0'),
+                'scolarite': Decimal('0')
+            },
+            # Dépenses affichées par école mises à 0 pour éviter toute confusion,
+            # car le modèle Depense n'est pas lié à Ecole
+            'depenses': {
+                'nombre': 0,
+                'montant_total': Decimal('0')
+            },
+            'salaires': {
+                'etats_valides': 0,
+                'montant_total': Decimal('0')
+            }
+        }
+        
+        # Paiements de la période (liaison via Eleve -> Classe -> École)
+        paiements_periode = Paiement.objects.filter(
+            eleve__classe__ecole=ecole,
+            date_paiement__range=[debut, fin],
+            statut='VALIDE'
+        )
+        
+        donnees_ecole['paiements']['nombre'] = paiements_periode.count()
+        donnees_ecole['paiements']['montant_total'] = paiements_periode.aggregate(
+            total=Sum('montant')
+        )['total'] or Decimal('0')
+        
+        # Frais d'inscription
+        frais_inscription = paiements_periode.filter(
+            type_paiement__nom__icontains='inscription'
+        ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
+        
+        donnees_ecole['paiements']['frais_inscription'] = frais_inscription
+        donnees_ecole['paiements']['scolarite'] = donnees_ecole['paiements']['montant_total'] - frais_inscription
+        
+        # Dépenses: pas de répartition par école (le modèle n'est pas rattaché à Ecole)
+        # On laisse 0 au niveau de l'école et on affiche un total global dans le résumé
+        
+        # États de salaire de la période
+        etats_periode = EtatSalaire.objects.filter(
+            enseignant__ecole=ecole,
+            date_validation__range=[debut, fin],
+            valide=True
+        )
+        
+        donnees_ecole['salaires']['etats_valides'] = etats_periode.count()
+        donnees_ecole['salaires']['montant_total'] = etats_periode.aggregate(
+            total=Sum('salaire_net')
+        )['total'] or Decimal('0')
+        
+        donnees['ecoles'][ecole.id] = donnees_ecole
+    
+    return donnees
+
+def generer_pdf_periode(donnees, debut, fin, type_periode):
+    """Génère le PDF pour un rapport de période"""
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    styles = getSampleStyleSheet()
+    story = []
+    
+    # Titre
+    titre_style = ParagraphStyle(
+        'TitreRapport',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.darkblue,
+        alignment=1
+    )
+    
+    titre = f"RAPPORT {type_periode.upper()} - {debut.strftime('%d/%m/%Y')} au {fin.strftime('%d/%m/%Y')}"
+    story.append(Paragraph(titre, titre_style))
+    story.append(Spacer(1, 20))
+    
+    # Pour chaque école
+    for ecole_id, donnees_ecole in donnees['ecoles'].items():
+        story.append(Paragraph(f"École: {donnees_ecole['nom']}", styles['Heading2']))
+        story.append(Spacer(1, 10))
+        
+        # Tableau des données
+        data = [
+            ['Indicateur', 'Valeur'],
+            ['Nouveaux élèves inscrits', str(donnees_ecole['nouveaux_eleves'])],
+            ['Nombre de paiements', str(donnees_ecole['paiements']['nombre'])],
+            ['Montant total des paiements', f"{donnees_ecole['paiements']['montant_total']:,} GNF".replace(',', ' ')],
+            ['Frais d\'inscription', f"{donnees_ecole['paiements']['frais_inscription']:,} GNF".replace(',', ' ')],
+            ['Scolarité', f"{donnees_ecole['paiements']['scolarite']:,} GNF".replace(',', ' ')],
+            ['Nombre de dépenses', str(donnees_ecole['depenses']['nombre'])],
+            ['Montant total des dépenses', f"{donnees_ecole['depenses']['montant_total']:,} GNF".replace(',', ' ')],
+            ['États de salaire validés', str(donnees_ecole['salaires']['etats_valides'])],
+            ['Montant total des salaires', f"{donnees_ecole['salaires']['montant_total']:,} GNF".replace(',', ' ')],
+        ]
+        
+        table = Table(data, colWidths=[3*inch, 2*inch])
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        
+        story.append(table)
+        story.append(Spacer(1, 20))
+    
+    # Section Dépenses globales (non rattachées à une école)
+    story.append(Paragraph("DÉPENSES GLOBALES (période)", styles['Heading2']))
+    story.append(Spacer(1, 8))
+    dep_global = donnees.get('depenses_globales', {'nombre': 0, 'montant_total': Decimal('0')})
+    depenses_data = [
+        ['Nombre de dépenses', str(dep_global.get('nombre', 0))],
+        ['Montant total des dépenses', f"{dep_global.get('montant_total', Decimal('0')):,} GNF".replace(',', ' ')]
+    ]
+    dep_table = Table(depenses_data, colWidths=[3*inch, 2*inch])
+    dep_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.whitesmoke),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    story.append(dep_table)
+    story.append(Spacer(1, 16))
+
+    # Résumé global
+    total_paiements = sum(d['paiements']['montant_total'] for d in donnees['ecoles'].values())
+    total_depenses = donnees['depenses_globales']['montant_total']
+    total_salaires = sum(d['salaires']['montant_total'] for d in donnees['ecoles'].values())
+    
+    story.append(Paragraph("RÉSUMÉ GLOBAL", styles['Heading2']))
+    story.append(Spacer(1, 10))
+    
+    resume_data = [
+        ['Total des paiements', f"{total_paiements:,} GNF".replace(',', ' ')],
+        ['Total des dépenses', f"{total_depenses:,} GNF".replace(',', ' ')],
+        ['Total des salaires', f"{total_salaires:,} GNF".replace(',', ' ')],
+        ['Solde net', f"{total_paiements - total_depenses - total_salaires:,} GNF".replace(',', ' ')],
+    ]
+    
+    resume_table = Table(resume_data, colWidths=[3*inch, 2*inch])
+    resume_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.lightblue),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, -1), 12),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    
+    story.append(resume_table)
+    
+    # Ajout entête + filigrane sur toutes les pages
+    doc.build(story, onFirstPage=_draw_header_and_watermark, onLaterPages=_draw_header_and_watermark)
+    buffer.seek(0)
+    return buffer

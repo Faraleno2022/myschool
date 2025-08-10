@@ -1,0 +1,435 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Dépense {{ depense.numero_facture }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .detail-card {
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .section-title {
+        color: #2c3e50;
+        border-bottom: 2px solid #6c757d;
+        padding-bottom: 8px;
+        margin-bottom: 20px;
+        font-weight: 600;
+    }
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #f8f9fa;
+    }
+    .info-row:last-child {
+        border-bottom: none;
+    }
+    .info-label {
+        font-weight: 600;
+        color: #495057;
+    }
+    .info-value {
+        color: #2c3e50;
+    }
+    .badge-status {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+    }
+    .action-buttons {
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 1rem;
+    }
+    .timeline-item {
+        border-left: 3px solid #e9ecef;
+        padding-left: 1rem;
+        margin-bottom: 1rem;
+        position: relative;
+    }
+    .timeline-item::before {
+        content: '';
+        position: absolute;
+        left: -6px;
+        top: 0.5rem;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #6c757d;
+    }
+    .timeline-item.timeline-creation::before { background: #28a745; }
+    .timeline-item.timeline-modification::before { background: #ffc107; }
+    .timeline-item.timeline-validation::before { background: #17a2b8; }
+    .timeline-item.timeline-paiement::before { background: #007bff; }
+    .alert-retard {
+        background-color: #fff3cd;
+        border-color: #ffeaa7;
+        color: #856404;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0">Dépense {{ depense.numero_facture }}</h1>
+            <p class="text-muted mb-0">{{ depense.libelle }}</p>
+        </div>
+        <div>
+            <a href="{% url 'depenses:liste_depenses' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> Retour à la liste
+            </a>
+        </div>
+    </div>
+
+    <!-- Alerte si en retard -->
+    {% if depense.est_en_retard %}
+    <div class="alert alert-retard mb-4">
+        <i class="fas fa-exclamation-triangle"></i>
+        <strong>Attention !</strong> Cette dépense est en retard de paiement 
+        (échéance : {{ depense.date_echeance|date:"d/m/Y" }}).
+    </div>
+    {% endif %}
+
+    <div class="row">
+        <!-- Informations principales -->
+        <div class="col-lg-8">
+            <!-- Informations générales -->
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-info-circle"></i> Informations Générales
+                </h5>
+                
+                <div class="info-row">
+                    <span class="info-label">Numéro de facture</span>
+                    <span class="info-value fw-bold">{{ depense.numero_facture }}</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Libellé</span>
+                    <span class="info-value">{{ depense.libelle }}</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Description</span>
+                    <span class="info-value">{{ depense.description|default:"Aucune description" }}</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Catégorie</span>
+                    <span class="info-value">
+                        <span class="badge bg-light text-dark">{{ depense.categorie.code }}</span>
+                        {{ depense.categorie.nom }}
+                    </span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Fournisseur</span>
+                    <span class="info-value">{{ depense.fournisseur.nom }}</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Type de dépense</span>
+                    <span class="info-value">{{ depense.get_type_depense_display }}</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Statut</span>
+                    <span class="info-value">
+                        {% if depense.statut == 'BROUILLON' %}
+                            <span class="badge bg-secondary badge-status">Brouillon</span>
+                        {% elif depense.statut == 'EN_ATTENTE' %}
+                            <span class="badge bg-warning badge-status">En attente</span>
+                        {% elif depense.statut == 'VALIDEE' %}
+                            <span class="badge bg-info badge-status">Validée</span>
+                        {% elif depense.statut == 'PAYEE' %}
+                            <span class="badge bg-success badge-status">Payée</span>
+                        {% elif depense.statut == 'REJETEE' %}
+                            <span class="badge bg-danger badge-status">Rejetée</span>
+                        {% elif depense.statut == 'ANNULEE' %}
+                            <span class="badge bg-dark badge-status">Annulée</span>
+                        {% endif %}
+                    </span>
+                </div>
+            </div>
+
+            <!-- Informations financières -->
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-calculator"></i> Informations Financières
+                </h5>
+                
+                <div class="info-row">
+                    <span class="info-label">Montant HT</span>
+                    <span class="info-value">{{ depense.montant_ht|intcomma }} GNF</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Taux TVA</span>
+                    <span class="info-value">{{ depense.taux_tva }}%</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Montant TVA</span>
+                    <span class="info-value">{{ depense.montant_tva|intcomma }} GNF</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Montant TTC</span>
+                    <span class="info-value fw-bold text-primary fs-5">{{ depense.montant_ttc|intcomma }} GNF</span>
+                </div>
+            </div>
+
+            <!-- Dates -->
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-calendar"></i> Dates
+                </h5>
+                
+                <div class="info-row">
+                    <span class="info-label">Date de facture</span>
+                    <span class="info-value">{{ depense.date_facture|date:"d/m/Y" }}</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Date d'échéance</span>
+                    <span class="info-value">
+                        {{ depense.date_echeance|date:"d/m/Y" }}
+                        {% if depense.est_en_retard %}
+                        <span class="text-danger ms-2">
+                            <i class="fas fa-exclamation-triangle"></i> En retard
+                        </span>
+                        {% endif %}
+                    </span>
+                </div>
+                
+                {% if depense.date_paiement %}
+                <div class="info-row">
+                    <span class="info-label">Date de paiement</span>
+                    <span class="info-value">{{ depense.date_paiement|date:"d/m/Y" }}</span>
+                </div>
+                {% endif %}
+                
+                <div class="info-row">
+                    <span class="info-label">Date de création</span>
+                    <span class="info-value">{{ depense.date_creation|date:"d/m/Y H:i" }}</span>
+                </div>
+                
+                {% if depense.date_validation %}
+                <div class="info-row">
+                    <span class="info-label">Date de validation</span>
+                    <span class="info-value">{{ depense.date_validation|date:"d/m/Y H:i" }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Observations -->
+            {% if depense.observations %}
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-comment"></i> Observations
+                </h5>
+                <p class="mb-0">{{ depense.observations|linebreaks }}</p>
+            </div>
+            {% endif %}
+
+            <!-- Historique -->
+            {% if depense.historique.all %}
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-history"></i> Historique
+                </h5>
+                
+                {% for historique in depense.historique.all %}
+                <div class="timeline-item timeline-{{ historique.action|lower }}">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <strong>{{ historique.get_action_display }}</strong>
+                            <p class="mb-1">{{ historique.description }}</p>
+                            {% if historique.utilisateur %}
+                            <small class="text-muted">
+                                Par {{ historique.utilisateur.get_full_name|default:historique.utilisateur.username }}
+                            </small>
+                            {% endif %}
+                        </div>
+                        <small class="text-muted">{{ historique.date_action|date:"d/m/Y H:i" }}</small>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Actions et informations complémentaires -->
+        <div class="col-lg-4">
+            <!-- Actions -->
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-tools"></i> Actions
+                </h5>
+                
+                <div class="d-grid gap-2">
+                    {% if depense.statut not in 'PAYEE,ANNULEE' %}
+                    <a href="{% url 'depenses:modifier_depense' depense.id %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-edit"></i> Modifier
+                    </a>
+                    {% endif %}
+                    
+                    {% if depense.statut == 'EN_ATTENTE' %}
+                    <form method="post" action="{% url 'depenses:valider_depense' depense.id %}" 
+                          onsubmit="return confirm('Êtes-vous sûr de vouloir valider cette dépense ?')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-success w-100">
+                            <i class="fas fa-check"></i> Valider
+                        </button>
+                    </form>
+                    {% endif %}
+                    
+                    {% if depense.statut == 'VALIDEE' %}
+                    <form method="post" action="{% url 'depenses:marquer_payee' depense.id %}" 
+                          onsubmit="return confirm('Êtes-vous sûr de vouloir marquer cette dépense comme payée ?')">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-primary w-100">
+                            <i class="fas fa-money-bill"></i> Marquer comme payée
+                        </button>
+                    </form>
+                    {% endif %}
+                    
+                    <button class="btn btn-outline-secondary" onclick="window.print()">
+                        <i class="fas fa-print"></i> Imprimer
+                    </button>
+                </div>
+            </div>
+
+            <!-- Informations sur les utilisateurs -->
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-users"></i> Utilisateurs
+                </h5>
+                
+                {% if depense.cree_par %}
+                <div class="info-row">
+                    <span class="info-label">Créée par</span>
+                    <span class="info-value">
+                        {{ depense.cree_par.get_full_name|default:depense.cree_par.username }}
+                    </span>
+                </div>
+                {% endif %}
+                
+                {% if depense.valide_par %}
+                <div class="info-row">
+                    <span class="info-label">Validée par</span>
+                    <span class="info-value">
+                        {{ depense.valide_par.get_full_name|default:depense.valide_par.username }}
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Informations sur le fournisseur -->
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-truck"></i> Fournisseur
+                </h5>
+                
+                <div class="info-row">
+                    <span class="info-label">Nom</span>
+                    <span class="info-value">{{ depense.fournisseur.nom }}</span>
+                </div>
+                
+                <div class="info-row">
+                    <span class="info-label">Type</span>
+                    <span class="info-value">{{ depense.fournisseur.get_type_fournisseur_display }}</span>
+                </div>
+                
+                {% if depense.fournisseur.telephone %}
+                <div class="info-row">
+                    <span class="info-label">Téléphone</span>
+                    <span class="info-value">{{ depense.fournisseur.telephone }}</span>
+                </div>
+                {% endif %}
+                
+                {% if depense.fournisseur.email %}
+                <div class="info-row">
+                    <span class="info-label">Email</span>
+                    <span class="info-value">
+                        <a href="mailto:{{ depense.fournisseur.email }}">{{ depense.fournisseur.email }}</a>
+                    </span>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Pièces justificatives -->
+            {% if depense.pieces_justificatives.all %}
+            <div class="detail-card">
+                <h5 class="section-title">
+                    <i class="fas fa-paperclip"></i> Pièces Justificatives
+                </h5>
+                
+                {% for piece in depense.pieces_justificatives.all %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div>
+                        <strong>{{ piece.get_type_piece_display }}</strong><br>
+                        <small class="text-muted">{{ piece.nom_fichier }}</small>
+                    </div>
+                    <a href="{{ piece.fichier.url }}" target="_blank" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-download"></i>
+                    </a>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Animation des cartes
+        const detailCards = document.querySelectorAll('.detail-card');
+        detailCards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            setTimeout(() => {
+                card.style.transition = 'all 0.5s ease';
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, index * 150);
+        });
+
+        // Confirmation pour les formulaires
+        document.querySelectorAll('form[onsubmit]').forEach(form => {
+            form.addEventListener('submit', function(e) {
+                const confirmMessage = this.getAttribute('onsubmit').match(/confirm\('([^']+)'\)/)[1];
+                if (!confirm(confirmMessage)) {
+                    e.preventDefault();
+                }
+            });
+        });
+
+        // Style d'impression
+        const printStyles = `
+            @media print {
+                .btn, .action-buttons, nav, .navbar { display: none !important; }
+                .detail-card { border: 1px solid #000 !important; margin-bottom: 1rem !important; }
+                .section-title { color: #000 !important; }
+                body { font-size: 12pt; }
+            }
+        `;
+        const styleSheet = document.createElement("style");
+        styleSheet.type = "text/css";
+        styleSheet.innerText = printStyles;
+        document.head.appendChild(styleSheet);
+    });
+</script>
+{% endblock %}

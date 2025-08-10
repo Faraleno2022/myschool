@@ -1,0 +1,123 @@
+{# Reusable camera modal for capturing a photo into a file input #}
+<div class="modal fade" id="cameraModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-camera me-2"></i>Prendre une photo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-md-7 text-center">
+            <video id="cameraVideo" autoplay playsinline style="width:100%;border-radius:8px;background:#000"></video>
+          </div>
+          <div class="col-md-5">
+            <canvas id="cameraCanvas" style="width:100%;border-radius:8px;border:1px solid #dee2e6;"></canvas>
+            <div class="mt-3 d-grid gap-2">
+              <button class="btn btn-primary" id="btnCapture"><i class="fas fa-dot-circle me-2"></i>Capturer</button>
+              <button class="btn btn-secondary" id="btnSwitch"><i class="fas fa-sync-alt me-2"></i>Basculer caméra</button>
+              <button class="btn btn-success" id="btnUse"><i class="fas fa-check me-2"></i>Utiliser la photo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <small class="text-muted">Si la caméra ne démarre pas, vérifiez les autorisations du navigateur.</small>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  let stream = null;
+  let currentFacing = 'environment'; // try rear first on mobile
+  let targetInputId = null;
+  const modalEl = document.getElementById('cameraModal');
+  const video = document.getElementById('cameraVideo');
+  const canvas = document.getElementById('cameraCanvas');
+  const btnCapture = document.getElementById('btnCapture');
+  const btnSwitch = document.getElementById('btnSwitch');
+  const btnUse = document.getElementById('btnUse');
+
+  function stopStream(){
+    if(stream){
+      stream.getTracks().forEach(t => t.stop());
+      stream = null;
+    }
+  }
+
+  async function startStream(){
+    stopStream();
+    const constraints = {
+      video: { facingMode: { ideal: currentFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
+      audio: false
+    };
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+    } catch (e) {
+      console.warn('getUserMedia failed, retrying with default camera', e);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = stream;
+      } catch (err){
+        console.error('Camera not available', err);
+        alert("Impossible d'accéder à la caméra. Vérifiez les autorisations du navigateur.");
+      }
+    }
+  }
+
+  function capture(){
+    const w = video.videoWidth || 640;
+    const h = video.videoHeight || 480;
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, w, h);
+  }
+
+  async function usePhoto(){
+    if(!targetInputId) return;
+    const input = document.getElementById(targetInputId);
+    if(!input) return;
+    canvas.toBlob(function(blob){
+      if(!blob) return;
+      const file = new File([blob], 'photo_eleve.jpg', { type: 'image/jpeg' });
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      input.files = dt.files;
+      // Optionnel: afficher un aperçu si un élément img[data-preview] est présent
+      const preview = document.querySelector('[data-photo-preview]');
+      if (preview) {
+        preview.src = URL.createObjectURL(file);
+        preview.style.display = 'block';
+      }
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.hide();
+    }, 'image/jpeg', 0.9);
+  }
+
+  // Wire events when DOM is ready
+  document.addEventListener('click', function(e){
+    const btn = e.target.closest('[data-open-camera-for]');
+    if(!btn) return;
+    e.preventDefault();
+    targetInputId = btn.getAttribute('data-open-camera-for');
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+    startStream();
+  });
+
+  btnCapture.addEventListener('click', function(e){ e.preventDefault(); capture(); });
+  btnUse.addEventListener('click', function(e){ e.preventDefault(); usePhoto(); });
+  btnSwitch.addEventListener('click', function(e){
+    e.preventDefault();
+    currentFacing = (currentFacing === 'environment') ? 'user' : 'environment';
+    startStream();
+  });
+
+  modalEl.addEventListener('hidden.bs.modal', function(){
+    stopStream();
+  });
+})();
+</script>

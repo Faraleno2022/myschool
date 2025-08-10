@@ -1,0 +1,354 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load humanize %}
+
+{% block title %}{{ titre_page }} - École Moderne HADJA KANFING DIANÉ{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item"><a href="{% url 'paiements:tableau_bord' %}">Paiements</a></li>
+    <li class="breadcrumb-item active">Liste des paiements</li>
+{% endblock %}
+
+{% block page_actions %}
+    <div>
+        <a href="{% url 'paiements:ajouter_paiement' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>Nouveau Paiement
+        </a>
+        <button type="button" class="btn btn-outline-info" data-bs-toggle="modal" data-bs-target="#filtresModal">
+            <i class="fas fa-filter me-1"></i>Filtres
+        </button>
+        <div class="btn-group">
+            <button type="button" class="btn btn-outline-success dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="fas fa-download me-1"></i>Exporter
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="?export=excel"><i class="fas fa-file-excel me-2"></i>Excel</a></li>
+                <li><a class="dropdown-item" href="?export=pdf"><i class="fas fa-file-pdf me-2"></i>PDF</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li>
+                    <a class="dropdown-item" href="#" onclick="exportTranchesParClassePdf(); return false;">
+                        <i class="fas fa-file-pdf me-2"></i>Tranches par classe (PDF)
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .search-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        margin-bottom: 25px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        border-left: 5px solid #007bff;
+    }
+    
+    .stats-row {
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        border-radius: 15px;
+        padding: 20px;
+        margin-bottom: 25px;
+    }
+    
+    .stat-card {
+        text-align: center;
+        padding: 20px;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        transition: transform 0.2s ease;
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    
+    .stat-value {
+        font-size: 1.8rem;
+        font-weight: bold;
+        margin-bottom: 5px;
+    }
+    
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    .payments-table {
+        background: white;
+        border-radius: 15px;
+        overflow: hidden;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+    
+    .table thead th {
+        background: #007bff;
+        color: white;
+        border: none;
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        letter-spacing: 0.5px;
+        padding: 15px 12px;
+    }
+    
+    .table tbody tr {
+        transition: all 0.2s ease;
+    }
+    
+    .table tbody tr:hover {
+        background: #f8f9fa;
+        transform: scale(1.01);
+    }
+    
+    .table tbody td {
+        padding: 15px 12px;
+        vertical-align: middle;
+        border-top: 1px solid #dee2e6;
+    }
+    
+    .status-badge {
+        padding: 6px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    
+    .status-valide { background: #d4edda; color: #155724; }
+    .status-attente { background: #fff3cd; color: #856404; }
+    .status-rejete { background: #f8d7da; color: #721c24; }
+    .status-annule { background: #e2e3e5; color: #383d41; }
+    
+    .montant-cell {
+        font-weight: bold;
+        font-size: 1.1rem;
+    }
+    
+    .eleve-info {
+        display: flex;
+        align-items: center;
+    }
+    
+    .eleve-avatar {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        margin-right: 10px;
+        object-fit: cover;
+    }
+    
+    .eleve-placeholder {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        background: #007bff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 10px;
+        color: white;
+        font-weight: bold;
+    }
+    
+    .pagination-wrapper {
+        background: white;
+        border-radius: 10px;
+        padding: 20px;
+        margin-top: 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    
+    .btn-action {
+        padding: 5px 10px;
+        margin: 0 2px;
+        border-radius: 5px;
+        font-size: 0.8rem;
+    }
+    
+    .search-input {
+        border-radius: 25px;
+        padding: 12px 20px;
+        border: 2px solid #e9ecef;
+        transition: all 0.3s ease;
+    }
+    
+    .search-input:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
+    }
+    
+    .filter-badge {
+        background: #007bff;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        margin: 2px;
+        display: inline-block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+    <!-- Recherche (une seule zone multi-critères) -->
+    <div class="search-card">
+        <form method="get" class="row g-3 align-items-end">
+            <div class="col-md-9">
+                <label for="q" class="form-label">Recherche</label>
+                <input type="text" class="form-control search-input" id="q" name="q"
+                       value="{{ q }}"
+                       placeholder="Classe, École, Nom, Prénoms, Type, Mode, N° Reçu, Matricule, Statut (ex: validé, en attente)...">
+            </div>
+            <div class="col-md-3">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-search me-1"></i>Rechercher
+                </button>
+            </div>
+        </form>
+
+        {% if q %}
+        <div class="mt-3">
+            <strong>Filtre actif :</strong>
+            <span class="filter-badge">Recherche: "{{ q }}"</span>
+            <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-sm btn-outline-secondary ms-2">
+                <i class="fas fa-times me-1"></i>Effacer
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Conteneur des résultats dynamiques -->
+    <div id="paiements-results">
+        {% include 'paiements/_paiements_resultats.html' %}
+    </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('q');
+    const results = document.getElementById('paiements-results');
+    const form = searchInput ? searchInput.form : null;
+    let searchTimeout;
+
+    async function loadResults(url) {
+        try {
+            const resp = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            if (!resp.ok) return;
+            const html = await resp.text();
+            // Remplace uniquement le contenu pour éviter les mouvements de page
+            results.innerHTML = html;
+            wirePagination();
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function buildUrl(page) {
+        const u = new URL(window.location.href);
+        const q = searchInput.value.trim();
+        if (q) u.searchParams.set('q', q); else u.searchParams.delete('q');
+        if (page) u.searchParams.set('page', page); else u.searchParams.delete('page');
+        return u.toString();
+    }
+
+    function wirePagination() {
+        // Intercepter les clics de pagination dans le fragment
+        results.querySelectorAll('.pagination a.page-link').forEach(a => {
+            a.addEventListener('click', function(ev) {
+                ev.preventDefault();
+                const url = new URL(a.href, window.location.origin);
+                // Conserver la valeur courante de q
+                const q = searchInput.value.trim();
+                if (q) url.searchParams.set('q', q); else url.searchParams.delete('q');
+                history.replaceState({}, '', url.toString());
+                loadResults(url.toString());
+            });
+        });
+    }
+
+    if (searchInput && form) {
+        // Empêcher le submit classique
+        form.addEventListener('submit', function(e){
+            e.preventDefault();
+            const url = buildUrl();
+            history.replaceState({}, '', url);
+            loadResults(url);
+        });
+
+        searchInput.addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                const url = buildUrl();
+                history.replaceState({}, '', url);
+                loadResults(url);
+            }, 250);
+        });
+    }
+
+    // Initial wiring
+    wirePagination();
+    
+    // Animation des cartes statistiques
+    const statCards = document.querySelectorAll('.stat-card');
+    statCards.forEach((card, index) => {
+        card.style.opacity = '0';
+        card.style.transform = 'translateY(20px)';
+        setTimeout(() => {
+            card.style.transition = 'all 0.5s ease';
+            card.style.opacity = '1';
+            card.style.transform = 'translateY(0)';
+        }, 100 * (index + 1));
+    });
+});
+
+// Ouvre l'export PDF "Tranches par classe" en conservant les filtres de l'URL
+function exportTranchesParClassePdf() {
+    const u = new URL(window.location.href);
+    const base = '{% url "paiements:export_tranches_par_classe_pdf" %}';
+    const out = new URL(base, window.location.origin);
+    const annee = u.searchParams.get('annee_scolaire');
+    const classe = u.searchParams.get('classe') || u.searchParams.get('classe_id'); // compat
+    const ecole = u.searchParams.get('ecole');
+
+    if (annee) out.searchParams.set('annee_scolaire', annee);
+    if (classe) out.searchParams.set('classe', classe);
+    if (ecole) out.searchParams.set('ecole', ecole);
+
+    window.open(out.toString(), '_blank');
+}
+
+function rejeterPaiement(paiementId) {
+    if (confirm('Êtes-vous sûr de vouloir rejeter ce paiement ?')) {
+        // Logique de rejet du paiement
+        fetch(`/paiements/${paiementId}/rejeter/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Erreur lors du rejet du paiement');
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            alert('Erreur lors du rejet du paiement');
+        });
+    }
+}
+</script>
+{% endblock %}

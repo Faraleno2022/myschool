@@ -1,0 +1,101 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Accueil{% endblock %}
+
+{% block extra_css %}
+<style>
+  .hero-wrapper {
+    margin-top: -40px; /* léger ajustement supplémentaire vers le haut */
+  }
+  .hero-image {
+    width: 100%;
+    height: 440px; /* hauteur légèrement augmentée */
+    object-fit: cover;
+    border-radius: 0; /* pleine largeur sans arrondis */
+  }
+  .presentation-card {
+    border: 1px solid #e9ecef;
+    border-radius: 0.5rem;
+  }
+  .presentation-body {
+    padding: 2.5rem !important; /* augmente l'espace interne */
+  }
+  .presentation-title {
+    font-size: 1.75rem; /* titre plus grand (≈ h3) */
+  }
+  .presentation-body p {
+    font-size: 1.1rem; /* texte plus grand */
+    line-height: 1.7;   /* meilleure lisibilité */
+  }
+  .image-card .card-img-top {
+    width: 100%;
+    height: 360px; /* hauteur des images dans les cards */
+    object-fit: cover;
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+  }
+</style>
+{% endblock %}
+
+{% block breadcrumb %}{% endblock %}
+
+{% block content %}
+<!-- Section image pleine largeur -->
+<div class="container-fluid px-0 mb-3 hero-wrapper">
+  <img
+    src="{% static 'images/ecole.jpg' %}"
+    alt="Image de l'école"
+    class="hero-image w-100"
+    onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1511634829096-045a111727eb?q=80&w=2400&auto=format&fit=crop';"
+  />
+</div>
+
+<!-- Contenu de présentation -->
+<div class="container py-3">
+  <div class="card presentation-card mb-4">
+    <div class="card-body p-5 presentation-body">
+      <h1 class="h3 mb-3 presentation-title"><i class="fas fa-school me-2"></i>Présentation de l'école</h1>
+      <p class="mb-2">
+        Bienvenue à l'École Moderne Hadja Kanfing Diané. Notre établissement offre un cadre d'apprentissage
+        moderne et bienveillant, avec une équipe pédagogique engagée pour l'excellence académique et le
+        développement personnel des élèves.
+      </p>
+      <p class="mb-2">
+        Nous proposons des programmes adaptés de la maternelle au secondaire, des activités parascolaires
+        enrichissantes, ainsi qu'un suivi individualisé favorisant la réussite et l'épanouissement.
+      </p>
+      <p class="mb-0">
+        Pour plus d'informations, veuillez contacter l'administration ou visiter les sections du site via le menu ci-dessus.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Deux cards d'images -->
+<div class="container pb-4">
+  <div class="row g-4">
+    <div class="col-md-6">
+      <div class="card shadow-sm image-card">
+        <img
+          src="{% static 'images/carte1.jpg' %}"
+          alt="Image présentation 1"
+          class="card-img-top"
+          onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1523050854058-8df90110c9f1?q=80&w=1200&auto=format&fit=crop';"
+        />
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="card shadow-sm image-card">
+        <img
+          src="{% static 'images/carte2.jpg' %}"
+          alt="Image présentation 2"
+          class="card-img-top"
+          onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1496307042754-b4aa456c4a2d?q=80&w=1200&auto=format&fit=crop';"
+        />
+      </div>
+    </div>
+  </div>
+  <!-- Astuce: placez vos images dans static/images/carte1.jpg et static/images/carte2.jpg -->
+</div>
+{% endblock %}

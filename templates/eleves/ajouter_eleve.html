@@ -1,0 +1,460 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Ajouter un élève - École Moderne HADJA KANFING DIANÉ{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container {
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        padding: 30px;
+        margin: 20px 0;
+    }
+    .form-group {
+        margin-bottom: 20px;
+    }
+    .form-label {
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 8px;
+    }
+    .required {
+        color: #dc3545;
+    }
+    .btn-save {
+        background: linear-gradient(45deg, #007bff, #0056b3);
+        border: none;
+        padding: 15px 40px;
+        font-weight: 600;
+        border-radius: 8px;
+        color: white;
+        font-size: 16px;
+        transition: all 0.3s ease;
+    }
+    .btn-save:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 5px 15px rgba(0,123,255,0.4);
+        color: white;
+    }
+    .section-title {
+        color: #007bff;
+        border-bottom: 2px solid #007bff;
+        padding-bottom: 10px;
+        margin-bottom: 25px;
+        font-weight: 600;
+    }
+    .form-control, .form-select {
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        padding: 12px;
+        transition: border-color 0.3s ease;
+    }
+    .form-control:focus, .form-select:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-user-plus text-primary"></i> Ajouter un nouvel élève</h2>
+                    <p class="text-muted">Formulaire d'enregistrement d'un nouvel élève</p>
+                </div>
+                <div>
+                    <a href="{% url 'eleves:liste_eleves' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour à la liste
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    {% if messages %}
+        <div class="row mb-3">
+            <div class="col-12">
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                        {% if message.tags == 'success' %}
+                            <i class="fas fa-check-circle me-2"></i>
+                        {% elif message.tags == 'error' %}
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                        {% elif message.tags == 'warning' %}
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                        {% else %}
+                            <i class="fas fa-info-circle me-2"></i>
+                        {% endif %}
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- Nouveau Formulaire Simple -->
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="form-container">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <!-- Informations personnelles -->
+                    <h4 class="section-title"><i class="fas fa-user me-2"></i>Informations personnelles</h4>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Matricule <span class="required">*</span></label>
+                                {{ form.matricule }}
+                                {% if form.matricule.errors %}
+                                    <div class="text-danger small mt-1">{{ form.matricule.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Sexe <span class="required">*</span></label>
+                                {{ form.sexe }}
+                                {% if form.sexe.errors %}
+                                    <div class="text-danger small mt-1">{{ form.sexe.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Prénom <span class="required">*</span></label>
+                                {{ form.prenom }}
+                                {% if form.prenom.errors %}
+                                    <div class="text-danger small mt-1">{{ form.prenom.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Nom <span class="required">*</span></label>
+                                {{ form.nom }}
+                                {% if form.nom.errors %}
+                                    <div class="text-danger small mt-1">{{ form.nom.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Date de naissance <span class="required">*</span></label>
+                                {{ form.date_naissance }}
+                                {% if form.date_naissance.errors %}
+                                    <div class="text-danger small mt-1">{{ form.date_naissance.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Lieu de naissance <span class="required">*</span></label>
+                                {{ form.lieu_naissance }}
+                                {% if form.lieu_naissance.errors %}
+                                    <div class="text-danger small mt-1">{{ form.lieu_naissance.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Informations scolaires -->
+                    <h4 class="section-title mt-4"><i class="fas fa-school me-2"></i>Informations scolaires</h4>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Classe <span class="required">*</span></label>
+                                {{ form.classe }}
+                                {% if form.classe.errors %}
+                                    <div class="text-danger small mt-1">{{ form.classe.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Date d'inscription <span class="required">*</span></label>
+                                {{ form.date_inscription }}
+                                {% if form.date_inscription.errors %}
+                                    <div class="text-danger small mt-1">{{ form.date_inscription.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Statut <span class="required">*</span></label>
+                                {{ form.statut }}
+                                {% if form.statut.errors %}
+                                    <div class="text-danger small mt-1">{{ form.statut.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Responsable -->
+                    <h4 class="section-title mt-4"><i class="fas fa-users me-2"></i>Responsable principal</h4>
+                    
+                    <!-- Option de création -->
+                    <div class="row mb-3">
+                        <div class="col-12">
+                            <div class="form-check">
+                                {{ form.responsable_principal_nouveau }}
+                                <label class="form-check-label" for="{{ form.responsable_principal_nouveau.id_for_label }}">
+                                    <strong>Créer un nouveau responsable principal</strong>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Sélection responsable existant -->
+                    <div id="responsable-existant" class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="form-label">Sélectionner un responsable existant <span class="required">*</span></label>
+                                {{ form.responsable_principal }}
+                                {% if form.responsable_principal.errors %}
+                                    <div class="text-danger small mt-1">{{ form.responsable_principal.errors.0 }}</div>
+                                {% endif %}
+                                <div class="form-text">Choisissez dans la liste des responsables déjà enregistrés</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Création nouveau responsable -->
+                    <div id="nouveau-responsable" class="d-none">
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <strong>Nouveau responsable</strong> - Remplissez les informations ci-dessous
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">Prénom <span class="required">*</span></label>
+                                    {{ responsable_principal_form.prenom }}
+                                    {% if responsable_principal_form.prenom.errors %}
+                                        <div class="text-danger small mt-1">{{ responsable_principal_form.prenom.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">Nom <span class="required">*</span></label>
+                                    {{ responsable_principal_form.nom }}
+                                    {% if responsable_principal_form.nom.errors %}
+                                        <div class="text-danger small mt-1">{{ responsable_principal_form.nom.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">Relation <span class="required">*</span></label>
+                                    {{ responsable_principal_form.relation }}
+                                    {% if responsable_principal_form.relation.errors %}
+                                        <div class="text-danger small mt-1">{{ responsable_principal_form.relation.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">Téléphone <span class="required">*</span></label>
+                                    {{ responsable_principal_form.telephone }}
+                                    {% if responsable_principal_form.telephone.errors %}
+                                        <div class="text-danger small mt-1">{{ responsable_principal_form.telephone.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">Email</label>
+                                    {{ responsable_principal_form.email }}
+                                    {% if responsable_principal_form.email.errors %}
+                                        <div class="text-danger small mt-1">{{ responsable_principal_form.email.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group">
+                                    <label class="form-label">Profession</label>
+                                    {{ responsable_principal_form.profession }}
+                                    {% if responsable_principal_form.profession.errors %}
+                                        <div class="text-danger small mt-1">{{ responsable_principal_form.profession.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="form-group">
+                                    <label class="form-label">Adresse</label>
+                                    {{ responsable_principal_form.adresse }}
+                                    {% if responsable_principal_form.adresse.errors %}
+                                        <div class="text-danger small mt-1">{{ responsable_principal_form.adresse.errors.0 }}</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Photo (optionnel) -->
+                    <h4 class="section-title mt-4"><i class="fas fa-camera me-2"></i>Photo (optionnel)</h4>
+                    
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="form-label">Photo de l'élève</label>
+                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                    {{ form.photo }}
+                                    <button class="btn btn-outline-primary" data-open-camera-for="id_photo">
+                                        <i class="fas fa-camera me-2"></i>Prendre une photo
+                                    </button>
+                                    <img data-photo-preview style="display:none; max-width:120px; max-height:120px; border-radius:8px; border:1px solid #dee2e6;"/>
+                                </div>
+                                {% if form.photo.errors %}
+                                    <div class="text-danger small mt-1">{{ form.photo.errors.0 }}</div>
+                                {% endif %}
+                                <div class="form-text">Formats acceptés: JPG, PNG. Taille max: 2MB</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Bouton d'enregistrement -->
+                    <div class="row mt-5">
+                        <div class="col-12 text-center">
+                            <button type="submit" class="btn btn-save me-3">
+                                <i class="fas fa-save me-2"></i>Enregistrer l'élève
+                            </button>
+                            <a href="{% url 'eleves:liste_eleves' %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i>Annuler
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Statistiques (sidebar) -->
+        <div class="col-lg-4">
+            <div class="form-container">
+                <h5 class="section-title"><i class="fas fa-chart-bar me-2"></i>Statistiques</h5>
+                <div class="row text-center">
+                    <div class="col-6 mb-3">
+                        <div class="bg-primary text-white rounded p-3">
+                            <h4>{{ stats.total_eleves }}</h4>
+                            <small>Total Élèves</small>
+                        </div>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <div class="bg-success text-white rounded p-3">
+                            <h4>{{ stats.eleves_actifs }}</h4>
+                            <small>Actifs</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="row text-center">
+                    <div class="col-12">
+                        <div class="bg-warning text-white rounded p-3">
+                            <h4>{{ stats.eleves_exclus }}</h4>
+                            <small>Exclus</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% include 'eleves/partials/_camera_modal.html' %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// JavaScript minimal - pas d'interférence avec la soumission
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Formulaire d\'ajout d\'élève chargé et prêt');
+    
+    // Gestion du basculement responsable existant/nouveau
+    const checkboxNouveau = document.querySelector('input[name="responsable_principal_nouveau"]');
+    const responsableExistant = document.getElementById('responsable-existant');
+    const nouveauResponsable = document.getElementById('nouveau-responsable');
+    const selectResponsable = document.querySelector('select[name="responsable_principal"]');
+    
+    if (checkboxNouveau && responsableExistant && nouveauResponsable) {
+        // Fonction pour basculer l'affichage
+        function toggleResponsableForm() {
+            if (checkboxNouveau.checked) {
+                // Afficher le formulaire de création
+                responsableExistant.classList.add('d-none');
+                nouveauResponsable.classList.remove('d-none');
+                
+                // Désactiver le select existant (pas de required pour éviter les conflits)
+                if (selectResponsable) {
+                    selectResponsable.value = '';
+                    selectResponsable.disabled = true;
+                }
+                
+                console.log('Mode: Créer nouveau responsable');
+            } else {
+                // Afficher la sélection existante
+                responsableExistant.classList.remove('d-none');
+                nouveauResponsable.classList.add('d-none');
+                
+                // Activer le select existant
+                if (selectResponsable) {
+                    selectResponsable.disabled = false;
+                }
+                
+                // Vider les champs du nouveau responsable
+                const nouveauChamps = nouveauResponsable.querySelectorAll('input, select, textarea');
+                nouveauChamps.forEach(champ => {
+                    champ.value = '';
+                });
+                
+                console.log('Mode: Sélectionner responsable existant');
+            }
+        }
+        
+        // Écouter les changements de la checkbox
+        checkboxNouveau.addEventListener('change', toggleResponsableForm);
+        
+        // Initialiser l'état au chargement
+        toggleResponsableForm();
+    }
+    
+    // Aperçu de la photo (optionnel)
+    const photoInput = document.querySelector('input[type="file"]');
+    if (photoInput) {
+        photoInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (file) {
+                console.log('Photo sélectionnée:', file.name);
+            }
+        });
+    }
+});
+</script>
+{% endblock %}

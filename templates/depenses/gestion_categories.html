@@ -1,0 +1,451 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Gestion des Catégories{% endblock %}
+
+{% block extra_css %}
+<style>
+    .management-card {
+        background: #ffffff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .section-title {
+        color: #2c3e50;
+        border-bottom: 2px solid #6c757d;
+        padding-bottom: 8px;
+        margin-bottom: 20px;
+        font-weight: 600;
+    }
+    .category-card {
+        border: 1px solid #e9ecef;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+        transition: all 0.3s ease;
+        position: relative;
+    }
+    .category-card:hover {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+    }
+    .category-code {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 0.5rem 1rem;
+        font-weight: bold;
+        font-family: 'Courier New', monospace;
+        color: #495057;
+        display: inline-block;
+        margin-bottom: 0.5rem;
+    }
+    .stats-card {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        border: none;
+        border-radius: 10px;
+        padding: 1.5rem;
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+    .stats-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+    }
+    .stats-number {
+        font-size: 2rem;
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    .search-form {
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .btn-action {
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+        border-radius: 6px;
+    }
+    .category-description {
+        color: #6c757d;
+        font-style: italic;
+        margin-bottom: 1rem;
+    }
+    .category-inactive {
+        opacity: 0.6;
+        background-color: #f8f9fa;
+    }
+    .inactive-badge {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        background: #dc3545;
+        color: white;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0">Gestion des Catégories</h1>
+            <p class="text-muted mb-0">Gérer les catégories de dépenses de l'école</p>
+        </div>
+        <div>
+            <a href="{% url 'depenses:tableau_bord' %}" class="btn btn-outline-secondary me-2">
+                <i class="fas fa-arrow-left"></i> Retour
+            </a>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#ajouterCategorieModal">
+                <i class="fas fa-plus"></i> Nouvelle Catégorie
+            </button>
+        </div>
+    </div>
+
+    <!-- Statistiques -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-number">{{ stats.total_categories }}</div>
+                <div class="text-muted">Total Catégories</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-number">{{ stats.categories_actives }}</div>
+                <div class="text-muted">Actives</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-number">{{ stats.depenses_associees }}</div>
+                <div class="text-muted">Dépenses Associées</div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stats-card">
+                <div class="stats-number">{{ stats.budget_total|floatformat:0|intcomma }}</div>
+                <div class="text-muted">Budget Total (GNF)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recherche et filtres -->
+    <div class="search-form">
+        <form method="get" class="row g-3">
+            <div class="col-md-6">
+                <input type="text" name="search" class="form-control" 
+                       placeholder="Rechercher par nom ou code..." value="{{ request.GET.search }}">
+            </div>
+            <div class="col-md-4">
+                <select name="actif" class="form-control">
+                    <option value="">Tous les statuts</option>
+                    <option value="1" {% if request.GET.actif == '1' %}selected{% endif %}>Actives</option>
+                    <option value="0" {% if request.GET.actif == '0' %}selected{% endif %}>Inactives</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-outline-primary w-100">
+                    <i class="fas fa-search"></i> Filtrer
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Liste des catégories -->
+    <div class="management-card">
+        <h5 class="section-title">
+            <i class="fas fa-tags"></i> Liste des Catégories
+            <span class="badge bg-secondary ms-2">{{ categories.count }} résultat{{ categories.count|pluralize }}</span>
+        </h5>
+
+        {% if categories %}
+        <div class="row">
+            {% for categorie in categories %}
+            <div class="col-lg-6 col-xl-4">
+                <div class="category-card {% if not categorie.actif %}category-inactive{% endif %}">
+                    {% if not categorie.actif %}
+                    <div class="inactive-badge">Inactive</div>
+                    {% endif %}
+                    
+                    <div class="category-code">{{ categorie.code }}</div>
+                    <h6 class="mb-2">{{ categorie.nom }}</h6>
+                    
+                    {% if categorie.description %}
+                    <p class="category-description">{{ categorie.description|truncatechars:80 }}</p>
+                    {% endif %}
+                    
+                    <div class="row text-center mb-3">
+                        <div class="col-6">
+                            <strong class="text-primary">{{ categorie.depenses.count }}</strong><br>
+                            <small class="text-muted">Dépense{{ categorie.depenses.count|pluralize }}</small>
+                        </div>
+                        <div class="col-6">
+                            {% with budget=categorie.budgets.first %}
+                            {% if budget %}
+                            <strong class="text-success">{{ budget.budget_prevu|floatformat:0|intcomma }}</strong><br>
+                            <small class="text-muted">Budget 2025</small>
+                            {% else %}
+                            <strong class="text-muted">-</strong><br>
+                            <small class="text-muted">Pas de budget</small>
+                            {% endif %}
+                            {% endwith %}
+                        </div>
+                    </div>
+                    
+                    <div class="d-flex justify-content-between align-items-center">
+                        <small class="text-muted">
+                            Créée le {{ categorie.date_creation|date:"d/m/Y" }}
+                        </small>
+                        <div>
+                            <button class="btn btn-outline-primary btn-action me-1" 
+                                    onclick="modifierCategorie({{ categorie.id }})"
+                                    title="Modifier">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            {% if categorie.actif %}
+                            <button class="btn btn-outline-warning btn-action" 
+                                    onclick="desactiverCategorie({{ categorie.id }})"
+                                    title="Désactiver">
+                                <i class="fas fa-pause"></i>
+                            </button>
+                            {% else %}
+                            <button class="btn btn-outline-success btn-action" 
+                                    onclick="activerCategorie({{ categorie.id }})"
+                                    title="Activer">
+                                <i class="fas fa-play"></i>
+                            </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Pagination -->
+        {% if is_paginated %}
+        <nav aria-label="Navigation des catégories" class="mt-4">
+            <ul class="pagination justify-content-center">
+                {% if page_obj.has_previous %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page=1{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.actif %}&actif={{ request.GET.actif }}{% endif %}">
+                            <i class="fas fa-angle-double-left"></i>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.actif %}&actif={{ request.GET.actif }}{% endif %}">
+                            <i class="fas fa-angle-left"></i>
+                        </a>
+                    </li>
+                {% endif %}
+                
+                <li class="page-item active">
+                    <span class="page-link">
+                        Page {{ page_obj.number }} sur {{ page_obj.paginator.num_pages }}
+                    </span>
+                </li>
+                
+                {% if page_obj.has_next %}
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.actif %}&actif={{ request.GET.actif }}{% endif %}">
+                            <i class="fas fa-angle-right"></i>
+                        </a>
+                    </li>
+                    <li class="page-item">
+                        <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if request.GET.search %}&search={{ request.GET.search }}{% endif %}{% if request.GET.actif %}&actif={{ request.GET.actif }}{% endif %}">
+                            <i class="fas fa-angle-double-right"></i>
+                        </a>
+                    </li>
+                {% endif %}
+            </ul>
+        </nav>
+        {% endif %}
+        
+        {% else %}
+        <div class="text-center py-5">
+            <i class="fas fa-tags fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted">Aucune catégorie trouvée</h5>
+            <p class="text-muted">Ajoutez votre première catégorie pour commencer.</p>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#ajouterCategorieModal">
+                <i class="fas fa-plus"></i> Ajouter une Catégorie
+            </button>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Modal Ajouter/Modifier Catégorie -->
+<div class="modal fade" id="ajouterCategorieModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-plus"></i> Nouvelle Catégorie
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form id="categorieForm" method="post">
+                <div class="modal-body">
+                    {% csrf_token %}
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="mb-3">
+                                <label class="form-label">Code <span class="text-danger">*</span></label>
+                                <input type="text" name="code" class="form-control" 
+                                       placeholder="Ex: FONC" maxlength="10" required
+                                       style="font-family: 'Courier New', monospace;">
+                                <div class="form-text">Code unique (max 10 caractères)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="mb-3">
+                                <label class="form-label">Nom de la catégorie <span class="text-danger">*</span></label>
+                                <input type="text" name="nom" class="form-control" 
+                                       placeholder="Ex: Fonctionnement" required>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea name="description" class="form-control" rows="3"
+                                  placeholder="Description détaillée de cette catégorie..."></textarea>
+                    </div>
+                    
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label class="form-label">Budget prévisionnel 2025 (GNF)</label>
+                                <input type="number" name="budget_prevu" class="form-control" 
+                                       placeholder="0" min="0" step="1000">
+                                <div class="form-text">Optionnel - Budget annuel pour cette catégorie</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check mt-4">
+                                <input type="checkbox" name="actif" class="form-check-input" id="actif" checked>
+                                <label class="form-check-label" for="actif">
+                                    Catégorie active
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> Enregistrer
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Animation des cartes
+        const categoryCards = document.querySelectorAll('.category-card');
+        categoryCards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            setTimeout(() => {
+                card.style.transition = 'all 0.5s ease';
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, index * 100);
+        });
+
+        // Animation des statistiques
+        const statsNumbers = document.querySelectorAll('.stats-number');
+        statsNumbers.forEach(stat => {
+            const finalValue = parseInt(stat.textContent.replace(/,/g, ''));
+            if (isNaN(finalValue)) return;
+            
+            let currentValue = 0;
+            const increment = Math.ceil(finalValue / 20);
+            
+            const counter = setInterval(() => {
+                currentValue += increment;
+                if (currentValue >= finalValue) {
+                    currentValue = finalValue;
+                    clearInterval(counter);
+                }
+                
+                // Formatage avec séparateurs de milliers
+                if (currentValue >= 1000) {
+                    stat.textContent = currentValue.toLocaleString('fr-FR');
+                } else {
+                    stat.textContent = currentValue;
+                }
+            }, 50);
+        });
+
+        // Validation du code en temps réel
+        const codeInput = document.querySelector('input[name="code"]');
+        if (codeInput) {
+            codeInput.addEventListener('input', function() {
+                this.value = this.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+            });
+        }
+    });
+
+    function modifierCategorie(id) {
+        // Logique pour modifier une catégorie
+        alert('Fonctionnalité de modification en cours de développement');
+    }
+
+    function activerCategorie(id) {
+        if (confirm('Êtes-vous sûr de vouloir activer cette catégorie ?')) {
+            // Logique pour activer une catégorie
+            window.location.href = `/depenses/categories/activer/${id}/`;
+        }
+    }
+
+    function desactiverCategorie(id) {
+        if (confirm('Êtes-vous sûr de vouloir désactiver cette catégorie ?\n\nAttention: Cette action peut affecter les dépenses existantes.')) {
+            // Logique pour désactiver une catégorie
+            window.location.href = `/depenses/categories/desactiver/${id}/`;
+        }
+    }
+
+    // Gestion du formulaire d'ajout
+    document.getElementById('categorieForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        
+        fetch('{% url "depenses:gestion_categories" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Erreur lors de l\'enregistrement: ' + (data.error || 'Erreur inconnue'));
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            alert('Erreur lors de l\'enregistrement');
+        });
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,53 @@
+{# Partial: zone complète = stats + résultats #}
+
+<!-- Statistiques rapides -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card card-stats success">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title text-muted">Total Élèves</h5>
+                        <h4 class="text-success mb-0">{{ stats.total_eleves }}</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-users fa-2x text-success"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-stats">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title text-muted">Élèves Actifs</h5>
+                        <h4 class="text-primary mb-0">{{ stats.eleves_actifs }}</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-user-check fa-2x text-primary"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card card-stats warning">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title text-muted">Suspendus</h5>
+                        <h4 class="text-warning mb-0">{{ stats.eleves_suspendus }}</h4>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-user-times fa-2x text-warning"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# Résultats (table + pagination + modals) #}
+{% include 'eleves/partials/_liste_eleves_results.html' %}
