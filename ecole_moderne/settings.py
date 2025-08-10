@@ -32,7 +32,7 @@ CSRF_TRUSTED_ORIGINS = ['https://gshadjakanfingdiane.pythonanywhere.com']
 # Cookies et redirections sécurisées en production (HTTPS)
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_SECURE = True
-SECURE_SSL_REDIRECT = True
+SECURE_SSL_REDIRECT = not DEBUG
 
 
 # Application definition
