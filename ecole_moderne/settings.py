@@ -24,14 +24,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+# Piloté par la variable d'environnement DJANGO_DEBUG: 'true'/'false'
+DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'gshadjakanfingdiane.pythonanywhere.com']
 CSRF_TRUSTED_ORIGINS = ['https://gshadjakanfingdiane.pythonanywhere.com']
 
 # Cookies et redirections sécurisées en production (HTTPS)
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
+# En dev (DEBUG=True), ne pas forcer "secure" pour permettre les cookies en HTTP
+CSRF_COOKIE_SECURE = not DEBUG
+SESSION_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = not DEBUG
 
 
@@ -54,6 +56,7 @@ INSTALLED_APPS = [
     'utilisateurs',
     'rapports'
 ]
+
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
