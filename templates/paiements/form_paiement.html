@@ -106,6 +106,15 @@
                             <label for="{{ form.type_paiement.id_for_label }}" class="form-label">
                                 Type de paiement <span class="required-field">*</span>
                             </label>
+                            {% if form.type_paiement.field.queryset|length == 0 %}
+                            <div class="alert alert-warning py-2 d-flex align-items-center" role="alert">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <div>
+                                    Aucun type de paiement disponible. Créez-en dans l'administration.
+                                    <a class="alert-link ms-1" href="{% url 'admin:paiements_typepaiement_add' %}">Ajouter un type</a>
+                                </div>
+                            </div>
+                            {% endif %}
                             {{ form.type_paiement }}
                             {% if form.type_paiement.errors %}
                                 <div class="text-danger small">{{ form.type_paiement.errors.0 }}</div>
@@ -116,6 +125,15 @@
                             <label for="{{ form.mode_paiement.id_for_label }}" class="form-label">
                                 Mode de paiement <span class="required-field">*</span>
                             </label>
+                            {% if form.mode_paiement.field.queryset|length == 0 %}
+                            <div class="alert alert-warning py-2 d-flex align-items-center" role="alert">
+                                <i class="fas fa-exclamation-triangle me-2"></i>
+                                <div>
+                                    Aucun mode de paiement disponible. Créez-en dans l'administration.
+                                    <a class="alert-link ms-1" href="{% url 'admin:paiements_modepaiement_add' %}">Ajouter un mode</a>
+                                </div>
+                            </div>
+                            {% endif %}
                             {{ form.mode_paiement }}
                             {% if form.mode_paiement.errors %}
                                 <div class="text-danger small">{{ form.mode_paiement.errors.0 }}</div>
