@@ -27,8 +27,8 @@ def comptable_create_view(request):
     if not request.user.is_superuser:
         profil_user = getattr(request.user, 'profil', None)
         if not (profil_user and profil_user.ecole_id):
-            messages.error(request, "Votre profil n'est associé à aucune école. Veuillez contacter l'administrateur pour configurer votre école avant de créer un comptable.")
-            return redirect('home')
+            # Page dédiée d'accès refusé (403)
+            return render(request, 'utilisateurs/acces_refuse_ecole.html', status=403)
     if request.method == 'POST':
         form = ComptableCreationForm(request.POST, request=request)
         if form.is_valid():
