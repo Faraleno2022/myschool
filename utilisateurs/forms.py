@@ -66,6 +66,8 @@ class ComptableCreationForm(UserCreationForm):
                 self.fields['ecole'].queryset = all_ecoles.none()
         else:
             self.fields['ecole'].queryset = all_ecoles
+        # Placeholder explicite pour la liste déroulante
+        self.fields['ecole'].empty_label = "--------- Sélectionnez une école ---------"
         # Harmoniser un minimum le rendu Bootstrap
         text_like = ['username', 'first_name', 'last_name', 'email', 'telephone']
         for name in text_like:

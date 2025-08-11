@@ -15,6 +15,13 @@
 
   <div class="card shadow-sm">
     <div class="card-body">
+      {% if form.ecole.field.queryset|length == 0 %}
+      <div class="alert alert-warning" role="alert">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        Aucune école n'est disponible. Créez d'abord une école dans l'administration.
+        <a class="alert-link ms-1" href="{% url 'admin:eleves_ecole_add' %}">Ajouter une école</a>
+      </div>
+      {% endif %}
       <form method="post" novalidate>
         {% csrf_token %}
         {{ form.non_field_errors }}
