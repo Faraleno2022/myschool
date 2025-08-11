@@ -372,28 +372,14 @@ def ajouter_paiement(request, eleve_id=None):
 
             paiement.save()
 
-            # Mettre à jour l'échéancier: allocation et avertissements
+            # Ne pas impacter l'échéancier tant que le paiement n'est pas validé
             try:
-                echeancier = paiement.eleve.echeancier
-                cible = _map_type_to_tranche(getattr(paiement.type_paiement, 'nom', ''))
-                feedback = _allocate_payment_to_echeancier(
-                    echeancier=echeancier,
-                    montant=paiement.montant,
-                    date_pay=paiement.date_paiement,
-                    cible=cible,
-                )
-                echeancier.save()
-
-                messages.success(request, f"Paiement enregistré avec succès. Reçu #{paiement.numero_recu}")
-                for w in feedback['warnings']:
-                    messages.warning(request, w)
-                for info in feedback['info']:
-                    messages.info(request, info)
-
+                _ = paiement.eleve.echeancier
+                messages.success(request, f"Paiement enregistré avec succès (en attente de validation). Reçu #{paiement.numero_recu}")
                 return redirect('paiements:detail_paiement', paiement_id=paiement.id)
             except EcheancierPaiement.DoesNotExist:
                 # Pas d'échéancier: guider l'utilisateur pour en créer un immédiatement
-                messages.success(request, f"Paiement enregistré avec succès. Reçu #{paiement.numero_recu}")
+                messages.success(request, f"Paiement enregistré avec succès (en attente de validation). Reçu #{paiement.numero_recu}")
                 messages.info(request, "Aucun échéancier n'existe pour cet élève. Veuillez le créer maintenant pour suivre les tranches.")
                 return redirect('paiements:creer_echeancier', eleve_id=paiement.eleve.id)
     else:
@@ -574,6 +560,25 @@ def valider_paiement(request, paiement_id):
             paiement.date_validation = timezone.now()
             paiement.save()
             
+            # Impacter l'échéancier à la validation
+            try:
+                echeancier = paiement.eleve.echeancier
+                cible = _map_type_to_tranche(getattr(paiement.type_paiement, 'nom', ''))
+                feedback = _allocate_payment_to_echeancier(
+                    echeancier=echeancier,
+                    montant=paiement.montant,
+                    date_pay=paiement.date_paiement,
+                    cible=cible,
+                )
+                echeancier.save()
+
+                for w in feedback['warnings']:
+                    messages.warning(request, w)
+                for info in feedback['info']:
+                    messages.info(request, info)
+            except EcheancierPaiement.DoesNotExist:
+                messages.info(request, "Aucun échéancier n'existe pour cet élève. Veuillez le créer pour refléter ce paiement dans les tranches.")
+
             messages.success(request, f"Paiement #{paiement.numero_recu} validé avec succès.")
         else:
             messages.error(request, "Ce paiement ne peut pas être validé.")
