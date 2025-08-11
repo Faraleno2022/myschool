@@ -20,9 +20,15 @@ def _est_admin(user):
 
 
 @login_required
-@user_passes_test(lambda u: u.is_superuser)
+@user_passes_test(_est_admin)
 def comptable_create_view(request):
     """Création d'un compte Comptable (User + Profil) via formulaire dédié."""
+    # Si ce n'est pas un superuser, il doit avoir une école définie
+    if not request.user.is_superuser:
+        profil_user = getattr(request.user, 'profil', None)
+        if not (profil_user and profil_user.ecole_id):
+            messages.error(request, "Votre profil n'est associé à aucune école. Veuillez contacter l'administrateur pour configurer votre école avant de créer un comptable.")
+            return redirect('home')
     if request.method == 'POST':
         form = ComptableCreationForm(request.POST, request=request)
         if form.is_valid():
