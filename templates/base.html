@@ -154,6 +154,11 @@
                                 <li><a class="dropdown-item" href="{% url 'admin:index' %}">
                                     <i class="fas fa-cog me-1"></i>Administration
                                 </a></li>
+                                {% if user.is_superuser %}
+                                <li><a class="dropdown-item" href="{% url 'utilisateurs:comptable_create' %}">
+                                    <i class="fas fa-user-plus me-1"></i>Créer un comptable
+                                </a></li>
+                                {% endif %}
                                 <li><hr class="dropdown-divider"></li>
                                 <li><a class="dropdown-item" href="{% url 'utilisateurs:logout' %}">
                                     <i class="fas fa-sign-out-alt me-1"></i>Déconnexion

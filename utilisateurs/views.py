@@ -20,7 +20,7 @@ def _est_admin(user):
 
 
 @login_required
-@user_passes_test(_est_admin)
+@user_passes_test(lambda u: u.is_superuser)
 def comptable_create_view(request):
     """Création d'un compte Comptable (User + Profil) via formulaire dédié."""
     if request.method == 'POST':
