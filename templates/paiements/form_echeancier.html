@@ -57,11 +57,22 @@
             </div>
 
             <!-- Alerte d'information -->
-            <div class="alert alert-info" role="alert">
-                <i class="fas fa-info-circle me-2"></i>
-                Les montants et les dates d'échéance sont <strong>préchargés automatiquement</strong> à partir de la grille tarifaire de l'école
-                ({{ eleve.classe.ecole.nom }}) et des <strong>périodes définies</strong>. Vous n'avez rien à modifier.
-            </div>
+            {% if grille %}
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    Les montants et les dates d'échéance sont <strong>préchargés automatiquement</strong> à partir de la grille tarifaire de l'école
+                    ({{ eleve.classe.ecole.nom }}) et des <strong>périodes définies</strong>. Vous n'avez rien à modifier.
+                </div>
+            {% else %}
+                <div class="alert alert-warning d-flex align-items-center" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <div>
+                        Aucune grille tarifaire trouvée pour cette classe ({{ eleve.classe.get_niveau_display }}) et l'année {{ form.annee_scolaire.value|default:eleve.classe.annee_scolaire }}.
+                        <a class="alert-link ms-1" href="{% url 'admin:eleves_grilletarifaire_add' %}">Ajouter une grille tarifaire</a>
+                        pour l'école <strong>{{ eleve.classe.ecole.nom }}</strong> et l'année <strong>{{ eleve.classe.annee_scolaire }}</strong>.
+                    </div>
+                </div>
+            {% endif %}
 
             <!-- Montants dus -->
             <div class="form-section">

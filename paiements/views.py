@@ -552,6 +552,7 @@ def creer_echeancier(request, eleve_id):
     context = {
         'form': form,
         'eleve': eleve,
+        'grille': grille if 'grille' in locals() else None,
         'titre_page': f'Créer Échéancier - {eleve.prenom} {eleve.nom}',
         'action': 'Créer'
     }
