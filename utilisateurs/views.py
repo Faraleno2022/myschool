@@ -24,7 +24,7 @@ def _est_admin(user):
 def comptable_create_view(request):
     """Création d'un compte Comptable (User + Profil) via formulaire dédié."""
     if request.method == 'POST':
-        form = ComptableCreationForm(request.POST)
+        form = ComptableCreationForm(request.POST, request=request)
         if form.is_valid():
             user = form.save()
             messages.success(
@@ -35,7 +35,7 @@ def comptable_create_view(request):
         else:
             messages.error(request, "Veuillez corriger les erreurs du formulaire.")
     else:
-        form = ComptableCreationForm()
+        form = ComptableCreationForm(request=request)
 
     return render(request, 'utilisateurs/comptable_form.html', {
         'form': form,
@@ -51,6 +51,16 @@ def comptable_list_view(request):
 
     ecole_id = request.GET.get('ecole')
     q = request.GET.get('q')
+    # Isolation par école pour non-superadmins
+    if not request.user.is_superuser:
+        profil_user = getattr(request.user, 'profil', None)
+        if profil_user and profil_user.ecole_id:
+            qs = qs.filter(ecole_id=profil_user.ecole_id)
+            # Forcer le filtre d'école à celle de l'utilisateur
+            ecole_id = str(profil_user.ecole_id)
+        else:
+            # Pas d'école: aucun résultat
+            qs = qs.none()
 
     if ecole_id:
         qs = qs.filter(ecole_id=ecole_id)
@@ -67,7 +77,17 @@ def comptable_list_view(request):
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
 
-    ecoles = Ecole.objects.all().order_by('nom') if hasattr(Ecole, 'nom') else Ecole.objects.all()
+    # Restreindre la liste des écoles à celle de l'utilisateur si non superuser
+    if request.user.is_superuser:
+        ecoles = Ecole.objects.all().order_by('nom') if hasattr(Ecole, 'nom') else Ecole.objects.all()
+    else:
+        profil_user = getattr(request.user, 'profil', None)
+        base = Ecole.objects.all()
+        base = base.order_by('nom') if hasattr(Ecole, 'nom') else base
+        if profil_user and profil_user.ecole_id:
+            ecoles = base.filter(pk=profil_user.ecole_id)
+        else:
+            ecoles = base.none()
 
     return render(request, 'utilisateurs/comptable_list.html', {
         'page_obj': page_obj,

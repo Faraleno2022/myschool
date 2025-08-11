@@ -25,8 +25,11 @@ class ComptableCreationForm(UserCreationForm):
     ecole = forms.ModelChoiceField(
         label="École",
         queryset=Ecole.objects.all(),
-        required=False,
-        help_text="Associez le comptable à une école (facultatif)",
+        required=True,
+        help_text="Sélectionnez l'école du comptable",
+        widget=forms.Select(attrs={
+            'class': 'form-select',
+        }),
     )
 
     # Permissions spécifiques
@@ -42,6 +45,33 @@ class ComptableCreationForm(UserCreationForm):
             'username', 'first_name', 'last_name', 'email',
             'password1', 'password2',
         )
+
+    def __init__(self, *args, **kwargs):
+        request = kwargs.pop('request', None)
+        super().__init__(*args, **kwargs)
+        # Ordonner les écoles par nom si le champ existe
+        all_ecoles = Ecole.objects.all()
+        try:
+            all_ecoles = all_ecoles.order_by('nom')
+        except Exception:
+            pass
+        # Si non-superuser, restreindre à l'école de l'utilisateur
+        if request and request.user.is_authenticated and not request.user.is_superuser:
+            profil = getattr(request.user, 'profil', None)
+            if profil and profil.ecole_id:
+                self.fields['ecole'].queryset = all_ecoles.filter(pk=profil.ecole_id)
+                self.fields['ecole'].initial = profil.ecole_id
+            else:
+                # Aucun profil/école: ne proposer aucune école pour éviter fuite
+                self.fields['ecole'].queryset = all_ecoles.none()
+        else:
+            self.fields['ecole'].queryset = all_ecoles
+        # Harmoniser un minimum le rendu Bootstrap
+        text_like = ['username', 'first_name', 'last_name', 'email', 'telephone']
+        for name in text_like:
+            if name in self.fields and not isinstance(self.fields[name].widget, forms.CheckboxInput):
+                css = self.fields[name].widget.attrs.get('class', '')
+                self.fields[name].widget.attrs['class'] = (css + ' form-control').strip()
 
     @transaction.atomic
     def save(self, commit=True):
