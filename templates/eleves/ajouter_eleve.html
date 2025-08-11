@@ -180,6 +180,15 @@
                         <div class="col-md-6">
                             <div class="form-group">
                                 <label class="form-label">Classe <span class="required">*</span></label>
+                                {% if form.classe.field.queryset|length == 0 %}
+                                <div class="alert alert-warning d-flex align-items-center py-2" role="alert">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <div>
+                                        Aucune classe disponible. Créez d'abord une classe dans l'administration.
+                                        <a class="alert-link ms-1" href="{% url 'admin:eleves_classe_add' %}">Ajouter une classe</a>
+                                    </div>
+                                </div>
+                                {% endif %}
                                 {{ form.classe }}
                                 {% if form.classe.errors %}
                                     <div class="text-danger small mt-1">{{ form.classe.errors.0 }}</div>

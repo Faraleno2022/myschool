@@ -130,6 +130,9 @@ def detail_eleve(request, eleve_id):
 @login_required
 def ajouter_eleve(request):
     """Vue pour ajouter un nouvel élève"""
+    # Si l'utilisateur n'est pas admin et n'a pas d'école associée, refuser l'accès
+    if not user_is_admin(request.user) and user_school(request.user) is None:
+        return render(request, 'utilisateurs/acces_refuse_ecole.html', status=403)
     if request.method == 'POST':
         form = EleveForm(request.POST, request.FILES)
         # Restreindre les classes au périmètre de l'école pour non-admin
