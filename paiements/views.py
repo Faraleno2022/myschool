@@ -620,6 +620,15 @@ def generer_recu_pdf(request, paiement_id):
         logo_path = finders.find('logos/logo.png')
     except Exception:
         logo_path = None
+    # Fallback: chemin absolu vers static/logos/logo.png si non trouvé par les finders
+    if not logo_path:
+        try:
+            from django.conf import settings
+            candidate = os.path.join(getattr(settings, 'BASE_DIR', ''), 'static', 'logos', 'logo.png')
+            if candidate and os.path.exists(candidate):
+                logo_path = candidate
+        except Exception:
+            pass
 
     if logo_path:
         c.saveState()
@@ -695,6 +704,12 @@ def generer_recu_pdf(request, paiement_id):
 
     line("Élève", f"{paiement.eleve.prenom} {paiement.eleve.nom} (Mat: {paiement.eleve.matricule})")
     line("Classe", f"{paiement.eleve.classe.nom} - {paiement.eleve.classe.ecole.nom}")
+    try:
+        annee_sco = getattr(paiement.eleve.classe, 'annee_scolaire', '') or ''
+        if annee_sco:
+            line("Année scolaire", annee_sco)
+    except Exception:
+        pass
     line("Date de paiement", date_pay)
     line("Type de paiement", paiement.type_paiement.nom)
     line("Mode de paiement", paiement.mode_paiement.nom)
@@ -727,13 +742,72 @@ def generer_recu_pdf(request, paiement_id):
             (echeancier.tranche_2_due or Decimal('0')) +
             (echeancier.tranche_3_due or Decimal('0'))
         )
-        total_paye = echeancier.total_paye if hasattr(echeancier, 'total_paye') else (
-            (echeancier.frais_inscription_paye or Decimal('0')) +
-            (echeancier.tranche_1_payee or Decimal('0')) +
-            (echeancier.tranche_2_payee or Decimal('0')) +
-            (echeancier.tranche_3_payee or Decimal('0'))
-        )
-        reste = echeancier.solde_restant if hasattr(echeancier, 'solde_restant') else max(Decimal('0'), total_a_payer - total_paye)
+
+        # Par défaut: utiliser les champs stockés de l'échéancier
+        paye_insc = echeancier.frais_inscription_paye or Decimal('0')
+        paye_t1 = echeancier.tranche_1_payee or Decimal('0')
+        paye_t2 = echeancier.tranche_2_payee or Decimal('0')
+        paye_t3 = echeancier.tranche_3_payee or Decimal('0')
+
+        # Fallback: si rien n'est payé dans l'échéancier mais qu'il existe des paiements validés,
+        # recalculer un instantané en simulant l'allocation de tous les paiements validés.
+        if (paye_insc + paye_t1 + paye_t2 + paye_t3) == 0:
+            try:
+                # Récupérer paiements validés de l'élève, triés par date
+                pay_qs = paiement.eleve.paiements.filter(statut='VALIDE').order_by('date_paiement', 'id').select_related('type_paiement')
+
+                # Instantané des montants payés (sans toucher à la DB)
+                snap = {
+                    'insc_due': echeancier.frais_inscription_du or Decimal('0'),
+                    't1_due': echeancier.tranche_1_due or Decimal('0'),
+                    't2_due': echeancier.tranche_2_due or Decimal('0'),
+                    't3_due': echeancier.tranche_3_due or Decimal('0'),
+                    'insc_paye': Decimal('0'),
+                    't1_paye': Decimal('0'),
+                    't2_paye': Decimal('0'),
+                    't3_paye': Decimal('0'),
+                }
+
+                def alloc_once(amount: Decimal, cible: str | None):
+                    ordre = ['inscription', 't1', 't2', 't3']
+                    if cible in ordre:
+                        ordre = [cible] + [x for x in ordre if x != cible]
+                    restant_loc = Decimal(amount)
+                    for key in ordre:
+                        if restant_loc <= 0:
+                            break
+                        if key == 'inscription':
+                            due = snap['insc_due']; paid = snap['insc_paye']
+                        elif key == 't1':
+                            due = snap['t1_due']; paid = snap['t1_paye']
+                        elif key == 't2':
+                            due = snap['t2_due']; paid = snap['t2_paye']
+                        else:
+                            due = snap['t3_due']; paid = snap['t3_paye']
+                        to_pay = max(Decimal('0'), due - paid)
+                        if to_pay <= 0:
+                            continue
+                        pay_now = min(to_pay, restant_loc)
+                        restant_loc -= pay_now
+                        if key == 'inscription':
+                            snap['insc_paye'] = paid + pay_now
+                        elif key == 't1':
+                            snap['t1_paye'] = paid + pay_now
+                        elif key == 't2':
+                            snap['t2_paye'] = paid + pay_now
+                        else:
+                            snap['t3_paye'] = paid + pay_now
+
+                for p in pay_qs:
+                    cible = _map_type_to_tranche(getattr(p.type_paiement, 'nom', ''))
+                    alloc_once(Decimal(p.montant), cible)
+
+                paye_insc, paye_t1, paye_t2, paye_t3 = snap['insc_paye'], snap['t1_paye'], snap['t2_paye'], snap['t3_paye']
+            except Exception:
+                pass
+
+        total_paye = paye_insc + paye_t1 + paye_t2 + paye_t3
+        reste = max(Decimal('0'), total_a_payer - total_paye)
 
         def fmt_money(d):
             return f"{int(d):,}".replace(',', ' ') + " GNF"
@@ -754,10 +828,10 @@ def generer_recu_pdf(request, paiement_id):
         y -= 16
         c.setFont("Helvetica", 10)
         detail = [
-            ("Inscription", echeancier.frais_inscription_du or Decimal('0'), echeancier.frais_inscription_paye or Decimal('0')),
-            ("Tranche 1", echeancier.tranche_1_due or Decimal('0'), echeancier.tranche_1_payee or Decimal('0')),
-            ("Tranche 2", echeancier.tranche_2_due or Decimal('0'), echeancier.tranche_2_payee or Decimal('0')),
-            ("Tranche 3", echeancier.tranche_3_due or Decimal('0'), echeancier.tranche_3_payee or Decimal('0')),
+            ("Inscription", echeancier.frais_inscription_du or Decimal('0'), paye_insc),
+            ("Tranche 1", echeancier.tranche_1_due or Decimal('0'), paye_t1),
+            ("Tranche 2", echeancier.tranche_2_due or Decimal('0'), paye_t2),
+            ("Tranche 3", echeancier.tranche_3_due or Decimal('0'), paye_t3),
         ]
         for label, due, paid in detail:
             rest = max(Decimal('0'), due - paid)

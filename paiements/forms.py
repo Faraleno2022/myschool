@@ -57,7 +57,10 @@ class PaiementForm(forms.ModelForm):
         # Filtrer les types et modes actifs
         self.fields['type_paiement'].queryset = TypePaiement.objects.filter(actif=True)
         self.fields['mode_paiement'].queryset = ModePaiement.objects.filter(actif=True)
-        # Ne pas forcer la date_paiement par défaut ici; laisser l'utilisateur choisir
+        
+        # Définir la date du jour par défaut pour les nouveaux paiements
+        if not self.instance.pk:  # Seulement pour les nouveaux paiements
+            self.fields['date_paiement'].initial = date.today()
 
     def clean_montant(self):
         montant = self.cleaned_data.get('montant')
