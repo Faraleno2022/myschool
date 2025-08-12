@@ -391,7 +391,8 @@ def ajouter_paiement(request, eleve_id=None):
             )
         if eleve:
             form.fields['eleve'].initial = eleve
-        # Ne pas forcer la date du jour par défaut: laisser le formulaire gérer la valeur (initiale éventuelle ou vide)
+        # Définir la date du jour par défaut pour le champ date_paiement
+        form.fields['date_paiement'].initial = timezone.now().date()
     
     context = {
         'form': form,
