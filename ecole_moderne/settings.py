@@ -28,13 +28,25 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
 
 ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'gshadjakanfingdiane.pythonanywhere.com']
-CSRF_TRUSTED_ORIGINS = ['https://gshadjakanfingdiane.pythonanywhere.com']
+
+# CSRF trusted origins: use production origin in prod, local http origins in dev
+if DEBUG:
+    CSRF_TRUSTED_ORIGINS = [
+        'http://127.0.0.1:8000',
+        'http://localhost:8000',
+    ]
+else:
+    CSRF_TRUSTED_ORIGINS = ['https://gshadjakanfingdiane.pythonanywhere.com']
 
 # Cookies et redirections sécurisées en production (HTTPS)
 # En dev (DEBUG=True), ne pas forcer "secure" pour permettre les cookies en HTTP
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = not DEBUG
+# Disable HSTS in development to avoid browsers forcing HTTPS on localhost
+SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
+SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
+SECURE_HSTS_PRELOAD = not DEBUG
 
 
 # Application definition
