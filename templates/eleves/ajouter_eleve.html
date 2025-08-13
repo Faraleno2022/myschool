@@ -464,6 +464,35 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     }
+    
+    // Fonction pour mettre à jour les statistiques
+    function updateStatistics() {
+        fetch('{% url "eleves:ajax_statistiques_eleves" %}')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Mettre à jour les valeurs dans l'interface
+                    const totalElem = document.querySelector('.bg-primary h4');
+                    const actifsElem = document.querySelector('.bg-success h4');
+                    const exclusElem = document.querySelector('.bg-warning h4');
+                    
+                    if (totalElem) totalElem.textContent = data.stats.total_eleves;
+                    if (actifsElem) actifsElem.textContent = data.stats.eleves_actifs;
+                    if (exclusElem) exclusElem.textContent = data.stats.eleves_exclus;
+                    
+                    console.log('Statistiques mises à jour:', data.stats);
+                }
+            })
+            .catch(error => {
+                console.error('Erreur lors de la mise à jour des statistiques:', error);
+            });
+    }
+    
+    // Mettre à jour les statistiques au chargement de la page
+    updateStatistics();
+    
+    // Mettre à jour les statistiques toutes les 30 secondes (optionnel)
+    setInterval(updateStatistics, 30000);
 });
 </script>
 {% endblock %}

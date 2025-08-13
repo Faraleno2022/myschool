@@ -23,4 +23,7 @@ urlpatterns = [
     path('recu/<int:paiement_id>/pdf/', views.generer_recu_pdf, name='generer_recu_pdf'),
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
     path('export/tranches-par-classe/excel/', export_tranches_par_classe_excel, name='export_tranches_par_classe_excel'),
+    
+    # AJAX
+    path('ajax/statistiques/', views.ajax_statistiques_paiements, name='ajax_statistiques_paiements'),
 ]

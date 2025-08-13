@@ -250,10 +250,52 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    // Actualisation automatique toutes les 5 minutes
-    setTimeout(function() {
-        location.reload();
-    }, 300000);
+    // Fonction pour mettre à jour les statistiques
+    function updateStatistics() {
+        fetch('{% url "paiements:ajax_statistiques_paiements" %}')
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Mettre à jour les valeurs dans l'interface
+                    const stats = data.stats;
+                    
+                    // Total paiements ce mois
+                    const totalElem = document.querySelector('.stat-card.success .stat-number');
+                    if (totalElem) {
+                        totalElem.textContent = new Intl.NumberFormat('fr-FR').format(stats.total_paiements_mois);
+                    }
+                    
+                    // Nombre de paiements ce mois
+                    const nombreElem = document.querySelector('.stat-card:not(.success):not(.warning):not(.danger) .stat-number');
+                    if (nombreElem) {
+                        nombreElem.textContent = new Intl.NumberFormat('fr-FR').format(stats.nombre_paiements_mois);
+                    }
+                    
+                    // Élèves en retard
+                    const retardElem = document.querySelector('.stat-card.warning .stat-number');
+                    if (retardElem) {
+                        retardElem.textContent = new Intl.NumberFormat('fr-FR').format(stats.eleves_en_retard);
+                    }
+                    
+                    // Paiements en attente
+                    const attenteElem = document.querySelector('.stat-card.danger .stat-number');
+                    if (attenteElem) {
+                        attenteElem.textContent = new Intl.NumberFormat('fr-FR').format(stats.paiements_en_attente);
+                    }
+                    
+                    console.log('Statistiques paiements mises à jour:', stats);
+                }
+            })
+            .catch(error => {
+                console.error('Erreur lors de la mise à jour des statistiques:', error);
+            });
+    }
+    
+    // Mettre à jour les statistiques au chargement
+    updateStatistics();
+    
+    // Actualisation automatique toutes les 30 secondes
+    setInterval(updateStatistics, 30000);
 });
 </script>
 {% endblock %}

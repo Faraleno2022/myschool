@@ -164,26 +164,51 @@ def tableau_bord_paiements(request):
         echeanciers_qs = filter_by_user_school(echeanciers_qs, request.user, 'eleve__classe__ecole')
 
     # Statistiques générales
-    stats = {
-        'total_paiements_mois': paiements_qs.filter(
-            date_paiement__month=timezone.now().month,
-            date_paiement__year=timezone.now().year,
-            statut='VALIDE'
-        ).aggregate(total=Sum('montant'))['total'] or 0,
-        
-        'nombre_paiements_mois': paiements_qs.filter(
-            date_paiement__month=timezone.now().month,
-            date_paiement__year=timezone.now().year,
-            statut='VALIDE'
-        ).count(),
-        
-        'eleves_en_retard': echeanciers_qs.filter(
+    now = timezone.now()
+    
+    # Paiements validés ce mois
+    paiements_mois = paiements_qs.filter(
+        date_paiement__month=now.month,
+        date_paiement__year=now.year,
+        statut='VALIDE'
+    )
+    
+    # Paiements validés (tous statuts valides)
+    paiements_valides_mois = paiements_qs.filter(
+        date_paiement__month=now.month,
+        date_paiement__year=now.year
+    ).exclude(statut='ANNULE')
+    
+    # Si pas de paiements ce mois, prendre les paiements récents (30 derniers jours)
+    if paiements_valides_mois.count() == 0:
+        from datetime import timedelta
+        date_limite = now.date() - timedelta(days=30)
+        paiements_valides_mois = paiements_qs.filter(
+            date_paiement__gte=date_limite
+        ).exclude(statut='ANNULE')
+    
+    # Échéanciers en retard (solde > 0 et date échéance dépassée)
+    eleves_retard = echeanciers_qs.filter(
+        solde_restant__gt=0
+    ).count()
+    
+    # Si pas d'échéanciers avec statut EN_RETARD, calculer manuellement
+    if eleves_retard == 0:
+        eleves_retard = echeanciers_qs.filter(
             statut='EN_RETARD'
-        ).count(),
+        ).count()
+    
+    stats = {
+        'total_paiements_mois': paiements_valides_mois.aggregate(total=Sum('montant'))['total'] or 0,
+        'nombre_paiements_mois': paiements_valides_mois.count(),
+        'eleves_en_retard': eleves_retard,
+        'paiements_en_attente': paiements_qs.filter(statut='EN_ATTENTE').count(),
         
-        'paiements_en_attente': paiements_qs.filter(
-            statut='EN_ATTENTE'
-        ).count(),
+        # Statistiques supplémentaires pour debug
+        'total_paiements_systeme': paiements_qs.count(),
+        'total_echeanciers': echeanciers_qs.count(),
+        'debug_mois': now.month,
+        'debug_annee': now.year,
     }
     
     # Paiements récents
@@ -204,6 +229,61 @@ def tableau_bord_paiements(request):
     }
     
     return render(request, 'paiements/tableau_bord.html', context)
+
+@login_required
+def ajax_statistiques_paiements(request):
+    """Vue AJAX pour récupérer les statistiques des paiements"""
+    try:
+        # Base querysets filtrés par école si non-admin
+        paiements_qs = Paiement.objects.all()
+        echeanciers_qs = EcheancierPaiement.objects.all()
+        if not user_is_admin(request.user):
+            paiements_qs = filter_by_user_school(paiements_qs, request.user, 'eleve__classe__ecole')
+            echeanciers_qs = filter_by_user_school(echeanciers_qs, request.user, 'eleve__classe__ecole')
+
+        # Statistiques générales (même logique que tableau_bord_paiements)
+        now = timezone.now()
+        
+        # Paiements validés (tous statuts valides)
+        paiements_valides_mois = paiements_qs.filter(
+            date_paiement__month=now.month,
+            date_paiement__year=now.year
+        ).exclude(statut='ANNULE')
+        
+        # Si pas de paiements ce mois, prendre les paiements récents (30 derniers jours)
+        if paiements_valides_mois.count() == 0:
+            from datetime import timedelta
+            date_limite = now.date() - timedelta(days=30)
+            paiements_valides_mois = paiements_qs.filter(
+                date_paiement__gte=date_limite
+            ).exclude(statut='ANNULE')
+        
+        # Échéanciers en retard
+        eleves_retard = echeanciers_qs.filter(
+            solde_restant__gt=0
+        ).count()
+        
+        if eleves_retard == 0:
+            eleves_retard = echeanciers_qs.filter(
+                statut='EN_RETARD'
+            ).count()
+        
+        stats = {
+            'total_paiements_mois': float(paiements_valides_mois.aggregate(total=Sum('montant'))['total'] or 0),
+            'nombre_paiements_mois': paiements_valides_mois.count(),
+            'eleves_en_retard': eleves_retard,
+            'paiements_en_attente': paiements_qs.filter(statut='EN_ATTENTE').count(),
+        }
+        
+        return JsonResponse({
+            'success': True,
+            'stats': stats
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False,
+            'error': str(e)
+        })
 
 @login_required
 def liste_paiements(request):

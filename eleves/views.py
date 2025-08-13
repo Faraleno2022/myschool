@@ -227,8 +227,12 @@ def ajouter_eleve(request):
         responsable_principal_form = ResponsableForm(prefix='resp_principal')
         responsable_secondaire_form = ResponsableForm(prefix='resp_secondaire')
     
-    # Statistiques pour l'affichage
-    eleves = Eleve.objects.filter(cree_par=request.user)
+    # Statistiques pour l'affichage (tous les élèves selon les permissions)
+    eleves = Eleve.objects.all()
+    # Filtrage par école pour non-admin
+    if not user_is_admin(request.user):
+        eleves = filter_by_user_school(eleves, request.user, 'classe__ecole')
+    
     stats = {
         'total_eleves': eleves.count(),
         'eleves_actifs': eleves.filter(statut='ACTIF').count(),
