@@ -212,7 +212,12 @@ def collecter_donnees_journalieres(date_rapport, user=None):
     """Collecte toutes les données importantes pour le rapport journalier"""
     donnees = {
         'date': date_rapport,
-        'ecoles': {}
+        'ecoles': {},
+        # Dépenses non reliées à l'école: globales pour la journée
+        'depenses_globales': {
+            'nombre': 0,  # initialisé, sera remplacé par des entiers
+            'montant_total': Decimal('0')
+        }
     }
 
     # Restreindre le périmètre des écoles selon l'utilisateur
@@ -220,6 +225,16 @@ def collecter_donnees_journalieres(date_rapport, user=None):
     if user is not None and not user_is_admin(user):
         ecole_user = user_school(user)
         ecoles_qs = ecoles_qs.filter(id=getattr(ecole_user, 'id', None)) if ecole_user else Ecole.objects.none()
+
+    # Dépenses du jour (GLOBAL - pas de relation à Ecole)
+    depenses_jour_global = Depense.objects.filter(
+        date_facture=date_rapport,
+        statut='VALIDEE'
+    )
+    donnees['depenses_globales']['nombre'] = depenses_jour_global.count()
+    donnees['depenses_globales']['montant_total'] = depenses_jour_global.aggregate(
+        total=Sum('montant_ttc')
+    )['total'] or Decimal('0')
 
     # Pour chaque école
     for ecole in ecoles_qs:
@@ -235,6 +250,8 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 'frais_inscription': Decimal('0'),
                 'scolarite': Decimal('0')
             },
+            # Dépenses affichées par école mises à 0 pour éviter toute confusion,
+            # car le modèle Depense n'est pas lié à Ecole. Un total global sera affiché.
             'depenses': {
                 'nombre': 0,
                 'montant_total': Decimal('0')
@@ -265,17 +282,9 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         donnees_ecole['paiements']['frais_inscription'] = frais_inscription
         donnees_ecole['paiements']['scolarite'] = donnees_ecole['paiements']['montant_total'] - frais_inscription
         
-        # Dépenses du jour
-        depenses_jour = Depense.objects.filter(
-            date_facture=date_rapport,
-            statut='VALIDEE'
-        )
-        
-        donnees_ecole['depenses']['nombre'] = depenses_jour.count()
-        donnees_ecole['depenses']['montant_total'] = depenses_jour.aggregate(
-            total=Sum('montant_ttc')
-        )['total'] or Decimal('0')
-        
+        # Dépenses: pas de répartition par école (le modèle n'est pas rattaché à Ecole)
+        # On laisse 0 au niveau de l'école et on affiche un total global dans le résumé
+
         # États de salaire validés
         etats_jour = EtatSalaire.objects.filter(
             enseignant__ecole=ecole,
@@ -346,9 +355,27 @@ def generer_pdf_journalier(donnees, date_rapport):
         story.append(table)
         story.append(Spacer(1, 20))
     
+    # Section Dépenses globales (non rattachées à une école)
+    story.append(Paragraph("DÉPENSES GLOBALES (journée)", styles['Heading2']))
+    story.append(Spacer(1, 8))
+    dep_global = donnees.get('depenses_globales', {'nombre': 0, 'montant_total': Decimal('0')})
+    depenses_data = [
+        ['Nombre de dépenses', str(dep_global.get('nombre', 0))],
+        ['Montant total des dépenses', f"{dep_global.get('montant_total', Decimal('0')):,} GNF".replace(',', ' ')]
+    ]
+    dep_table = Table(depenses_data, colWidths=[3*inch, 2*inch])
+    dep_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.whitesmoke),
+        ('FONTNAME', (0, 0), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 0), (-1, -1), 11),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    story.append(dep_table)
+    story.append(Spacer(1, 16))
+
     # Résumé global
     total_paiements = sum(d['paiements']['montant_total'] for d in donnees['ecoles'].values())
-    total_depenses = sum(d['depenses']['montant_total'] for d in donnees['ecoles'].values())
+    total_depenses = dep_global.get('montant_total', Decimal('0'))
     total_salaires = sum(d['salaires']['montant_total'] for d in donnees['ecoles'].values())
     
     story.append(Paragraph("RÉSUMÉ GLOBAL", styles['Heading2']))

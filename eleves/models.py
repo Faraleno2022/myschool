@@ -95,6 +95,11 @@ class Responsable(models.Model):
     def __str__(self):
         return f"{self.prenom} {self.nom} ({self.get_relation_display()})"
 
+    @property
+    def nom_complet(self) -> str:
+        """Retourne le nom complet du responsable (Prénom Nom)."""
+        return f"{self.prenom} {self.nom}"
+
 class GrilleTarifaire(models.Model):
     """Modèle pour les grilles tarifaires par école et niveau"""
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='grilles_tarifaires')

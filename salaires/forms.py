@@ -1,7 +1,7 @@
 from django import forms
 from django.core.exceptions import ValidationError
-from .models import Enseignant, TypeEnseignant, StatutEnseignant
-from eleves.models import Ecole
+from .models import Enseignant, TypeEnseignant, StatutEnseignant, AffectationClasse
+from eleves.models import Ecole, Classe
 
 
 class EnseignantForm(forms.ModelForm):
@@ -163,3 +163,73 @@ class EnseignantForm(forms.ModelForm):
                 else:
                     raise ValidationError('Format de téléphone invalide. Utilisez le format guinéen.')
         return telephone
+
+
+class AffectationClasseForm(forms.ModelForm):
+    """Formulaire pour affecter un enseignant à une classe"""
+
+    class Meta:
+        model = AffectationClasse
+        fields = [
+            'classe', 'heures_par_semaine', 'matiere',
+            'date_debut', 'date_fin', 'actif'
+        ]
+        widgets = {
+            'classe': forms.Select(attrs={'class': 'form-select'}),
+            'heures_par_semaine': forms.NumberInput(attrs={
+                'class': 'form-control', 'step': '0.25', 'min': '0'
+            }),
+            'matiere': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: Mathématiques'}),
+            'date_debut': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'date_fin': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'actif': forms.CheckboxInput(attrs={'class': 'form-check-input'}),
+        }
+        labels = {
+            'classe': 'Classe *',
+            'heures_par_semaine': 'Heures par semaine',
+            'matiere': 'Matière',
+            'date_debut': 'Date de début *',
+            'date_fin': 'Date de fin',
+            'actif': 'Active',
+        }
+
+    def __init__(self, *args, **kwargs):
+        # Attendre un paramètre optionnel enseignant pour filtrer les classes
+        self.enseignant = kwargs.pop('enseignant', None)
+        super().__init__(*args, **kwargs)
+
+        # Champs requis
+        self.fields['classe'].required = True
+        self.fields['date_debut'].required = True
+
+        # Restreindre les classes à l'école de l'enseignant
+        if self.enseignant and getattr(self.enseignant, 'ecole_id', None):
+            self.fields['classe'].queryset = Classe.objects.filter(ecole_id=self.enseignant.ecole_id)
+        else:
+            self.fields['classe'].queryset = Classe.objects.none()
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if not self.enseignant:
+            raise ValidationError('Enseignant requis pour créer une affectation.')
+
+        # Validation spécifique aux enseignants du secondaire
+        if self.enseignant.type_enseignant == TypeEnseignant.SECONDAIRE:
+            if not cleaned_data.get('heures_par_semaine'):
+                raise ValidationError({'heures_par_semaine': "Obligatoire pour les enseignants du secondaire."})
+
+        # Vérifier cohérence des dates
+        d_debut = cleaned_data.get('date_debut')
+        d_fin = cleaned_data.get('date_fin')
+        if d_debut and d_fin and d_fin < d_debut:
+            raise ValidationError({'date_fin': 'La date de fin ne peut pas être antérieure à la date de début.'})
+
+        return cleaned_data
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        if self.enseignant:
+            obj.enseignant = self.enseignant
+        if commit:
+            obj.save()
+        return obj

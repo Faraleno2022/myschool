@@ -310,6 +310,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const montantDisplay = document.getElementById('montantDisplay');
     const submitBtn = document.getElementById('submitBtn');
     const form = document.getElementById('paiementForm');
+    // Pré-remplir la date du jour si le champ est vide (sécurité côté front)
+    const dateInput = document.getElementById('{{ form.date_paiement.id_for_label }}');
+    if (dateInput && !dateInput.value) {
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        dateInput.value = `${yyyy}-${mm}-${dd}`; // format attendu par input type=date
+    }
     
     // Formatage du montant en temps réel
     montantInput.addEventListener('input', function() {

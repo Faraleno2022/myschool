@@ -22,7 +22,7 @@ from .models import (
     Enseignant, AffectationClasse, PeriodeSalaire, 
     EtatSalaire, DetailHeuresClasse, TypeEnseignant
 )
-from .forms import EnseignantForm
+from .forms import EnseignantForm, AffectationClasseForm
 from eleves.models import Ecole, Classe
 from utilisateurs.utils import user_is_admin, user_school
 
@@ -81,11 +81,26 @@ def tableau_bord(request):
     # Alertes
     alertes = []
     
-    # Vérifier les enseignants sans affectation
-    enseignants_sans_affectation = Enseignant.objects.filter(
-        statut='ACTIF',
-        affectations__isnull=True
-    ).count()
+    # Vérifier les enseignants sans affectation active (période en cours)
+    aujourd_hui = timezone.now().date()
+    enseignants_base = Enseignant.objects.filter(statut='ACTIF')
+    if restreindre:
+        enseignants_base = enseignants_base.filter(ecole=ecole_user)
+    enseignants_sans_affectation = (
+        enseignants_base
+        .annotate(
+            nb_actives=Count(
+                'affectations',
+                filter=(
+                    Q(affectations__actif=True,
+                      affectations__date_debut__lte=aujourd_hui) &
+                    (Q(affectations__date_fin__isnull=True) | Q(affectations__date_fin__gte=aujourd_hui))
+                )
+            )
+        )
+        .filter(nb_actives=0)
+        .count()
+    )
     
     if enseignants_sans_affectation > 0:
         alertes.append({
@@ -426,6 +441,76 @@ def detail_enseignant(request, enseignant_id):
     
     return render(request, 'salaires/detail_enseignant.html', context)
 
+
+@login_required
+def ajouter_affectation(request, enseignant_id):
+    """Créer une affectation de classe pour un enseignant"""
+    ecole_user = _ecole_utilisateur(request)
+    qs = Enseignant.objects.all()
+    if not user_is_admin(request.user) and ecole_user is not None:
+        qs = qs.filter(ecole=ecole_user)
+    enseignant = get_object_or_404(qs, id=enseignant_id)
+
+    if request.method == 'POST':
+        form = AffectationClasseForm(request.POST, enseignant=enseignant)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Affectation créée avec succès.')
+            return redirect('salaires:detail_enseignant', enseignant_id=enseignant.id)
+        else:
+            messages.error(request, "Veuillez corriger les erreurs du formulaire.")
+    else:
+        form = AffectationClasseForm(enseignant=enseignant)
+
+    context = {
+        'enseignant': enseignant,
+        'form': form,
+    }
+    return render(request, 'salaires/affectation_form.html', context)
+
+
+@login_required
+def clore_affectation(request, affectation_id):
+    """Clore (désactiver) une affectation en mettant une date de fin à aujourd'hui"""
+    affectation = get_object_or_404(
+        AffectationClasse.objects.select_related('enseignant__ecole'),
+        id=affectation_id
+    )
+    ecole_user = _ecole_utilisateur(request)
+    if not user_is_admin(request.user) and ecole_user is not None and affectation.enseignant.ecole_id != ecole_user.id:
+        messages.error(request, "Accès refusé.")
+        return redirect('salaires:detail_enseignant', enseignant_id=affectation.enseignant_id)
+
+    if request.method == 'POST':
+        affectation.actif = False
+        affectation.date_fin = timezone.now().date()
+        affectation.save()
+        messages.success(request, 'Affectation clôturée avec succès.')
+    else:
+        messages.error(request, "Méthode non autorisée.")
+    return redirect('salaires:detail_enseignant', enseignant_id=affectation.enseignant_id)
+
+
+@login_required
+def supprimer_affectation(request, affectation_id):
+    """Supprimer une affectation (si besoin)"""
+    affectation = get_object_or_404(
+        AffectationClasse.objects.select_related('enseignant__ecole'),
+        id=affectation_id
+    )
+    ecole_user = _ecole_utilisateur(request)
+    if not user_is_admin(request.user) and ecole_user is not None and affectation.enseignant.ecole_id != ecole_user.id:
+        messages.error(request, "Accès refusé.")
+        return redirect('salaires:detail_enseignant', enseignant_id=affectation.enseignant_id)
+
+    if request.method == 'POST':
+        enseignant_id = affectation.enseignant_id
+        affectation.delete()
+        messages.success(request, 'Affectation supprimée.')
+        return redirect('salaires:detail_enseignant', enseignant_id=enseignant_id)
+    else:
+        messages.error(request, "Méthode non autorisée.")
+        return redirect('salaires:detail_enseignant', enseignant_id=affectation.enseignant_id)
 
 
 @login_required

@@ -74,6 +74,9 @@ class DepenseForm(forms.ModelForm):
         self.fields['montant_ht'].required = True
         self.fields['date_facture'].required = True
         self.fields['date_echeance'].required = True
+        # Champs optionnels (permet d'enregistrer sans bloquer la soumission)
+        self.fields['description'].required = False
+        self.fields['taux_tva'].required = False
 
     def clean_montant_ht(self):
         montant_ht = self.cleaned_data.get('montant_ht')
@@ -83,6 +86,8 @@ class DepenseForm(forms.ModelForm):
 
     def clean_taux_tva(self):
         taux_tva = self.cleaned_data.get('taux_tva')
+        if taux_tva is None:
+            return Decimal('0')
         if taux_tva and (taux_tva < 0 or taux_tva > 100):
             raise ValidationError("Le taux TVA doit être entre 0 et 100%.")
         return taux_tva

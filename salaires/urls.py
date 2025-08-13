@@ -15,6 +15,10 @@ urlpatterns = [
     path('enseignants/<int:enseignant_id>/', views.detail_enseignant, name='detail_enseignant'),
     path('enseignants/<int:enseignant_id>/modifier/', views.modifier_enseignant, name='modifier_enseignant'),
     path('enseignants/<int:enseignant_id>/supprimer/', views.supprimer_enseignant, name='supprimer_enseignant'),
+    # Affectations de classes
+    path('enseignants/<int:enseignant_id>/affectations/ajouter/', views.ajouter_affectation, name='ajouter_affectation'),
+    path('enseignants/affectations/<int:affectation_id>/clore/', views.clore_affectation, name='clore_affectation'),
+    path('enseignants/affectations/<int:affectation_id>/supprimer/', views.supprimer_affectation, name='supprimer_affectation'),
     
     # États de salaire
     path('etats/', views.etats_salaire, name='etats_salaire'),

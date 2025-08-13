@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.core.paginator import Paginator
 from django.db.models import Q, Sum, Count
+from django.db import transaction, IntegrityError
 from django.utils import timezone
 from decimal import Decimal
 from datetime import date, datetime
@@ -207,6 +208,22 @@ def tableau_bord_paiements(request):
 @login_required
 def liste_paiements(request):
     """Liste de tous les paiements avec une zone de recherche multi-critères (classe, école, nom, prénoms, type, mode, n° reçu, matricule, statut)."""
+    # Gestion d'export direct via ?export=excel|pdf vers "tranches par classe"
+    export = (request.GET.get('export') or '').strip().lower()
+    if export in {'excel', 'pdf'}:
+        from django.urls import reverse
+        base_name = 'paiements:export_tranches_par_classe_excel' if export == 'excel' else 'paiements:export_tranches_par_classe_pdf'
+        url = reverse(base_name)
+        # Conserver certains filtres si fournis
+        params = {}
+        for key in ['ecole', 'classe', 'classe_id', 'annee_scolaire']:
+            val = request.GET.get(key)
+            if val:
+                params[key] = val
+        if params:
+            from urllib.parse import urlencode
+            url = f"{url}?{urlencode(params)}"
+        return redirect(url)
     paiements = Paiement.objects.select_related(
         'eleve', 'type_paiement', 'mode_paiement', 'valide_par', 'eleve__classe', 'eleve__classe__ecole'
     ).order_by('-date_paiement')
@@ -364,13 +381,42 @@ def ajouter_paiement(request, eleve_id=None):
             paiement = form.save(commit=False)
             paiement.cree_par = request.user
 
-            # Générer le numéro de reçu automatiquement
-            dernier_numero = Paiement.objects.filter(
-                date_paiement__year=timezone.now().year
-            ).count() + 1
-            paiement.numero_recu = f"REC{timezone.now().year}{dernier_numero:04d}"
+            # Générer un numéro de reçu unique et robuste (évite collisions)
+            annee = timezone.now().year
+            prefix = f"REC{annee}"
+            # Réessayer quelques fois en cas de collision concurrente
+            for _ in range(5):
+                dernier = (
+                    Paiement.objects
+                    .filter(numero_recu__startswith=prefix)
+                    .order_by('-numero_recu')
+                    .first()
+                )
+                if dernier and isinstance(dernier.numero_recu, str) and len(dernier.numero_recu) >= 4:
+                    try:
+                        seq = int(dernier.numero_recu[-4:]) + 1
+                    except ValueError:
+                        seq = 1
+                else:
+                    seq = 1
 
-            paiement.save()
+                paiement.numero_recu = f"{prefix}{seq:04d}"
+                try:
+                    with transaction.atomic():
+                        paiement.save()
+                    break
+                except IntegrityError:
+                    # Une collision est survenue, on retente avec le numéro suivant
+                    continue
+            else:
+                messages.error(request, "Impossible de générer un numéro de reçu unique. Veuillez réessayer.")
+                context = {
+                    'form': form,
+                    'eleve': eleve_cible if eleve is None else eleve,
+                    'titre_page': 'Nouveau Paiement',
+                    'action': 'Ajouter'
+                }
+                return render(request, 'paiements/form_paiement.html', context)
 
             # Ne pas impacter l'échéancier tant que le paiement n'est pas validé
             try:
