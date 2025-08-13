@@ -158,6 +158,10 @@
                                 <li><a class="dropdown-item" href="{% url 'utilisateurs:comptable_create' %}">
                                     <i class="fas fa-user-plus me-1"></i>Créer un comptable
                                 </a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item text-danger" href="{% url 'administration:system_reset_dashboard' %}">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Réinitialiser le système
+                                </a></li>
                                 {% endif %}
                                 <li><hr class="dropdown-divider"></li>
                                 <li>

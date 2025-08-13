@@ -1,0 +1,280 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titre_page }} - École Moderne HADJA KANFING DIANÉ{% endblock %}
+
+{% block extra_css %}
+<style>
+    .danger-zone {
+        border: 3px solid #dc3545;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #fff5f5, #ffe6e6);
+        padding: 30px;
+        margin: 20px 0;
+    }
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin: 20px 0;
+    }
+    .stat-item {
+        background: white;
+        padding: 15px;
+        border-radius: 8px;
+        border-left: 4px solid #007bff;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    .stat-number {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #007bff;
+    }
+    .warning-text {
+        color: #dc3545;
+        font-weight: bold;
+        font-size: 1.1rem;
+        text-align: center;
+        margin: 20px 0;
+        padding: 15px;
+        background: #f8d7da;
+        border: 1px solid #f5c6cb;
+        border-radius: 5px;
+    }
+    .confirmation-form {
+        background: #fff;
+        padding: 25px;
+        border-radius: 10px;
+        border: 2px solid #dc3545;
+        margin-top: 20px;
+    }
+    .btn-danger-confirm {
+        background: #dc3545;
+        border: none;
+        padding: 12px 30px;
+        font-weight: bold;
+        border-radius: 5px;
+        color: white;
+        font-size: 16px;
+    }
+    .btn-danger-confirm:hover {
+        background: #c82333;
+        color: white;
+    }
+    .security-check {
+        margin: 15px 0;
+        padding: 15px;
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 5px;
+    }
+    .loading-spinner {
+        display: none;
+        text-align: center;
+        padding: 20px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête avec avertissement -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-exclamation-triangle text-danger"></i> {{ titre_page }}</h2>
+                    <p class="text-muted">Réinitialisation complète du système - Réservé aux super administrateurs</p>
+                </div>
+                <div>
+                    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Zone de danger -->
+    <div class="danger-zone">
+        <div class="text-center mb-4">
+            <i class="fas fa-skull-crossbones fa-3x text-danger mb-3"></i>
+            <h3 class="text-danger">⚠️ ZONE DE DANGER ⚠️</h3>
+        </div>
+        
+        <div class="warning-text">
+            {{ warning_message }}
+        </div>
+
+        <!-- Statistiques actuelles -->
+        <h4 class="text-center mb-3">📊 Données actuelles dans le système</h4>
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.eleves }}</div>
+                <div>Élèves</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.responsables }}</div>
+                <div>Responsables</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.paiements }}</div>
+                <div>Paiements</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.depenses }}</div>
+                <div>Dépenses</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.enseignants }}</div>
+                <div>Enseignants</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.salaires }}</div>
+                <div>Salaires</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.ecoles }}</div>
+                <div>Écoles</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-number">{{ stats.users_non_admin }}</div>
+                <div>Utilisateurs</div>
+            </div>
+        </div>
+
+        <!-- Formulaire de confirmation -->
+        <div class="confirmation-form">
+            <h4 class="text-danger mb-3">🔐 Confirmation de suppression</h4>
+            
+            <div class="alert alert-danger">
+                <strong>Cette action est IRRÉVERSIBLE !</strong><br>
+                Toutes les données seront définitivement supprimées :
+                <ul class="mt-2 mb-0">
+                    <li>Tous les élèves et leurs responsables</li>
+                    <li>Tous les paiements et échéanciers</li>
+                    <li>Toutes les dépenses et fournisseurs</li>
+                    <li>Tous les enseignants et salaires</li>
+                    <li>Toutes les écoles et classes</li>
+                    <li>Tous les utilisateurs non-administrateurs</li>
+                    <li>Tout l'historique et les journaux</li>
+                </ul>
+            </div>
+
+            <form id="resetForm">
+                {% csrf_token %}
+                
+                <div class="security-check">
+                    <label for="confirmationText" class="form-label">
+                        <strong>1. Tapez exactement le texte suivant pour confirmer :</strong>
+                    </label>
+                    <div class="text-center mb-2">
+                        <code class="bg-dark text-white p-2 rounded">SUPPRIMER TOUTES LES DONNÉES</code>
+                    </div>
+                    <input type="text" 
+                           class="form-control" 
+                           id="confirmationText" 
+                           name="confirmation_text" 
+                           placeholder="Tapez le texte de confirmation ici..."
+                           required>
+                </div>
+
+                <div class="security-check">
+                    <label for="adminPassword" class="form-label">
+                        <strong>2. Confirmez avec votre mot de passe administrateur :</strong>
+                    </label>
+                    <input type="password" 
+                           class="form-control" 
+                           id="adminPassword" 
+                           name="admin_password" 
+                           placeholder="Votre mot de passe..."
+                           required>
+                </div>
+
+                <div class="text-center mt-4">
+                    <button type="submit" class="btn btn-danger-confirm" id="confirmBtn">
+                        <i class="fas fa-trash-alt"></i> SUPPRIMER DÉFINITIVEMENT TOUTES LES DONNÉES
+                    </button>
+                </div>
+            </form>
+
+            <div class="loading-spinner" id="loadingSpinner">
+                <div class="spinner-border text-danger" role="status">
+                    <span class="visually-hidden">Suppression en cours...</span>
+                </div>
+                <p class="mt-2 text-danger">Suppression en cours... Ne fermez pas cette page !</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('resetForm');
+    const confirmBtn = document.getElementById('confirmBtn');
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Confirmation finale
+        const finalConfirm = confirm(
+            '🚨 DERNIÈRE CONFIRMATION 🚨\n\n' +
+            'Êtes-vous ABSOLUMENT CERTAIN de vouloir supprimer TOUTES les données ?\n\n' +
+            'Cette action est IRRÉVERSIBLE !\n\n' +
+            'Cliquez sur OK pour continuer ou Annuler pour arrêter.'
+        );
+        
+        if (!finalConfirm) {
+            return;
+        }
+        
+        // Afficher le spinner et désactiver le bouton
+        confirmBtn.style.display = 'none';
+        loadingSpinner.style.display = 'block';
+        
+        // Envoyer la requête
+        const formData = new FormData(form);
+        
+        fetch('{% url "administration:confirm_system_reset" %}', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            loadingSpinner.style.display = 'none';
+            
+            if (data.success) {
+                alert('✅ Système réinitialisé avec succès !\n\nToutes les données ont été supprimées.');
+                window.location.href = '{% url "dashboard" %}';
+            } else {
+                alert('❌ Erreur : ' + data.error);
+                confirmBtn.style.display = 'block';
+            }
+        })
+        .catch(error => {
+            loadingSpinner.style.display = 'none';
+            confirmBtn.style.display = 'block';
+            alert('❌ Erreur de connexion : ' + error.message);
+        });
+    });
+    
+    // Validation en temps réel du texte de confirmation
+    const confirmationText = document.getElementById('confirmationText');
+    confirmationText.addEventListener('input', function() {
+        if (this.value === 'SUPPRIMER TOUTES LES DONNÉES') {
+            this.style.borderColor = '#28a745';
+            this.style.backgroundColor = '#d4edda';
+        } else {
+            this.style.borderColor = '#dc3545';
+            this.style.backgroundColor = '#f8d7da';
+        }
+    });
+});
+</script>
+{% endblock %}
