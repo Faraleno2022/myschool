@@ -78,21 +78,25 @@ def _map_type_to_tranche(type_paiement_nom: str):
     return None
 
 def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Decimal, date_pay: date, cible: str | None):
-    """Distribue le montant sur les lignes de l'échéancier dans l'ordre.
-    Renvoie un dict: {warnings: [..], info: [..]}"""
+    """Distribue le montant sur les lignes de l'échéancier selon les règles métier améliorées.
+    
+    Règles:
+    1. Si paiement = Inscription + 1ère tranche : déduire automatiquement 30,000 GNF pour inscription
+    2. Si paiement annuel : répartir sur toutes les tranches
+    3. Validation des surpaiements par tranche
+    
+    Renvoie un dict: {warnings: [..], info: [..]}
+    """
     warnings = []
     infos = []
 
     # Snapshot avant paiement
     total_paye_avant = echeancier.total_paye
     solde_avant = echeancier.solde_restant
-
-    # Définition des tranches dans l'ordre à payer
-    ordre = ['inscription', 't1', 't2', 't3']
-    if cible in ordre:
-        # Si un type est ciblé, on commence par celui-ci puis on continue
-        ordre = [cible] + [x for x in ordre if x != cible]
-
+    
+    # Constantes
+    FRAIS_INSCRIPTION = Decimal('30000')
+    
     def tranche_data(key):
         if key == 'inscription':
             return (
@@ -106,38 +110,128 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
             return ('tranche_3_due', 'tranche_3_payee', 'date_echeance_tranche_3', 'Tranche 3')
         raise ValueError('Tranche inconnue')
 
+    # Calculer les soldes restants par tranche
+    inscription_restant = max(Decimal('0'), echeancier.frais_inscription_du - echeancier.frais_inscription_paye)
+    t1_restant = max(Decimal('0'), echeancier.tranche_1_due - echeancier.tranche_1_payee)
+    t2_restant = max(Decimal('0'), echeancier.tranche_2_due - echeancier.tranche_2_payee)
+    t3_restant = max(Decimal('0'), echeancier.tranche_3_due - echeancier.tranche_3_payee)
+    
+    scolarite_restante = t1_restant + t2_restant + t3_restant
+    total_restant = inscription_restant + scolarite_restante
+    
     restant = Decimal(montant)
-    for key in ordre:
-        if restant <= 0:
-            break
-        due_field, paid_field, due_date_field, label = tranche_data(key)
-        due = getattr(echeancier, due_field)
-        paid = getattr(echeancier, paid_field)
-        to_pay = max(Decimal('0'), due - paid)
-        if to_pay <= 0:
-            continue
+    
+    # **RÈGLE 1: Détection automatique Inscription + 1ère tranche**
+    if (inscription_restant > 0 and t1_restant > 0 and 
+        restant >= (FRAIS_INSCRIPTION + t1_restant) and 
+        restant <= (FRAIS_INSCRIPTION + t1_restant + Decimal('50000'))):  # Tolérance
+        
+        infos.append(f"Détection automatique: Frais d'inscription ({FRAIS_INSCRIPTION:,.0f} GNF) + 1ère tranche ({t1_restant:,.0f} GNF)")
+        
+        # Payer l'inscription (30,000 GNF)
+        montant_inscription = min(FRAIS_INSCRIPTION, inscription_restant)
+        echeancier.frais_inscription_paye += montant_inscription
+        restant -= montant_inscription
+        
+        # Payer la 1ère tranche avec le reste
+        montant_t1 = min(restant, t1_restant)
+        echeancier.tranche_1_payee += montant_t1
+        restant -= montant_t1
+        
+        if restant > 0:
+            warnings.append(f"Excédent de {restant:,.0f} GNF après paiement inscription + 1ère tranche")
+    
+    # **RÈGLE 2: Paiement annuel (scolarité complète)**
+    elif (inscription_restant == 0 and restant >= scolarite_restante * Decimal('0.9') and 
+          restant <= scolarite_restante * Decimal('1.1')):  # Tolérance de ±10%
+        
+        infos.append(f"Détection: Paiement annuel de scolarité ({restant:,.0f} GNF)")
+        
+        # Répartir proportionnellement sur les tranches restantes
+        tranches_actives = []
+        if t1_restant > 0:
+            tranches_actives.append(('t1', t1_restant))
+        if t2_restant > 0:
+            tranches_actives.append(('t2', t2_restant))
+        if t3_restant > 0:
+            tranches_actives.append(('t3', t3_restant))
+        
+        if tranches_actives:
+            # Répartition proportionnelle
+            for i, (tranche_key, tranche_restant) in enumerate(tranches_actives):
+                if i == len(tranches_actives) - 1:  # Dernière tranche = tout le reste
+                    montant_tranche = restant
+                else:
+                    proportion = tranche_restant / scolarite_restante
+                    montant_tranche = restant * proportion
+                
+                # Validation: pas de surpaiement
+                montant_tranche = min(montant_tranche, tranche_restant)
+                
+                if tranche_key == 't1':
+                    echeancier.tranche_1_payee += montant_tranche
+                elif tranche_key == 't2':
+                    echeancier.tranche_2_payee += montant_tranche
+                elif tranche_key == 't3':
+                    echeancier.tranche_3_payee += montant_tranche
+                
+                restant -= montant_tranche
+                
+                if restant <= 0:
+                    break
+    
+    # **RÈGLE 3: Paiement ciblé ou séquentiel normal**
+    else:
+        # Définition des tranches dans l'ordre à payer
+        ordre = ['inscription', 't1', 't2', 't3']
+        if cible in ordre:
+            # Si un type est ciblé, vérifier les surpaiements
+            due_field, paid_field, due_date_field, label = tranche_data(cible)
+            due = getattr(echeancier, due_field)
+            paid = getattr(echeancier, paid_field)
+            tranche_restant = max(Decimal('0'), due - paid)
+            
+            if restant > tranche_restant:
+                warnings.append(f"ERREUR: Le montant ({restant:,.0f} GNF) dépasse le solde de {label} ({tranche_restant:,.0f} GNF)")
+                return {'warnings': warnings, 'info': infos}
+            
+            # Paiement ciblé validé
+            setattr(echeancier, paid_field, paid + restant)
+            restant = Decimal('0')
+        else:
+            # Paiement séquentiel normal
+            for key in ordre:
+                if restant <= 0:
+                    break
+                due_field, paid_field, due_date_field, label = tranche_data(key)
+                due = getattr(echeancier, due_field)
+                paid = getattr(echeancier, paid_field)
+                to_pay = max(Decimal('0'), due - paid)
+                if to_pay <= 0:
+                    continue
 
-        # Retard ?
-        due_date = getattr(echeancier, due_date_field)
-        if date_pay > due_date:
-            delta = (date_pay - due_date).days
-            warnings.append(f"Retard sur {label}: {delta} jour(s) après l'échéance ({due_date.strftime('%d/%m/%Y')}).")
+                # Vérification de retard
+                due_date = getattr(echeancier, due_date_field)
+                if date_pay > due_date:
+                    delta = (date_pay - due_date).days
+                    warnings.append(f"Retard sur {label}: {delta} jour(s) après l'échéance ({due_date.strftime('%d/%m/%Y')})")
 
-        pay_now = min(restant, to_pay)
-        if pay_now < restant and cible in ['inscription', 't1', 't2', 't3'] and key == cible and restant > to_pay:
-            # L'utilisateur a payé plus que la tranche ciblée
-            depasse = int(restant - to_pay)
-            if depasse > 0:
-                warnings.append(f"Le montant payé dépasse {label} de {depasse:,.0f} GNF.")
+                pay_now = min(restant, to_pay)
+                setattr(echeancier, paid_field, paid + pay_now)
+                restant -= pay_now
 
-        setattr(echeancier, paid_field, paid + pay_now)
-        restant -= pay_now
+    # Vérification finale des surpaiements
+    if restant > 0:
+        warnings.append(f"ATTENTION: Excédent de {restant:,.0f} GNF non alloué")
 
     # Mettre à jour le statut
-    if echeancier.solde_restant <= 0:
+    nouveau_solde = echeancier.solde_restant
+    if nouveau_solde <= 0:
         echeancier.statut = 'PAYE_COMPLET'
+        if nouveau_solde < 0:
+            warnings.append(f"Surpaiement détecté: {abs(nouveau_solde):,.0f} GNF")
     else:
-        # Vérifier s'il existe du retard résiduel (au moins une tranche échue non soldée)
+        # Vérifier s'il existe du retard résiduel
         now = date_pay
         en_retard = (
             (now > echeancier.date_echeance_inscription and echeancier.frais_inscription_paye < echeancier.frais_inscription_du) or
@@ -147,9 +241,9 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
         )
         echeancier.statut = 'EN_RETARD' if en_retard else 'PAYE_PARTIEL'
 
-    # Paiement de toutes les tranches en une fois ?
-    if total_paye_avant == 0 and echeancier.solde_restant == 0 and montant >= solde_avant:
-        infos.append("Toutes les tranches ont été réglées en une seule fois. Merci !")
+    # Message de félicitation pour paiement complet
+    if total_paye_avant == 0 and nouveau_solde <= 0:
+        infos.append("🎉 Toutes les tranches ont été réglées ! Merci pour votre paiement.")
 
     return {'warnings': warnings, 'info': infos}
 
