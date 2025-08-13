@@ -187,12 +187,22 @@ def tableau_bord_paiements(request):
             date_paiement__gte=date_limite
         ).exclude(statut='ANNULE')
     
-    # Échéanciers en retard (solde > 0 et date échéance dépassée)
-    eleves_retard = echeanciers_qs.filter(
-        solde_restant__gt=0
+    # Échéanciers en retard (calculer le solde restant avec annotations)
+    from django.db.models import F
+    
+    # Calculer le solde restant = total_du - total_paye
+    echeanciers_avec_solde = echeanciers_qs.annotate(
+        total_du=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
+        total_paye=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
+        solde_calcule=F('total_du') - F('total_paye')
+    )
+    
+    # Élèves en retard (solde > 0)
+    eleves_retard = echeanciers_avec_solde.filter(
+        solde_calcule__gt=0
     ).count()
     
-    # Si pas d'échéanciers avec statut EN_RETARD, calculer manuellement
+    # Si pas d'échéanciers avec solde > 0, utiliser le statut EN_RETARD
     if eleves_retard == 0:
         eleves_retard = echeanciers_qs.filter(
             statut='EN_RETARD'
@@ -258,9 +268,19 @@ def ajax_statistiques_paiements(request):
                 date_paiement__gte=date_limite
             ).exclude(statut='ANNULE')
         
-        # Échéanciers en retard
-        eleves_retard = echeanciers_qs.filter(
-            solde_restant__gt=0
+        # Échéanciers en retard (calculer le solde restant avec annotations)
+        from django.db.models import F
+        
+        # Calculer le solde restant = total_du - total_paye
+        echeanciers_avec_solde = echeanciers_qs.annotate(
+            total_du=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
+            total_paye=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
+            solde_calcule=F('total_du') - F('total_paye')
+        )
+        
+        # Élèves en retard (solde > 0)
+        eleves_retard = echeanciers_avec_solde.filter(
+            solde_calcule__gt=0
         ).count()
         
         if eleves_retard == 0:
