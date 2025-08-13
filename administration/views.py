@@ -11,12 +11,11 @@ from datetime import datetime
 import logging
 
 # Imports des modèles à réinitialiser
-from eleves.models import Eleve, Responsable, Classe, HistoriqueEleve
+from eleves.models import Eleve, Responsable, Classe, HistoriqueEleve, Ecole, GrilleTarifaire
 from paiements.models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
 from depenses.models import Depense, CategorieDepense, Fournisseur
 from salaires.models import Enseignant, AffectationClasse, EtatSalaire, PeriodeSalaire, DetailHeuresClasse
 from utilisateurs.models import JournalActivite, Profil
-from ecoles.models import Ecole, GrilleTarifaire
 
 logger = logging.getLogger(__name__)
 
