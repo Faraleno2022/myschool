@@ -14,7 +14,7 @@ import logging
 from eleves.models import Eleve, Responsable, Classe, HistoriqueEleve
 from paiements.models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
 from depenses.models import Depense, CategorieDepense, Fournisseur
-from salaires.models import Enseignant, AffectationClasse, Salaire
+from salaires.models import Enseignant, AffectationClasse, EtatSalaire, PeriodeSalaire, DetailHeuresClasse
 from utilisateurs.models import JournalActivite, Profil
 from ecoles.models import Ecole, GrilleTarifaire
 
@@ -38,7 +38,7 @@ def system_reset_dashboard(request):
         'echeanciers': EcheancierPaiement.objects.count(),
         'depenses': Depense.objects.count(),
         'enseignants': Enseignant.objects.count(),
-        'salaires': Salaire.objects.count(),
+        'salaires': EtatSalaire.objects.count(),
         'journal_activites': JournalActivite.objects.count(),
         'ecoles': Ecole.objects.count(),
         'grilles_tarifaires': GrilleTarifaire.objects.count(),
@@ -102,7 +102,9 @@ def confirm_system_reset(request):
             RemiseReduction.objects.all().delete()
             
             # 3. Supprimer les données de salaires
-            Salaire.objects.all().delete()
+            DetailHeuresClasse.objects.all().delete()
+            EtatSalaire.objects.all().delete()
+            PeriodeSalaire.objects.all().delete()
             AffectationClasse.objects.all().delete()
             Enseignant.objects.all().delete()
             
