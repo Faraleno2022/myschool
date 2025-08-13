@@ -275,30 +275,41 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         )['total'] or Decimal('0')
         
         # Séparation frais d'inscription et scolarité
-        # Les frais d'inscription sont fixes (30 000 GNF par élève inscrit le jour J)
-        # La scolarité correspond aux paiements de tranches (montant annuel par élève)
+        # LOGIQUE CORRIGÉE: sans dépendre des TypePaiement qui peuvent être absents
         
-        # Calculer les vrais frais d'inscription basés sur les nouveaux élèves
+        # Calculer les frais d'inscription théoriques (30 000 GNF par nouvel élève)
         nb_nouveaux_eleves = donnees_ecole['nouveaux_eleves']
-        frais_inscription_theoriques = nb_nouveaux_eleves * Decimal('30000')  # 30k par élève
+        frais_inscription_theoriques = nb_nouveaux_eleves * Decimal('30000')
         
-        # Paiements effectifs de frais d'inscription
-        frais_inscription_payes = paiements_jour.filter(
-            type_paiement__nom__icontains='inscription'
-        ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
+        # Essayer de détecter les paiements d'inscription par type (si TypePaiement existe)
+        frais_inscription_payes = Decimal('0')
+        try:
+            frais_inscription_payes = paiements_jour.filter(
+                type_paiement__nom__icontains='inscription'
+            ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
+        except Exception:
+            # Si pas de TypePaiement ou erreur, on utilise la logique alternative
+            pass
         
-        # Paiements de scolarité (tranches)
-        scolarite_payee = paiements_jour.exclude(
-            type_paiement__nom__icontains='inscription'
-        ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
-        
-        # Utiliser les frais d'inscription théoriques si cohérents, sinon les payés
-        if frais_inscription_payes > 0:
-            donnees_ecole['paiements']['frais_inscription'] = frais_inscription_payes
-        else:
-            donnees_ecole['paiements']['frais_inscription'] = frais_inscription_theoriques
+        # LOGIQUE ALTERNATIVE: si pas de types définis, analyser les montants
+        if frais_inscription_payes == 0 and donnees_ecole['paiements']['montant_total'] > 0:
+            # Heuristique: les paiements de 30k sont probablement des frais d'inscription
+            paiements_30k = paiements_jour.filter(montant=30000).aggregate(
+                total=Sum('montant')
+            )['total'] or Decimal('0')
             
-        donnees_ecole['paiements']['scolarite'] = scolarite_payee
+            if paiements_30k > 0:
+                frais_inscription_payes = paiements_30k
+            else:
+                # Fallback: utiliser les frais théoriques si nouveaux élèves
+                frais_inscription_payes = frais_inscription_theoriques
+        
+        # Calculer la scolarité (reste des paiements)
+        scolarite_payee = donnees_ecole['paiements']['montant_total'] - frais_inscription_payes
+        
+        # Assigner les valeurs finales
+        donnees_ecole['paiements']['frais_inscription'] = frais_inscription_payes
+        donnees_ecole['paiements']['scolarite'] = max(scolarite_payee, Decimal('0'))  # Éviter négatif
         
         # Dépenses: pas de répartition par école (le modèle n'est pas rattaché à Ecole)
         # On laisse 0 au niveau de l'école et on affiche un total global dans le résumé
