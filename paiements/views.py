@@ -119,6 +119,42 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
     scolarite_restante = t1_restant + t2_restant + t3_restant
     total_restant = inscription_restant + scolarite_restante
     
+    # Garder en mémoire les montants des tranches pour validation
+    tranches_info = {
+        'inscription': {
+            'du': echeancier.frais_inscription_du,
+            'paye': echeancier.frais_inscription_paye,
+            'restant': inscription_restant,
+            'label': 'Frais d\'inscription'
+        },
+        't1': {
+            'du': echeancier.tranche_1_due,
+            'paye': echeancier.tranche_1_payee,
+            'restant': t1_restant,
+            'label': '1ère tranche'
+        },
+        't2': {
+            'du': echeancier.tranche_2_due,
+            'paye': echeancier.tranche_2_payee,
+            'restant': t2_restant,
+            'label': '2ème tranche'
+        },
+        't3': {
+            'du': echeancier.tranche_3_due,
+            'paye': echeancier.tranche_3_payee,
+            'restant': t3_restant,
+            'label': '3ème tranche'
+        }
+    }
+    
+    # Fonction de validation des surpaiements
+    def valider_surpaiement(tranche_key, montant_a_payer):
+        """Valide qu'un montant ne dépasse pas le solde restant d'une tranche"""
+        info = tranches_info[tranche_key]
+        if montant_a_payer > info['restant']:
+            return f"ERREUR: Le montant ({montant_a_payer:,.0f} GNF) dépasse le solde restant de {info['label']} ({info['restant']:,.0f} GNF)"
+        return None
+    
     restant = Decimal(montant)
     
     # **RÈGLE 1: Détection automatique Inscription + 1ère tranche**
@@ -126,17 +162,29 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
         restant >= (FRAIS_INSCRIPTION + t1_restant) and 
         restant <= (FRAIS_INSCRIPTION + t1_restant + Decimal('50000'))):  # Tolérance
         
-        infos.append(f"Détection automatique: Frais d'inscription ({FRAIS_INSCRIPTION:,.0f} GNF) + 1ère tranche ({t1_restant:,.0f} GNF)")
+        # Validation des surpaiements AVANT traitement
+        montant_inscription_prevu = min(FRAIS_INSCRIPTION, inscription_restant)
+        montant_t1_prevu = min(restant - montant_inscription_prevu, t1_restant)
         
-        # Payer l'inscription (30,000 GNF)
-        montant_inscription = min(FRAIS_INSCRIPTION, inscription_restant)
-        echeancier.frais_inscription_paye += montant_inscription
-        restant -= montant_inscription
+        erreur_inscription = valider_surpaiement('inscription', montant_inscription_prevu)
+        erreur_t1 = valider_surpaiement('t1', montant_t1_prevu)
+        
+        if erreur_inscription:
+            warnings.append(erreur_inscription)
+            return {'warnings': warnings, 'info': infos}
+        if erreur_t1:
+            warnings.append(erreur_t1)
+            return {'warnings': warnings, 'info': infos}
+        
+        infos.append(f"Détection automatique: Frais d'inscription ({montant_inscription_prevu:,.0f} GNF) + 1ère tranche ({montant_t1_prevu:,.0f} GNF)")
+        
+        # Payer l'inscription
+        echeancier.frais_inscription_paye += montant_inscription_prevu
+        restant -= montant_inscription_prevu
         
         # Payer la 1ère tranche avec le reste
-        montant_t1 = min(restant, t1_restant)
-        echeancier.tranche_1_payee += montant_t1
-        restant -= montant_t1
+        echeancier.tranche_1_payee += montant_t1_prevu
+        restant -= montant_t1_prevu
         
         if restant > 0:
             warnings.append(f"Excédent de {restant:,.0f} GNF après paiement inscription + 1ère tranche")
@@ -144,8 +192,6 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
     # **RÈGLE 2: Paiement annuel (scolarité complète)**
     elif (inscription_restant == 0 and restant >= scolarite_restante * Decimal('0.9') and 
           restant <= scolarite_restante * Decimal('1.1')):  # Tolérance de ±10%
-        
-        infos.append(f"Détection: Paiement annuel de scolarité ({restant:,.0f} GNF)")
         
         # Répartir proportionnellement sur les tranches restantes
         tranches_actives = []
@@ -157,17 +203,32 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
             tranches_actives.append(('t3', t3_restant))
         
         if tranches_actives:
-            # Répartition proportionnelle
+            # Calculer les montants prévus et valider AVANT traitement
+            montants_prevus = {}
+            restant_temp = restant
+            
             for i, (tranche_key, tranche_restant) in enumerate(tranches_actives):
                 if i == len(tranches_actives) - 1:  # Dernière tranche = tout le reste
-                    montant_tranche = restant
+                    montant_tranche = restant_temp
                 else:
                     proportion = tranche_restant / scolarite_restante
                     montant_tranche = restant * proportion
                 
                 # Validation: pas de surpaiement
                 montant_tranche = min(montant_tranche, tranche_restant)
+                montants_prevus[tranche_key] = montant_tranche
+                restant_temp -= montant_tranche
                 
+                # Validation avec fonction centralisée
+                erreur = valider_surpaiement(tranche_key, montant_tranche)
+                if erreur:
+                    warnings.append(erreur)
+                    return {'warnings': warnings, 'info': infos}
+            
+            infos.append(f"Détection: Paiement annuel de scolarité ({restant:,.0f} GNF)")
+            
+            # Appliquer les paiements après validation
+            for tranche_key, montant_tranche in montants_prevus.items():
                 if tranche_key == 't1':
                     echeancier.tranche_1_payee += montant_tranche
                 elif tranche_key == 't2':
@@ -185,21 +246,19 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
         # Définition des tranches dans l'ordre à payer
         ordre = ['inscription', 't1', 't2', 't3']
         if cible in ordre:
-            # Si un type est ciblé, vérifier les surpaiements
-            due_field, paid_field, due_date_field, label = tranche_data(cible)
-            due = getattr(echeancier, due_field)
-            paid = getattr(echeancier, paid_field)
-            tranche_restant = max(Decimal('0'), due - paid)
-            
-            if restant > tranche_restant:
-                warnings.append(f"ERREUR: Le montant ({restant:,.0f} GNF) dépasse le solde de {label} ({tranche_restant:,.0f} GNF)")
+            # Si un type est ciblé, utiliser la validation centralisée
+            erreur = valider_surpaiement(cible, restant)
+            if erreur:
+                warnings.append(erreur)
                 return {'warnings': warnings, 'info': infos}
             
             # Paiement ciblé validé
+            due_field, paid_field, due_date_field, label = tranche_data(cible)
+            paid = getattr(echeancier, paid_field)
             setattr(echeancier, paid_field, paid + restant)
             restant = Decimal('0')
         else:
-            # Paiement séquentiel normal
+            # Paiement séquentiel normal avec validation à chaque étape
             for key in ordre:
                 if restant <= 0:
                     break
@@ -210,13 +269,22 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
                 if to_pay <= 0:
                     continue
 
+                # Calculer le montant à payer pour cette tranche
+                pay_now = min(restant, to_pay)
+                
+                # Validation avec fonction centralisée
+                erreur = valider_surpaiement(key, pay_now)
+                if erreur:
+                    warnings.append(erreur)
+                    return {'warnings': warnings, 'info': infos}
+
                 # Vérification de retard
                 due_date = getattr(echeancier, due_date_field)
                 if date_pay > due_date:
                     delta = (date_pay - due_date).days
                     warnings.append(f"Retard sur {label}: {delta} jour(s) après l'échéance ({due_date.strftime('%d/%m/%Y')})")
 
-                pay_now = min(restant, to_pay)
+                # Appliquer le paiement après validation
                 setattr(echeancier, paid_field, paid + pay_now)
                 restant -= pay_now
 
