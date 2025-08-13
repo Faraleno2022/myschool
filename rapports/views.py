@@ -275,12 +275,30 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         )['total'] or Decimal('0')
         
         # Séparation frais d'inscription et scolarité
-        frais_inscription = paiements_jour.filter(
+        # Les frais d'inscription sont fixes (30 000 GNF par élève inscrit le jour J)
+        # La scolarité correspond aux paiements de tranches (montant annuel par élève)
+        
+        # Calculer les vrais frais d'inscription basés sur les nouveaux élèves
+        nb_nouveaux_eleves = donnees_ecole['nouveaux_eleves']
+        frais_inscription_theoriques = nb_nouveaux_eleves * Decimal('30000')  # 30k par élève
+        
+        # Paiements effectifs de frais d'inscription
+        frais_inscription_payes = paiements_jour.filter(
             type_paiement__nom__icontains='inscription'
         ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
         
-        donnees_ecole['paiements']['frais_inscription'] = frais_inscription
-        donnees_ecole['paiements']['scolarite'] = donnees_ecole['paiements']['montant_total'] - frais_inscription
+        # Paiements de scolarité (tranches)
+        scolarite_payee = paiements_jour.exclude(
+            type_paiement__nom__icontains='inscription'
+        ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
+        
+        # Utiliser les frais d'inscription théoriques si cohérents, sinon les payés
+        if frais_inscription_payes > 0:
+            donnees_ecole['paiements']['frais_inscription'] = frais_inscription_payes
+        else:
+            donnees_ecole['paiements']['frais_inscription'] = frais_inscription_theoriques
+            
+        donnees_ecole['paiements']['scolarite'] = scolarite_payee
         
         # Dépenses: pas de répartition par école (le modèle n'est pas rattaché à Ecole)
         # On laisse 0 au niveau de l'école et on affiche un total global dans le résumé

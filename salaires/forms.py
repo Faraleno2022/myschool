@@ -198,6 +198,15 @@ class AffectationClasseForm(forms.ModelForm):
         self.enseignant = kwargs.pop('enseignant', None)
         super().__init__(*args, **kwargs)
 
+        # IMPORTANT: fournir l'enseignant à l'instance dès l'init pour que
+        # la validation du modèle (AffectationClasse.clean) puisse y accéder
+        # pendant form.is_valid() sans déclencher RelatedObjectDoesNotExist.
+        if self.enseignant is not None:
+            try:
+                self.instance.enseignant = self.enseignant
+            except Exception:
+                pass
+
         # Champs requis
         self.fields['classe'].required = True
         self.fields['date_debut'].required = True
