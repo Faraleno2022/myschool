@@ -38,15 +38,57 @@ if DEBUG:
 else:
     CSRF_TRUSTED_ORIGINS = ['https://gshadjakanfingdiane.pythonanywhere.com']
 
+# ===== PARAMÈTRES DE SÉCURITÉ RENFORCÉS =====
+
 # Cookies et redirections sécurisées en production (HTTPS)
 # En dev (DEBUG=True), ne pas forcer "secure" pour permettre les cookies en HTTP
 CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_SECURE = not DEBUG
 SECURE_SSL_REDIRECT = not DEBUG
-# Disable HSTS in development to avoid browsers forcing HTTPS on localhost
-SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000
+
+# HSTS (HTTP Strict Transport Security)
+SECURE_HSTS_SECONDS = 0 if DEBUG else 31536000  # 1 an en production
 SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
+
+# Protection contre le détournement de contenu
+SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_BROWSER_XSS_FILTER = True
+X_FRAME_OPTIONS = 'DENY'  # Empêche l'intégration dans des iframes
+
+# Sécurité des cookies
+CSRF_COOKIE_HTTPONLY = True
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Strict'
+CSRF_COOKIE_SAMESITE = 'Strict'
+
+# Expiration de session (30 minutes d'inactivité)
+SESSION_COOKIE_AGE = 1800  # 30 minutes
+SESSION_EXPIRE_AT_BROWSER_CLOSE = True
+SESSION_SAVE_EVERY_REQUEST = True
+
+# Protection contre les attaques de timing
+USE_TZ = True
+
+# Limitation des uploads
+FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+
+# En-têtes de sécurité supplémentaires
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+# Cache pour le rate limiting et le blocage d'IP
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'security-cache',
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+        }
+    }
+}
 
 
 # Application definition
@@ -73,9 +115,12 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'ecole_moderne.security_middleware.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'ecole_moderne.security_middleware.SessionSecurityMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    'ecole_moderne.security_middleware.CSRFSecurityMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -116,12 +161,16 @@ DATABASES = {
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
+# Validation des mots de passe renforcée
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 12,  # Minimum 12 caractères
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -176,3 +225,84 @@ MEDIA_ROOT = BASE_DIR / 'media'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ===== CONFIGURATION DE LOGGING POUR LA SÉCURITÉ =====
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'security': {
+            'format': '[SECURITY] {levelname} {asctime} - {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'security_file': {
+            'level': 'WARNING',
+            'class': 'logging.FileHandler',
+            'filename': BASE_DIR / 'logs' / 'security.log',
+            'formatter': 'security',
+        },
+        'console': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'ecole_moderne.security_middleware': {
+            'handlers': ['security_file', 'console'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+        'django.security': {
+            'handlers': ['security_file'],
+            'level': 'WARNING',
+            'propagate': False,
+        },
+    },
+}
+
+# Créer le dossier logs s'il n'existe pas
+import os
+logs_dir = BASE_DIR / 'logs'
+if not os.path.exists(logs_dir):
+    os.makedirs(logs_dir)
+
+# ===== PARAMÈTRES DE SÉCURITÉ SUPPLÉMENTAIRES =====
+
+# Désactiver les informations de debug en production
+if not DEBUG:
+    ALLOWED_HOSTS = ['gshadjakanfingdiane.pythonanywhere.com']
+    
+    # Masquer la version de Django
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    
+    # Forcer HTTPS en production
+    SECURE_SSL_REDIRECT = True
+    
+    # Sécuriser les cookies
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+
+# Protection contre les attaques par déni de service
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
+
+# Limitation du nombre de connexions simultanées par IP
+MAX_CONNECTIONS_PER_IP = 10
+
+# Temps de blocage pour les IP suspectes (en secondes)
+IP_BLOCK_DURATION = 86400  # 24 heures
+
+# Nombre maximum de tentatives de connexion avant blocage
+MAX_LOGIN_ATTEMPTS = 5
+
+# Durée de blocage après échec de connexion (en secondes)
+LOGIN_BLOCK_DURATION = 300  # 5 minutes
