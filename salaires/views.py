@@ -25,6 +25,7 @@ from .models import (
 from .forms import EnseignantForm, AffectationClasseForm
 from eleves.models import Ecole, Classe
 from utilisateurs.utils import user_is_admin, user_school
+from utilisateurs.permissions import can_add_teachers
 
 def _ecole_utilisateur(request):
     """Compat: utiliser l'utilitaire centralisé"""
@@ -1238,6 +1239,7 @@ def changer_statut_enseignant(request, enseignant_id):
 
 
 @login_required
+@can_add_teachers
 def ajouter_enseignant(request):
     """Ajouter un nouvel enseignant"""
     if request.method == 'POST':

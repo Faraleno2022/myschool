@@ -17,6 +17,7 @@ from .forms import (
     PieceJustificativeForm, BudgetAnnuelForm
 )
 from utilisateurs.utils import user_is_admin, user_school
+from utilisateurs.permissions import can_add_expenses, can_modify_expenses, can_delete_expenses, can_validate_expenses
 
 @login_required
 def tableau_bord(request):
@@ -158,6 +159,7 @@ def detail_depense(request, depense_id):
     return render(request, 'depenses/detail_depense.html', context)
 
 @login_required
+@can_add_expenses
 def ajouter_depense(request):
     """Ajouter une nouvelle dépense"""
     if request.method == 'POST':
@@ -189,6 +191,7 @@ def ajouter_depense(request):
     return render(request, 'depenses/form_depense.html', context)
 
 @login_required
+@can_modify_expenses
 def modifier_depense(request, depense_id):
     """Modifier une dépense existante"""
     qs = Depense.objects.all()
@@ -231,6 +234,7 @@ def modifier_depense(request, depense_id):
     return render(request, 'depenses/form_depense.html', context)
 
 @login_required
+@can_validate_expenses
 def valider_depense(request, depense_id):
     """Valider une dépense"""
     if request.method == 'POST':

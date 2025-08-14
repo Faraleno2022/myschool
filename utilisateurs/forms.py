@@ -32,11 +32,61 @@ class ComptableCreationForm(UserCreationForm):
         }),
     )
 
-    # Permissions spécifiques
+    # Permissions spécifiques existantes
     peut_valider_paiements = forms.BooleanField(label="Peut valider les paiements", required=False, initial=True)
     peut_valider_depenses = forms.BooleanField(label="Peut valider les dépenses", required=False, initial=False)
     peut_generer_rapports = forms.BooleanField(label="Peut générer des rapports", required=False, initial=True)
     peut_gerer_utilisateurs = forms.BooleanField(label="Peut gérer les utilisateurs", required=False, initial=False)
+    
+    # Nouvelles permissions granulaires
+    peut_ajouter_paiements = forms.BooleanField(
+        label="Peut ajouter des paiements", 
+        required=False, 
+        initial=False,  # Par défaut, les comptables ne peuvent PAS ajouter de paiements
+        help_text="Autoriser l'ajout de nouveaux paiements"
+    )
+    peut_ajouter_depenses = forms.BooleanField(
+        label="Peut ajouter des dépenses", 
+        required=False, 
+        initial=False,  # Par défaut, les comptables ne peuvent PAS ajouter de dépenses
+        help_text="Autoriser l'ajout de nouvelles dépenses"
+    )
+    peut_ajouter_enseignants = forms.BooleanField(
+        label="Peut ajouter des enseignants", 
+        required=False, 
+        initial=False,  # Par défaut, les comptables ne peuvent PAS ajouter d'enseignants
+        help_text="Autoriser l'ajout de nouveaux enseignants"
+    )
+    peut_modifier_paiements = forms.BooleanField(
+        label="Peut modifier les paiements", 
+        required=False, 
+        initial=True,
+        help_text="Autoriser la modification des paiements existants"
+    )
+    peut_modifier_depenses = forms.BooleanField(
+        label="Peut modifier les dépenses", 
+        required=False, 
+        initial=True,
+        help_text="Autoriser la modification des dépenses existantes"
+    )
+    peut_supprimer_paiements = forms.BooleanField(
+        label="Peut supprimer les paiements", 
+        required=False, 
+        initial=False,
+        help_text="Autoriser la suppression des paiements"
+    )
+    peut_supprimer_depenses = forms.BooleanField(
+        label="Peut supprimer les dépenses", 
+        required=False, 
+        initial=False,
+        help_text="Autoriser la suppression des dépenses"
+    )
+    peut_consulter_rapports = forms.BooleanField(
+        label="Peut consulter les rapports", 
+        required=False, 
+        initial=True,
+        help_text="Autoriser la consultation des rapports"
+    )
 
     class Meta(UserCreationForm.Meta):
         model = User
@@ -85,15 +135,25 @@ class ComptableCreationForm(UserCreationForm):
         user.is_active = True
         if commit:
             user.save()
-        # Crée le profil lié
+        # Crée le profil lié avec toutes les permissions
         profil = Profil.objects.create(
             user=user,
             role='COMPTABLE',
             telephone=self.cleaned_data['telephone'],
             ecole=self.cleaned_data.get('ecole'),
+            # Permissions existantes
             peut_valider_paiements=self.cleaned_data.get('peut_valider_paiements', False),
             peut_valider_depenses=self.cleaned_data.get('peut_valider_depenses', False),
             peut_generer_rapports=self.cleaned_data.get('peut_generer_rapports', False),
             peut_gerer_utilisateurs=self.cleaned_data.get('peut_gerer_utilisateurs', False),
+            # Nouvelles permissions granulaires
+            peut_ajouter_paiements=self.cleaned_data.get('peut_ajouter_paiements', False),
+            peut_ajouter_depenses=self.cleaned_data.get('peut_ajouter_depenses', False),
+            peut_ajouter_enseignants=self.cleaned_data.get('peut_ajouter_enseignants', False),
+            peut_modifier_paiements=self.cleaned_data.get('peut_modifier_paiements', True),
+            peut_modifier_depenses=self.cleaned_data.get('peut_modifier_depenses', True),
+            peut_supprimer_paiements=self.cleaned_data.get('peut_supprimer_paiements', False),
+            peut_supprimer_depenses=self.cleaned_data.get('peut_supprimer_depenses', False),
+            peut_consulter_rapports=self.cleaned_data.get('peut_consulter_rapports', True),
         )
         return user

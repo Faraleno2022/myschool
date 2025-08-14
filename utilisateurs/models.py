@@ -31,6 +31,16 @@ class Profil(models.Model):
     peut_generer_rapports = models.BooleanField(default=False, verbose_name="Peut générer des rapports")
     peut_gerer_utilisateurs = models.BooleanField(default=False, verbose_name="Peut gérer les utilisateurs")
     
+    # Permissions granulaires pour les comptables
+    peut_ajouter_paiements = models.BooleanField(default=True, verbose_name="Peut ajouter des paiements")
+    peut_ajouter_depenses = models.BooleanField(default=True, verbose_name="Peut ajouter des dépenses")
+    peut_ajouter_enseignants = models.BooleanField(default=True, verbose_name="Peut ajouter des enseignants")
+    peut_modifier_paiements = models.BooleanField(default=True, verbose_name="Peut modifier les paiements")
+    peut_modifier_depenses = models.BooleanField(default=True, verbose_name="Peut modifier les dépenses")
+    peut_supprimer_paiements = models.BooleanField(default=False, verbose_name="Peut supprimer les paiements")
+    peut_supprimer_depenses = models.BooleanField(default=False, verbose_name="Peut supprimer les dépenses")
+    peut_consulter_rapports = models.BooleanField(default=True, verbose_name="Peut consulter les rapports")
+    
     # Informations de connexion
     derniere_connexion = models.DateTimeField(null=True, blank=True, verbose_name="Dernière connexion")
     actif = models.BooleanField(default=True, verbose_name="Actif")

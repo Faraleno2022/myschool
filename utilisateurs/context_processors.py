@@ -1,13 +1,34 @@
 from .models import Profil
-from .utils import user_is_admin, user_school
+from .permissions import get_user_permissions, check_comptable_restrictions
 
-
-def utilisateur_contexte(request):
-    user = request.user if hasattr(request, 'user') else None
-    profil = getattr(user, 'profil', None) if user and user.is_authenticated else None
-    return {
-        'current_user': user,
-        'current_profil': profil,
-        'current_ecole': user_school(user) if user and user.is_authenticated else None,
-        'is_admin': user_is_admin(user) if user and user.is_authenticated else False,
+def user_context(request):
+    """
+    Ajoute des informations utilisateur au contexte global
+    """
+    context = {
+        'user_profil': None,
+        'user_role': None,
+        'user_ecole': None,
+        'is_admin': False,
+        'user_permissions': {},
+        'user_restrictions': {},
     }
+    
+    if request.user.is_authenticated:
+        try:
+            profil = request.user.profil
+            context.update({
+                'user_profil': profil,
+                'user_role': profil.role,
+                'user_ecole': profil.ecole,
+                'is_admin': request.user.is_superuser or profil.role == 'ADMIN',
+                'user_permissions': get_user_permissions(request.user),
+                'user_restrictions': check_comptable_restrictions(request.user),
+            })
+        except Profil.DoesNotExist:
+            context.update({
+                'user_permissions': get_user_permissions(request.user),
+                'user_restrictions': check_comptable_restrictions(request.user),
+            })
+    
+    return context

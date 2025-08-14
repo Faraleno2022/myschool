@@ -15,6 +15,7 @@ from eleves.models import Eleve, GrilleTarifaire, Classe
 from .forms import PaiementForm, EcheancierForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
+from utilisateurs.permissions import can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments
 from rapports.utils import _draw_header_and_watermark
 from django.views.decorators.http import require_http_methods
 import re
@@ -753,6 +754,7 @@ def detail_paiement(request, paiement_id):
     return render(request, 'paiements/detail_paiement.html', context)
 
 @login_required
+@can_add_payments
 def ajouter_paiement(request, eleve_id=None):
     """Ajouter un nouveau paiement"""
     eleve = None
@@ -1004,6 +1006,7 @@ def creer_echeancier(request, eleve_id):
     return render(request, 'paiements/form_echeancier.html', context)
 
 @login_required
+@can_validate_payments
 def valider_paiement(request, paiement_id):
     """Valider un paiement en attente"""
     if request.method == 'POST':
