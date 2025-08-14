@@ -59,9 +59,25 @@ def system_reset_dashboard(request):
 def confirm_system_reset(request):
     """Confirmation et exécution de la réinitialisation système"""
     
+    # Log de debug
+    logger.info(f"Reset request received from {request.user.username}")
+    logger.info(f"Request method: {request.method}")
+    logger.info(f"AJAX header: {request.headers.get('X-Requested-With')}")
+    
+    # Vérifier que c'est une requête AJAX
+    if not request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        logger.warning("Reset request rejected: not AJAX")
+        return JsonResponse({
+            'success': False,
+            'error': 'Cette action nécessite une requête AJAX.'
+        })
+    
     # Vérifications de sécurité
     confirmation_text = request.POST.get('confirmation_text', '').strip()
     admin_password = request.POST.get('admin_password', '')
+    
+    logger.info(f"Confirmation text received: '{confirmation_text}'")
+    logger.info(f"Password provided: {'Yes' if admin_password else 'No'}")
     
     if confirmation_text != 'SUPPRIMER TOUTES LES DONNÉES':
         return JsonResponse({
