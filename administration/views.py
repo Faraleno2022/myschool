@@ -107,40 +107,106 @@ def confirm_system_reset(request):
             
             # ORDRE DE SUPPRESSION (important pour les contraintes FK)
             
-            # 1. Supprimer les journaux d'activité
-            JournalActivite.objects.all().delete()
+            suppressions_effectuees = []
             
-            # 2. Supprimer les données de paiements
-            PaiementRemise.objects.all().delete()
-            Paiement.objects.all().delete()
-            EcheancierPaiement.objects.all().delete()
-            RemiseReduction.objects.all().delete()
-            
-            # 3. Supprimer les données de salaires
-            DetailHeuresClasse.objects.all().delete()
-            EtatSalaire.objects.all().delete()
-            PeriodeSalaire.objects.all().delete()
-            AffectationClasse.objects.all().delete()
-            Enseignant.objects.all().delete()
-            
-            # 4. Supprimer les données de dépenses
-            Depense.objects.all().delete()
-            Fournisseur.objects.all().delete()
-            CategorieDepense.objects.all().delete()
-            
-            # 5. Supprimer les données d'élèves
-            HistoriqueEleve.objects.all().delete()
-            Eleve.objects.all().delete()
-            Responsable.objects.all().delete()
-            
-            # 6. Supprimer les données d'écoles
-            Classe.objects.all().delete()
-            GrilleTarifaire.objects.all().delete()
-            Ecole.objects.all().delete()
-            
-            # 7. Supprimer les utilisateurs non-admin
-            User.objects.filter(is_superuser=False).delete()
-            Profil.objects.filter(user__is_superuser=False).delete()
+            try:
+                # 1. Supprimer les journaux d'activité
+                count = JournalActivite.objects.count()
+                JournalActivite.objects.all().delete()
+                suppressions_effectuees.append(f"Journaux d'activité: {count}")
+                
+                # 2. Supprimer les données de paiements
+                count = PaiementRemise.objects.count()
+                PaiementRemise.objects.all().delete()
+                suppressions_effectuees.append(f"Remises paiements: {count}")
+                
+                count = Paiement.objects.count()
+                Paiement.objects.all().delete()
+                suppressions_effectuees.append(f"Paiements: {count}")
+                
+                count = EcheancierPaiement.objects.count()
+                EcheancierPaiement.objects.all().delete()
+                suppressions_effectuees.append(f"Échéanciers: {count}")
+                
+                count = RemiseReduction.objects.count()
+                RemiseReduction.objects.all().delete()
+                suppressions_effectuees.append(f"Remises: {count}")
+                
+                # 3. Supprimer les données de salaires
+                count = DetailHeuresClasse.objects.count()
+                DetailHeuresClasse.objects.all().delete()
+                suppressions_effectuees.append(f"Détails heures: {count}")
+                
+                count = EtatSalaire.objects.count()
+                EtatSalaire.objects.all().delete()
+                suppressions_effectuees.append(f"États salaires: {count}")
+                
+                count = PeriodeSalaire.objects.count()
+                PeriodeSalaire.objects.all().delete()
+                suppressions_effectuees.append(f"Périodes salaires: {count}")
+                
+                count = AffectationClasse.objects.count()
+                AffectationClasse.objects.all().delete()
+                suppressions_effectuees.append(f"Affectations: {count}")
+                
+                count = Enseignant.objects.count()
+                Enseignant.objects.all().delete()
+                suppressions_effectuees.append(f"Enseignants: {count}")
+                
+                # 4. Supprimer les données de dépenses
+                count = Depense.objects.count()
+                Depense.objects.all().delete()
+                suppressions_effectuees.append(f"Dépenses: {count}")
+                
+                count = Fournisseur.objects.count()
+                Fournisseur.objects.all().delete()
+                suppressions_effectuees.append(f"Fournisseurs: {count}")
+                
+                count = CategorieDepense.objects.count()
+                CategorieDepense.objects.all().delete()
+                suppressions_effectuees.append(f"Catégories dépenses: {count}")
+                
+                # 5. Supprimer les données d'élèves
+                count = HistoriqueEleve.objects.count()
+                HistoriqueEleve.objects.all().delete()
+                suppressions_effectuees.append(f"Historiques élèves: {count}")
+                
+                count = Eleve.objects.count()
+                Eleve.objects.all().delete()
+                suppressions_effectuees.append(f"Élèves: {count}")
+                
+                count = Responsable.objects.count()
+                Responsable.objects.all().delete()
+                suppressions_effectuees.append(f"Responsables: {count}")
+                
+                # 6. Supprimer les données d'écoles
+                count = Classe.objects.count()
+                Classe.objects.all().delete()
+                suppressions_effectuees.append(f"Classes: {count}")
+                
+                count = GrilleTarifaire.objects.count()
+                GrilleTarifaire.objects.all().delete()
+                suppressions_effectuees.append(f"Grilles tarifaires: {count}")
+                
+                count = Ecole.objects.count()
+                Ecole.objects.all().delete()
+                suppressions_effectuees.append(f"Écoles: {count}")
+                
+                # 7. Supprimer les utilisateurs non-admin et leurs profils
+                # D'abord supprimer les profils des utilisateurs non-admin
+                count = Profil.objects.filter(user__is_superuser=False).count()
+                Profil.objects.filter(user__is_superuser=False).delete()
+                suppressions_effectuees.append(f"Profils utilisateurs: {count}")
+                
+                # Ensuite supprimer les utilisateurs non-admin
+                count = User.objects.filter(is_superuser=False).count()
+                User.objects.filter(is_superuser=False).delete()
+                suppressions_effectuees.append(f"Utilisateurs non-admin: {count}")
+                
+            except Exception as e:
+                logger.error(f"Erreur lors de la suppression: {str(e)}")
+                logger.info(f"Suppressions effectuées avant erreur: {suppressions_effectuees}")
+                raise e
             
             # 8. Réinitialiser les types et modes de paiement (optionnel)
             # TypePaiement.objects.all().delete()
@@ -148,11 +214,13 @@ def confirm_system_reset(request):
             
             # Log final
             logger.critical(f"RÉINITIALISATION SYSTÈME terminée. Données supprimées: {stats_avant}")
+            logger.info(f"Détail des suppressions: {suppressions_effectuees}")
             
             return JsonResponse({
                 'success': True,
                 'message': 'Système réinitialisé avec succès. Toutes les données ont été supprimées.',
-                'stats_supprimees': stats_avant
+                'stats_supprimees': stats_avant,
+                'detail_suppressions': suppressions_effectuees
             })
             
     except Exception as e:
