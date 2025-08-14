@@ -179,7 +179,18 @@ def confirm_system_reset(request):
                 Responsable.objects.all().delete()
                 suppressions_effectuees.append(f"Responsables: {count}")
                 
-                # 6. Supprimer les données d'écoles
+                # 6. Supprimer les utilisateurs non-admin et leurs profils AVANT les écoles
+                # D'abord supprimer les profils des utilisateurs non-admin (ils référencent les écoles)
+                count = Profil.objects.filter(user__is_superuser=False).count()
+                Profil.objects.filter(user__is_superuser=False).delete()
+                suppressions_effectuees.append(f"Profils utilisateurs: {count}")
+                
+                # Ensuite supprimer les utilisateurs non-admin
+                count = User.objects.filter(is_superuser=False).count()
+                User.objects.filter(is_superuser=False).delete()
+                suppressions_effectuees.append(f"Utilisateurs non-admin: {count}")
+                
+                # 7. Supprimer les données d'écoles (après les profils qui les référencent)
                 count = Classe.objects.count()
                 Classe.objects.all().delete()
                 suppressions_effectuees.append(f"Classes: {count}")
@@ -191,17 +202,6 @@ def confirm_system_reset(request):
                 count = Ecole.objects.count()
                 Ecole.objects.all().delete()
                 suppressions_effectuees.append(f"Écoles: {count}")
-                
-                # 7. Supprimer les utilisateurs non-admin et leurs profils
-                # D'abord supprimer les profils des utilisateurs non-admin
-                count = Profil.objects.filter(user__is_superuser=False).count()
-                Profil.objects.filter(user__is_superuser=False).delete()
-                suppressions_effectuees.append(f"Profils utilisateurs: {count}")
-                
-                # Ensuite supprimer les utilisateurs non-admin
-                count = User.objects.filter(is_superuser=False).count()
-                User.objects.filter(is_superuser=False).delete()
-                suppressions_effectuees.append(f"Utilisateurs non-admin: {count}")
                 
             except Exception as e:
                 logger.error(f"Erreur lors de la suppression: {str(e)}")
