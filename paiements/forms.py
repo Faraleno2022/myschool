@@ -3,7 +3,7 @@ from django.core.validators import MinValueValidator
 from decimal import Decimal
 from datetime import date, datetime
 
-from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction
+from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
 from eleves.models import Eleve, Ecole
 
 class PaiementForm(forms.ModelForm):

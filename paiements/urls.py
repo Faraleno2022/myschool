@@ -24,6 +24,12 @@ urlpatterns = [
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
     path('export/tranches-par-classe/excel/', export_tranches_par_classe_excel, name='export_tranches_par_classe_excel'),
     
-    # AJAX
+    # AJAX endpoints
     path('ajax/statistiques/', views.ajax_statistiques_paiements, name='ajax_statistiques_paiements'),
+    path('ajax/eleve-info/', views.ajax_eleve_info, name='ajax_eleve_info'),
+    path('ajax/calculer-remise/', views.ajax_calculer_remise, name='ajax_calculer_remise'),
+    
+    # Remises
+    path('remise/<int:paiement_id>/', views.appliquer_remise_paiement, name='appliquer_remise'),
+    path('calculateur-remise/', views.calculateur_remise, name='calculateur_remise'),
 ]

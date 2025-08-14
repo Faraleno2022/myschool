@@ -77,27 +77,95 @@
                     
                     <div class="row">
                         {% if not eleve %}
-                        <div class="col-md-12 mb-3">
+                        <!-- Recherche par matricule -->
+                        <div class="col-md-6 mb-3">
+                            <label for="matriculeInput" class="form-label">
+                                Matricule de l'élève <span class="required-field">*</span>
+                            </label>
+                            <div class="input-group">
+                                <input type="text" id="matriculeInput" class="form-control" placeholder="Ex: 1CE00048" maxlength="20">
+                                <button type="button" id="rechercherBtn" class="btn btn-outline-primary">
+                                    <i class="fas fa-search"></i> Rechercher
+                                </button>
+                            </div>
+                            <div id="matriculeHelp" class="form-text">Saisissez le matricule et cliquez sur Rechercher pour charger les informations de l'élève.</div>
+                            <div id="matriculeError" class="text-danger small" style="display:none;"></div>
+                        </div>
+                        
+                        <!-- Sélection manuelle (alternative) -->
+                        <div class="col-md-6 mb-3">
                             <label for="eleveInput" class="form-label">
-                                Élève <span class="required-field">*</span>
+                                Ou sélectionner manuellement
                             </label>
                             <!-- Saisie libre avec liste -->
-                            <input type="text" id="eleveInput" class="form-control" list="elevesList" placeholder="Tapez et choisissez: nom, prénom, matricule, classe...">
+                            <input type="text" id="eleveInput" class="form-control" list="elevesList" placeholder="Tapez: nom, prénom, classe...">
                             <datalist id="elevesList">
                                 {% for e in form.eleve.field.queryset %}
                                     <option value="{{ e.prenom }} {{ e.nom }} ({{ e.matricule }}) - {{ e.classe.nom }} / {{ e.classe.ecole.nom }}" data-id="{{ e.id }}"></option>
                                 {% endfor %}
                             </datalist>
-                            <!-- Select réel masqué pour la soumission -->
-                            <div class="d-none">
-                                {{ form.eleve }}
-                            </div>
-                            <div id="eleveHelp" class="form-text">Choisissez une entrée de la liste après saisie. La sélection est obligatoire.</div>
-                            <div id="eleveError" class="text-danger small" style="display:none;">Sélection invalide. Veuillez choisir un élève depuis la liste.</div>
-                            {% if form.eleve.errors %}
-                                <div class="text-danger small">{{ form.eleve.errors.0 }}</div>
-                            {% endif %}
+                            <div id="eleveHelp" class="form-text">Alternative: choisissez depuis la liste.</div>
                         </div>
+                        
+                        <!-- Informations de l'élève chargées -->
+                        <div class="col-md-12 mb-3" id="eleveInfoSection" style="display:none;">
+                            <div class="eleve-info">
+                                <h6><i class="fas fa-user me-2"></i>Élève sélectionné :</h6>
+                                <div class="row">
+                                    <div class="col-md-8">
+                                        <p class="mb-1" id="eleveNomPrenom"><strong></strong></p>
+                                        <p class="mb-1" id="eleveMatricule"><small class="text-muted"></small></p>
+                                        <p class="mb-0" id="eleveClasse"><small class="text-muted"></small></p>
+                                    </div>
+                                    <div class="col-md-4 text-end">
+                                        <div id="elevePhotoContainer">
+                                            <div class="bg-secondary rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 60px; height: 60px;">
+                                                <i class="fas fa-user text-white fa-2x"></i>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Échéancier résumé -->
+                                <div id="echeancierResume" class="mt-3" style="display:none;">
+                                    <h6><i class="fas fa-money-bill-wave me-2"></i>Situation financière :</h6>
+                                    <div class="row text-center">
+                                        <div class="col-md-3">
+                                            <div class="bg-light p-2 rounded">
+                                                <small class="text-muted">Total dû</small><br>
+                                                <strong id="totalDu">0 GNF</strong>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="bg-light p-2 rounded">
+                                                <small class="text-muted">Déjà payé</small><br>
+                                                <strong class="text-success" id="totalPaye">0 GNF</strong>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="bg-light p-2 rounded">
+                                                <small class="text-muted">Reste à payer</small><br>
+                                                <strong class="text-danger" id="resteAPayer">0 GNF</strong>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <button type="button" class="btn btn-sm btn-outline-secondary" id="changerEleveBtn">
+                                                <i class="fas fa-edit"></i> Changer
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Select réel masqué pour la soumission -->
+                        <div class="d-none">
+                            {{ form.eleve }}
+                        </div>
+                        <div id="eleveError" class="text-danger small" style="display:none;">Veuillez sélectionner un élève.</div>
+                        {% if form.eleve.errors %}
+                            <div class="text-danger small">{{ form.eleve.errors.0 }}</div>
+                        {% endif %}
                         {% else %}
                             {{ form.eleve.as_hidden }}
                         {% endif %}
@@ -233,9 +301,12 @@
                 <div class="card-body">
                     <h6>Types de paiements</h6>
                     <ul class="small">
-                        <li><strong>Frais d'inscription :</strong> Paiement initial</li>
+                        <li><strong>Frais d'inscription :</strong> Paiement initial (30 000 GNF)</li>
                         <li><strong>Tranche 1, 2, 3 :</strong> Paiements échelonnés</li>
                         <li><strong>Frais divers :</strong> Autres frais scolaires</li>
+                        <li><strong>Inscription + 1ère tranche :</strong> Paiement combiné</li>
+                        <li><strong>Inscription + 1ère + 2ème tranche :</strong> Paiement combiné</li>
+                        <li><strong>Inscription + Annuel :</strong> Paiement complet</li>
                     </ul>
                     
                     <h6 class="mt-3">Modes de paiement</h6>
@@ -333,22 +404,47 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Validation du formulaire
     form.addEventListener('submit', function(e) {
-        // Si l'élève n'est pas pré-sélectionné, s'assurer que l'entrée correspond à la liste
-        const eleveInput = document.getElementById('eleveInput');
         const eleveSelect = document.getElementById('{{ form.eleve.id_for_label }}');
         const eleveError = document.getElementById('eleveError');
-        if (eleveInput && eleveSelect) {
-            const options = Array.from(document.querySelectorAll('#elevesList option'));
-            const match = options.find(opt => opt.value.trim() === eleveInput.value.trim());
-            if (match) {
-                eleveSelect.value = match.getAttribute('data-id');
-                eleveError && (eleveError.style.display = 'none');
+        
+        // Vérifier qu'un élève est sélectionné (soit via AJAX, soit via sélection manuelle)
+        if (!eleveSelect.value) {
+            // Si aucun élève n'est sélectionné, essayer de valider la sélection manuelle
+            const eleveInput = document.getElementById('eleveInput');
+            if (eleveInput && eleveInput.value.trim()) {
+                const options = Array.from(document.querySelectorAll('#elevesList option'));
+                const match = options.find(opt => opt.value.trim() === eleveInput.value.trim());
+                if (match) {
+                    eleveSelect.value = match.getAttribute('data-id');
+                    eleveError && (eleveError.style.display = 'none');
+                } else {
+                    e.preventDefault();
+                    if (eleveError) {
+                        eleveError.textContent = 'Sélection invalide. Veuillez choisir un élève depuis la liste ou rechercher par matricule.';
+                        eleveError.style.display = 'block';
+                    }
+                    eleveInput.focus();
+                    return;
+                }
             } else {
+                // Aucun élève sélectionné du tout
                 e.preventDefault();
-                if (eleveError) eleveError.style.display = 'block';
-                eleveInput.focus();
+                if (eleveError) {
+                    eleveError.textContent = 'Veuillez sélectionner un élève (recherche par matricule ou sélection manuelle).';
+                    eleveError.style.display = 'block';
+                }
+                // Focus sur le champ matricule s'il est visible
+                const matriculeInput = document.getElementById('matriculeInput');
+                if (matriculeInput && matriculeInput.parentElement.parentElement.style.display !== 'none') {
+                    matriculeInput.focus();
+                } else if (eleveInput) {
+                    eleveInput.focus();
+                }
                 return;
             }
+        } else {
+            // Un élève est sélectionné, masquer les erreurs
+            if (eleveError) eleveError.style.display = 'none';
         }
 
         submitBtn.disabled = true;
@@ -361,16 +457,164 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     });
     
-    // Auto-complétion pour la sélection d'élève
+    // Fonctionnalité de recherche par matricule
     {% if not eleve %}
+    const matriculeInput = document.getElementById('matriculeInput');
+    const rechercherBtn = document.getElementById('rechercherBtn');
+    const matriculeError = document.getElementById('matriculeError');
+    const eleveInfoSection = document.getElementById('eleveInfoSection');
     const eleveSelectInit = document.getElementById('{{ form.eleve.id_for_label }}');
     const eleveInputInit = document.getElementById('eleveInput');
+    const changerEleveBtn = document.getElementById('changerEleveBtn');
+    
+    // Variables pour stocker les données de l'élève
+    let currentEleveData = null;
+    
+    // Fonction pour formater les montants
+    function formatMontant(montant) {
+        return new Intl.NumberFormat('fr-FR').format(montant) + ' GNF';
+    }
+    
+    // Fonction pour afficher les informations de l'élève
+    function afficherEleveInfo(data) {
+        currentEleveData = data;
+        
+        // Remplir les informations de base
+        document.getElementById('eleveNomPrenom').innerHTML = `<strong>${data.eleve.prenom} ${data.eleve.nom}</strong>`;
+        document.getElementById('eleveMatricule').innerHTML = `<small class="text-muted">Matricule : ${data.eleve.matricule}</small>`;
+        document.getElementById('eleveClasse').innerHTML = `<small class="text-muted">Classe : ${data.eleve.classe} - ${data.eleve.ecole}</small>`;
+        
+        // Gérer la photo
+        const photoContainer = document.getElementById('elevePhotoContainer');
+        if (data.eleve.photo_url) {
+            photoContainer.innerHTML = `<img src="${data.eleve.photo_url}" alt="Photo" class="rounded-circle" width="60" height="60">`;
+        } else {
+            photoContainer.innerHTML = `<div class="bg-secondary rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 60px; height: 60px;">
+                <i class="fas fa-user text-white fa-2x"></i>
+            </div>`;
+        }
+        
+        // Afficher l'échéancier si disponible
+        if (data.has_echeancier) {
+            document.getElementById('totalDu').textContent = formatMontant(data.echeancier.total_du);
+            document.getElementById('totalPaye').textContent = formatMontant(data.echeancier.total_paye);
+            document.getElementById('resteAPayer').textContent = formatMontant(data.echeancier.reste_a_payer);
+            document.getElementById('echeancierResume').style.display = 'block';
+        } else {
+            document.getElementById('echeancierResume').style.display = 'none';
+        }
+        
+        // Mettre à jour le select caché
+        eleveSelectInit.value = data.eleve.id;
+        
+        // Afficher la section
+        eleveInfoSection.style.display = 'block';
+        
+        // Masquer les champs de recherche
+        matriculeInput.parentElement.parentElement.style.display = 'none';
+        eleveInputInit.parentElement.style.display = 'none';
+        
+        // Effacer les erreurs
+        matriculeError.style.display = 'none';
+        const eleveErrorElement = document.getElementById('eleveError');
+        if (eleveErrorElement) {
+            eleveErrorElement.style.display = 'none';
+            eleveErrorElement.textContent = '';
+        }
+    }
+    
+    // Fonction pour réinitialiser la sélection
+    function reinitialiserSelection() {
+        currentEleveData = null;
+        eleveInfoSection.style.display = 'none';
+        matriculeInput.parentElement.parentElement.style.display = 'block';
+        eleveInputInit.parentElement.style.display = 'block';
+        eleveSelectInit.value = '';
+        matriculeInput.value = '';
+        eleveInputInit.value = '';
+        matriculeError.style.display = 'none';
+    }
+    
+    // Recherche par matricule
+    function rechercherParMatricule() {
+        const matricule = matriculeInput.value.trim();
+        if (!matricule) {
+            matriculeError.textContent = 'Veuillez saisir un matricule';
+            matriculeError.style.display = 'block';
+            return;
+        }
+        
+        // Désactiver le bouton pendant la recherche
+        rechercherBtn.disabled = true;
+        rechercherBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Recherche...';
+        matriculeError.style.display = 'none';
+        
+        // Appel AJAX
+        fetch(`{% url 'paiements:ajax_eleve_info' %}?matricule=${encodeURIComponent(matricule)}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    afficherEleveInfo(data);
+                } else {
+                    matriculeError.textContent = data.error;
+                    matriculeError.style.display = 'block';
+                }
+            })
+            .catch(error => {
+                matriculeError.textContent = 'Erreur de connexion : ' + error.message;
+                matriculeError.style.display = 'block';
+            })
+            .finally(() => {
+                // Réactiver le bouton
+                rechercherBtn.disabled = false;
+                rechercherBtn.innerHTML = '<i class="fas fa-search"></i> Rechercher';
+            });
+    }
+    
+    // Event listeners
+    rechercherBtn.addEventListener('click', rechercherParMatricule);
+    
+    // Recherche en appuyant sur Entrée
+    matriculeInput.addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            rechercherParMatricule();
+        }
+    });
+    
+    // Bouton changer élève
+    changerEleveBtn.addEventListener('click', reinitialiserSelection);
+    
+    // Auto-complétion pour la sélection manuelle d'élève
     if (eleveInputInit && eleveSelectInit) {
         eleveInputInit.addEventListener('change', function() {
             const options = Array.from(document.querySelectorAll('#elevesList option'));
             const match = options.find(opt => opt.value.trim() === this.value.trim());
             if (match) {
-                eleveSelectInit.value = match.getAttribute('data-id');
+                const eleveId = match.getAttribute('data-id');
+                eleveSelectInit.value = eleveId;
+                
+                // Simuler les données pour affichage (extraction depuis l'option)
+                const optionText = match.value;
+                const parts = optionText.match(/^(.+) \((.+)\) - (.+) \/ (.+)$/);
+                if (parts) {
+                    const fakeData = {
+                        success: true,
+                        eleve: {
+                            id: eleveId,
+                            nom: parts[1].split(' ').slice(1).join(' '),
+                            prenom: parts[1].split(' ')[0],
+                            matricule: parts[2],
+                            classe: parts[3],
+                            ecole: parts[4],
+                            photo_url: null
+                        },
+                        has_echeancier: false,
+                        echeancier: {}
+                    };
+                    afficherEleveInfo(fakeData);
+                }
+                
                 const err = document.getElementById('eleveError');
                 if (err) err.style.display = 'none';
             }

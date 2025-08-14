@@ -87,8 +87,8 @@
                     <p class="text-muted">Réinitialisation complète du système - Réservé aux super administrateurs</p>
                 </div>
                 <div>
-                    <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary">
-                        <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                    <a href="{% url 'home' %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour à l'accueil
                     </a>
                 </div>
             </div>
@@ -251,7 +251,7 @@ document.addEventListener('DOMContentLoaded', function() {
             
             if (data.success) {
                 alert('✅ Système réinitialisé avec succès !\n\nToutes les données ont été supprimées.');
-                window.location.href = '{% url "dashboard" %}';
+                window.location.href = '{% url "home" %}';
             } else {
                 alert('❌ Erreur : ' + data.error);
                 confirmBtn.style.display = 'block';

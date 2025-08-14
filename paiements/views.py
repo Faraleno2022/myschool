@@ -10,11 +10,14 @@ from decimal import Decimal
 from datetime import date, datetime
 import os
 
-from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction
+from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from .forms import PaiementForm, EcheancierForm, RechercheForm
+from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
 from rapports.utils import _draw_header_and_watermark
+from django.views.decorators.http import require_http_methods
+import re
 
 # ReportLab for PDF exports (used by tranches-par-classe)
 from reportlab.lib import colors
@@ -314,6 +317,176 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
         infos.append("🎉 Toutes les tranches ont été réglées ! Merci pour votre paiement.")
 
     return {'warnings': warnings, 'info': infos}
+
+
+def _allocate_combined_payment(paiement, echeancier):
+    """
+    Allocation intelligente des paiements combinés selon le type de paiement.
+    Répartit automatiquement le montant dans les bonnes colonnes de l'échéancier.
+    """
+    type_paiement_nom = paiement.type_paiement.nom.lower()
+    montant_total = paiement.montant
+    warnings = []
+    infos = []
+    
+    # Montants fixes
+    FRAIS_INSCRIPTION = Decimal('30000')
+    
+    # Calculer les montants dus pour chaque tranche
+    inscription_due = echeancier.frais_inscription_du or Decimal('0')
+    tranche_1_due = echeancier.tranche_1_due or Decimal('0')
+    tranche_2_due = echeancier.tranche_2_due or Decimal('0')
+    tranche_3_due = echeancier.tranche_3_due or Decimal('0')
+    
+    # Calculer les montants déjà payés
+    inscription_payee = echeancier.frais_inscription_paye or Decimal('0')
+    tranche_1_payee = echeancier.tranche_1_payee or Decimal('0')
+    tranche_2_payee = echeancier.tranche_2_payee or Decimal('0')
+    tranche_3_payee = echeancier.tranche_3_payee or Decimal('0')
+    
+    # Calculer les soldes restants
+    inscription_restante = max(Decimal('0'), inscription_due - inscription_payee)
+    tranche_1_restante = max(Decimal('0'), tranche_1_due - tranche_1_payee)
+    tranche_2_restante = max(Decimal('0'), tranche_2_due - tranche_2_payee)
+    tranche_3_restante = max(Decimal('0'), tranche_3_due - tranche_3_payee)
+    
+    # Variables pour la répartition
+    montant_restant = montant_total
+    allocations = {
+        'inscription': Decimal('0'),
+        'tranche_1': Decimal('0'),
+        'tranche_2': Decimal('0'),
+        'tranche_3': Decimal('0')
+    }
+    
+    # Logique de répartition selon le type de paiement
+    if 'inscription + 1ère tranche' in type_paiement_nom and '2ème' not in type_paiement_nom:
+        # Frais d'inscription + 1ère tranche
+        infos.append("🔄 Paiement combiné détecté: Inscription + 1ère tranche")
+        
+        # Allouer l'inscription
+        if inscription_restante > 0:
+            montant_inscription = min(FRAIS_INSCRIPTION, inscription_restante, montant_restant)
+            allocations['inscription'] = montant_inscription
+            montant_restant -= montant_inscription
+            infos.append(f"✓ Inscription: {int(montant_inscription):,} GNF".replace(',', ' '))
+        
+        # Allouer le reste à la 1ère tranche
+        if montant_restant > 0 and tranche_1_restante > 0:
+            montant_tranche_1 = min(tranche_1_restante, montant_restant)
+            allocations['tranche_1'] = montant_tranche_1
+            montant_restant -= montant_tranche_1
+            infos.append(f"✓ 1ère tranche: {int(montant_tranche_1):,} GNF".replace(',', ' '))
+    
+    elif 'inscription + 1ère tranche + 2ème tranche' in type_paiement_nom:
+        # Frais d'inscription + 1ère tranche + 2ème tranche
+        infos.append("🔄 Paiement combiné détecté: Inscription + 1ère + 2ème tranche")
+        
+        # Allouer l'inscription
+        if inscription_restante > 0:
+            montant_inscription = min(FRAIS_INSCRIPTION, inscription_restante, montant_restant)
+            allocations['inscription'] = montant_inscription
+            montant_restant -= montant_inscription
+            infos.append(f"✓ Inscription: {int(montant_inscription):,} GNF".replace(',', ' '))
+        
+        # Allouer à la 1ère tranche
+        if montant_restant > 0 and tranche_1_restante > 0:
+            montant_tranche_1 = min(tranche_1_restante, montant_restant)
+            allocations['tranche_1'] = montant_tranche_1
+            montant_restant -= montant_tranche_1
+            infos.append(f"✓ 1ère tranche: {int(montant_tranche_1):,} GNF".replace(',', ' '))
+        
+        # Allouer le reste à la 2ème tranche
+        if montant_restant > 0 and tranche_2_restante > 0:
+            montant_tranche_2 = min(tranche_2_restante, montant_restant)
+            allocations['tranche_2'] = montant_tranche_2
+            montant_restant -= montant_tranche_2
+            infos.append(f"✓ 2ème tranche: {int(montant_tranche_2):,} GNF".replace(',', ' '))
+    
+    elif 'inscription + annuel' in type_paiement_nom:
+        # Frais d'inscription + Paiement annuel complet
+        infos.append("🔄 Paiement combiné détecté: Inscription + Annuel")
+        
+        # Allouer l'inscription
+        if inscription_restante > 0:
+            montant_inscription = min(FRAIS_INSCRIPTION, inscription_restante, montant_restant)
+            allocations['inscription'] = montant_inscription
+            montant_restant -= montant_inscription
+            infos.append(f"✓ Inscription: {int(montant_inscription):,} GNF".replace(',', ' '))
+        
+        # Répartir le reste proportionnellement entre les tranches
+        if montant_restant > 0:
+            total_tranches_restantes = tranche_1_restante + tranche_2_restante + tranche_3_restante
+            
+            if total_tranches_restantes > 0:
+                # Répartition proportionnelle
+                if tranche_1_restante > 0:
+                    proportion_1 = tranche_1_restante / total_tranches_restantes
+                    montant_tranche_1 = min(tranche_1_restante, montant_restant * proportion_1)
+                    allocations['tranche_1'] = montant_tranche_1
+                    montant_restant -= montant_tranche_1
+                    infos.append(f"✓ 1ère tranche: {int(montant_tranche_1):,} GNF".replace(',', ' '))
+                
+                if tranche_2_restante > 0 and montant_restant > 0:
+                    proportion_2 = tranche_2_restante / total_tranches_restantes
+                    montant_tranche_2 = min(tranche_2_restante, montant_restant * proportion_2)
+                    allocations['tranche_2'] = montant_tranche_2
+                    montant_restant -= montant_tranche_2
+                    infos.append(f"✓ 2ème tranche: {int(montant_tranche_2):,} GNF".replace(',', ' '))
+                
+                if tranche_3_restante > 0 and montant_restant > 0:
+                    # Le reste va à la 3ème tranche
+                    montant_tranche_3 = min(tranche_3_restante, montant_restant)
+                    allocations['tranche_3'] = montant_tranche_3
+                    montant_restant -= montant_tranche_3
+                    infos.append(f"✓ 3ème tranche: {int(montant_tranche_3):,} GNF".replace(',', ' '))
+    
+    else:
+        # Type de paiement non combiné, utiliser la logique existante
+        return _allocate_payment_to_echeancier(paiement, echeancier)
+    
+    # Appliquer les allocations à l'échéancier
+    if allocations['inscription'] > 0:
+        echeancier.frais_inscription_paye = (echeancier.frais_inscription_paye or Decimal('0')) + allocations['inscription']
+    
+    if allocations['tranche_1'] > 0:
+        echeancier.tranche_1_payee = (echeancier.tranche_1_payee or Decimal('0')) + allocations['tranche_1']
+    
+    if allocations['tranche_2'] > 0:
+        echeancier.tranche_2_payee = (echeancier.tranche_2_payee or Decimal('0')) + allocations['tranche_2']
+    
+    if allocations['tranche_3'] > 0:
+        echeancier.tranche_3_payee = (echeancier.tranche_3_payee or Decimal('0')) + allocations['tranche_3']
+    
+    # Vérifier s'il reste un montant non alloué
+    if montant_restant > 0:
+        warnings.append(f"⚠️ Montant non alloué: {int(montant_restant):,} GNF - Vérifiez les montants dus".replace(',', ' '))
+    
+    # Calculer le nouveau solde
+    total_du = (echeancier.frais_inscription_du or Decimal('0')) + (echeancier.tranche_1_due or Decimal('0')) + (echeancier.tranche_2_due or Decimal('0')) + (echeancier.tranche_3_due or Decimal('0'))
+    total_paye = (echeancier.frais_inscription_paye or Decimal('0')) + (echeancier.tranche_1_payee or Decimal('0')) + (echeancier.tranche_2_payee or Decimal('0')) + (echeancier.tranche_3_payee or Decimal('0'))
+    nouveau_solde = total_du - total_paye
+    
+    # Mettre à jour le statut
+    if nouveau_solde <= 0:
+        echeancier.statut = 'PAYE_COMPLET'
+        infos.append("🎉 Échéancier entièrement réglé ! Félicitations.")
+    else:
+        # Vérifier les retards
+        now = timezone.now().date()
+        en_retard = (
+            (now > echeancier.date_echeance_inscription and echeancier.frais_inscription_paye < echeancier.frais_inscription_du) or
+            (now > echeancier.date_echeance_tranche_1 and echeancier.tranche_1_payee < echeancier.tranche_1_due) or
+            (now > echeancier.date_echeance_tranche_2 and echeancier.tranche_2_payee < echeancier.tranche_2_due) or
+            (now > echeancier.date_echeance_tranche_3 and echeancier.tranche_3_payee < echeancier.tranche_3_due)
+        )
+        echeancier.statut = 'EN_RETARD' if en_retard else 'PAYE_PARTIEL'
+    
+    # Sauvegarder l'échéancier
+    echeancier.save()
+    
+    return {'warnings': warnings, 'info': infos}
+
 
 @login_required
 def tableau_bord_paiements(request):
@@ -642,36 +815,12 @@ def ajouter_paiement(request, eleve_id=None):
 
             paiement = form.save(commit=False)
             paiement.cree_par = request.user
-
-            # Générer un numéro de reçu unique et robuste (évite collisions)
-            annee = timezone.now().year
-            prefix = f"REC{annee}"
-            # Réessayer quelques fois en cas de collision concurrente
-            for _ in range(5):
-                dernier = (
-                    Paiement.objects
-                    .filter(numero_recu__startswith=prefix)
-                    .order_by('-numero_recu')
-                    .first()
-                )
-                if dernier and isinstance(dernier.numero_recu, str) and len(dernier.numero_recu) >= 4:
-                    try:
-                        seq = int(dernier.numero_recu[-4:]) + 1
-                    except ValueError:
-                        seq = 1
-                else:
-                    seq = 1
-
-                paiement.numero_recu = f"{prefix}{seq:04d}"
-                try:
-                    with transaction.atomic():
-                        paiement.save()
-                    break
-                except IntegrityError:
-                    # Une collision est survenue, on retente avec le numéro suivant
-                    continue
-            else:
-                messages.error(request, "Impossible de générer un numéro de reçu unique. Veuillez réessayer.")
+            
+            # Le numéro de reçu est maintenant généré automatiquement par le modèle
+            try:
+                paiement.save()
+            except ValueError as e:
+                messages.error(request, f"Erreur lors de la génération du numéro de reçu: {e}")
                 context = {
                     'form': form,
                     'eleve': eleve_cible if eleve is None else eleve,
@@ -869,18 +1018,14 @@ def valider_paiement(request, paiement_id):
             paiement.date_validation = timezone.now()
             paiement.save()
             
-            # Impacter l'échéancier à la validation
+            # Impacter l'échéancier à la validation avec allocation intelligente
             try:
                 echeancier = paiement.eleve.echeancier
-                cible = _map_type_to_tranche(getattr(paiement.type_paiement, 'nom', ''))
-                feedback = _allocate_payment_to_echeancier(
-                    echeancier=echeancier,
-                    montant=paiement.montant,
-                    date_pay=paiement.date_paiement,
-                    cible=cible,
-                )
-                echeancier.save()
-
+                
+                # Utiliser la nouvelle fonction d'allocation intelligente pour les paiements combinés
+                feedback = _allocate_combined_payment(paiement, echeancier)
+                
+                # Afficher les messages de feedback
                 for w in feedback['warnings']:
                     messages.warning(request, w)
                 for info in feedback['info']:
@@ -909,6 +1054,8 @@ def generer_recu_pdf(request, paiement_id):
         from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import mm
         from reportlab.lib import colors
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
         from django.utils.formats import number_format
         from django.utils.timezone import localtime
         from django.contrib.staticfiles import finders
@@ -919,7 +1066,39 @@ def generer_recu_pdf(request, paiement_id):
     buffer = io.BytesIO()
     width, height = A4
     c = canvas.Canvas(buffer, pagesize=A4)
-
+    
+    # Améliorer la qualité de rendu des polices
+    c.setPageCompression(1)  # Activer la compression pour de meilleurs résultats
+    
+    # Enregistrer des polices système pour une meilleure qualité
+    try:
+        # Essayer d'utiliser des polices système plus nettes et modernes
+        import platform
+        if platform.system() == "Windows":
+            # Polices Windows modernes - Calibri pour une meilleure lisibilité
+            calibri_path = "C:/Windows/Fonts/calibri.ttf"
+            calibri_bold_path = "C:/Windows/Fonts/calibrib.ttf"
+            # Fallback vers Arial si Calibri n'est pas disponible
+            arial_path = "C:/Windows/Fonts/arial.ttf"
+            arial_bold_path = "C:/Windows/Fonts/arialbd.ttf"
+            
+            if os.path.exists(calibri_path):
+                pdfmetrics.registerFont(TTFont('Calibri', calibri_path))
+                pdfmetrics.registerFont(TTFont('MainFont', calibri_path))
+            elif os.path.exists(arial_path):
+                pdfmetrics.registerFont(TTFont('Arial', arial_path))
+                pdfmetrics.registerFont(TTFont('MainFont', arial_path))
+                
+            if os.path.exists(calibri_bold_path):
+                pdfmetrics.registerFont(TTFont('Calibri-Bold', calibri_bold_path))
+                pdfmetrics.registerFont(TTFont('MainFont-Bold', calibri_bold_path))
+            elif os.path.exists(arial_bold_path):
+                pdfmetrics.registerFont(TTFont('Arial-Bold', arial_bold_path))
+                pdfmetrics.registerFont(TTFont('MainFont-Bold', arial_bold_path))
+    except Exception:
+        # Fallback vers les polices par défaut si erreur
+        pass
+    
     # Marges
     margin_x = 20 * mm
     margin_y = 20 * mm
@@ -947,7 +1126,7 @@ def generer_recu_pdf(request, paiement_id):
             wm_x = (width - wm_width) / 2
             wm_y = (height - wm_height) / 2
             try:
-                c.setFillAlpha(0.08)
+                c.setFillAlpha(0.04)  # Opacité légèrement augmentée pour rendre le filigrane plus visible
             except Exception:
                 pass
             c.translate(width / 2.0, height / 2.0)
@@ -957,16 +1136,24 @@ def generer_recu_pdf(request, paiement_id):
         finally:
             c.restoreState()
 
-    # En-tête avec logo + titre
+    # En-tête avec logo + titre (ajusté pour éviter chevauchement avec photo élève)
     c.saveState()
     try:
         if logo_path:
             c.drawImage(logo_path, margin_x, height - margin_y - 30, width=60, height=30, preserveAspectRatio=True, mask='auto')
         c.setFillColor(colors.HexColor('#0056b3'))
-        c.setFont("Helvetica-Bold", 16)
+        try:
+            c.setFont("MainFont-Bold", 18)
+        except:
+            c.setFont("Helvetica-Bold", 18)
+        # Limiter la largeur du texte pour éviter chevauchement avec photo (réserver 100mm à droite)
+        max_text_width = width - margin_x - 70 - 100  # 100mm réservés pour photo + marge
         c.drawString(margin_x + 70, height - margin_y - 10, "École Moderne HADJA KANFING DIANÉ")
         c.setFillColor(colors.black)
-        c.setFont("Helvetica-Bold", 14)
+        try:
+            c.setFont("MainFont-Bold", 16)
+        except:
+            c.setFont("Helvetica-Bold", 16)
         c.drawString(margin_x + 70, height - margin_y - 28, f"Reçu de paiement #{paiement.numero_recu}")
         # Ligne de séparation
         c.setStrokeColor(colors.HexColor('#0056b3'))
@@ -975,13 +1162,20 @@ def generer_recu_pdf(request, paiement_id):
     finally:
         c.restoreState()
 
-    # Photo de l'élève (en haut à droite, sous l'entête)
+    # Photo de l'élève (en haut à droite, bien positionnée)
+    photo_displayed = False
     try:
         if getattr(paiement.eleve, 'photo', None) and paiement.eleve.photo.name:
             eleve_photo_path = paiement.eleve.photo.path  # chemin fichier local
-            photo_box = 28 * mm  # taille carrée ~28mm
-            photo_x = width - margin_x - photo_box
-            photo_y = height - margin_y - 38 - photo_box - 6  # sous la ligne d'entête avec petit offset
+            photo_box = 35 * mm  # taille carrée agrandie ~35mm
+            photo_x = width - margin_x - photo_box - 5  # 5mm de marge du bord
+            photo_y = height - margin_y - 120 - photo_box  # descendue encore plus bas (120mm au lieu de 80mm)
+            
+            # Cadre autour de la photo
+            c.setStrokeColor(colors.HexColor('#0056b3'))
+            c.setLineWidth(1)
+            c.rect(photo_x - 2, photo_y - 2, photo_box + 4, photo_box + 4)
+            
             c.drawImage(
                 eleve_photo_path,
                 photo_x,
@@ -991,21 +1185,52 @@ def generer_recu_pdf(request, paiement_id):
                 preserveAspectRatio=True,
                 mask='auto'
             )
+            photo_displayed = True
     except Exception:
         # Si l'image n'est pas disponible ou invalide, on ignore sans bloquer la génération du PDF
         pass
+    
+    # Si pas de photo, afficher un placeholder
+    if not photo_displayed:
+        photo_box = 35 * mm
+        photo_x = width - margin_x - photo_box - 5
+        photo_y = height - margin_y - 120 - photo_box  # même position que la vraie photo
+        
+        # Cadre pour placeholder
+        c.setStrokeColor(colors.lightgrey)
+        c.setFillColor(colors.lightgrey)
+        c.setLineWidth(1)
+        c.rect(photo_x, photo_y, photo_box, photo_box, fill=1, stroke=1)
+        
+        # Texte "Photo"
+        c.setFillColor(colors.darkgrey)
+        try:
+            c.setFont("MainFont", 12)
+        except:
+            c.setFont("Helvetica", 12)
+        text_width = c.stringWidth("Photo")
+        c.drawString(photo_x + (photo_box - text_width) / 2, photo_y + photo_box / 2 - 5, "Photo")
 
-    # Informations élève et paiement
-    y = height - margin_y - 60
-    c.setFont("Helvetica", 11)
+    # Informations élève et paiement (ajusté pour éviter chevauchement avec photo)
+    y = height - margin_y - 70  # Descendre un peu plus pour laisser place à la photo agrandie
+    try:
+        c.setFont("MainFont", 13)
+    except:
+        c.setFont("Helvetica", 13)
 
     def line(label, value):
         nonlocal y
-        c.setFont("Helvetica-Bold", 11)
+        try:
+            c.setFont("MainFont-Bold", 13)
+        except:
+            c.setFont("Helvetica-Bold", 13)
         c.drawString(margin_x, y, f"{label} :")
-        c.setFont("Helvetica", 11)
+        try:
+            c.setFont("MainFont", 13)
+        except:
+            c.setFont("Helvetica", 13)
         c.drawString(margin_x + 140, y, str(value))
-        y -= 16
+        y -= 18
 
     # Formatage
     montant_fmt = f"{int(paiement.montant):,}".replace(',', ' ')
@@ -1030,12 +1255,18 @@ def generer_recu_pdf(request, paiement_id):
     # Observations
     if paiement.observations:
         y -= 6
-        c.setFont("Helvetica-Bold", 11)
+        try:
+            c.setFont("MainFont-Bold", 13)
+        except:
+            c.setFont("Helvetica-Bold", 13)
         c.drawString(margin_x, y, "Observations :")
-        y -= 14
-        c.setFont("Helvetica", 10)
+        y -= 16
+        try:
+            c.setFont("MainFont", 12)
+        except:
+            c.setFont("Helvetica", 12)
         text_obj = c.beginText(margin_x, y)
-        text_obj.setLeading(14)
+        text_obj.setLeading(16)
         for part in str(paiement.observations).split('\n'):
             text_obj.textLine(part)
         c.drawText(text_obj)
@@ -1122,20 +1353,32 @@ def generer_recu_pdf(request, paiement_id):
             return f"{int(d):,}".replace(',', ' ') + " GNF"
 
         y -= 10
-        c.setFont("Helvetica-Bold", 12)
+        try:
+            c.setFont("MainFont-Bold", 14)
+        except:
+            c.setFont("Helvetica-Bold", 14)
         c.drawString(margin_x, y, "Résumé de l'échéancier")
-        y -= 18
-        c.setFont("Helvetica", 11)
+        y -= 20
+        try:
+            c.setFont("MainFont", 13)
+        except:
+            c.setFont("Helvetica", 13)
         line("Total à payer", fmt_money(total_a_payer))
         line("Déjà payé", fmt_money(total_paye))
         line("Reste à payer", fmt_money(reste))
 
         # Détail par tranche
         y -= 4
-        c.setFont("Helvetica-Bold", 11)
+        try:
+            c.setFont("MainFont-Bold", 13)
+        except:
+            c.setFont("Helvetica-Bold", 13)
         c.drawString(margin_x, y, "Détail des tranches :")
-        y -= 16
-        c.setFont("Helvetica", 10)
+        y -= 18
+        try:
+            c.setFont("Arial", 12)
+        except:
+            c.setFont("Helvetica", 12)
         detail = [
             ("Inscription", echeancier.frais_inscription_du or Decimal('0'), paye_insc),
             ("Tranche 1", echeancier.tranche_1_due or Decimal('0'), paye_t1),
@@ -1145,14 +1388,20 @@ def generer_recu_pdf(request, paiement_id):
         for label, due, paid in detail:
             rest = max(Decimal('0'), due - paid)
             c.drawString(margin_x, y, f"{label} : dû {fmt_money(due)} | payé {fmt_money(paid)} | reste {fmt_money(rest)}")
-            y -= 14
+            y -= 16
     except EcheancierPaiement.DoesNotExist:
         y -= 10
-        c.setFont("Helvetica-Oblique", 10)
+        try:
+            c.setFont("MainFont", 12)
+        except:
+            c.setFont("Helvetica-Oblique", 12)
         c.drawString(margin_x, y, "Aucun échéancier n'est associé à cet élève.")
 
     # Pied de page
-    c.setFont("Helvetica-Oblique", 9)
+    try:
+        c.setFont("MainFont", 11)
+    except:
+        c.setFont("Helvetica-Oblique", 11)
     c.setFillColor(colors.grey)
     c.drawString(margin_x, margin_y, "Ce reçu est généré automatiquement par le système de gestion scolaire.")
 
@@ -1371,3 +1620,258 @@ def export_tranches_par_classe_pdf(request):
     response['Content-Disposition'] = dispo
     response.write(pdf)
     return response
+
+
+@login_required
+@require_http_methods(["GET"])
+def ajax_eleve_info(request):
+    """Vue AJAX pour récupérer les informations d'un élève par matricule"""
+    matricule = request.GET.get('matricule', '').strip()
+    
+    if not matricule:
+        return JsonResponse({'success': False, 'error': 'Matricule requis'})
+    
+    try:
+        # Filtrer selon les permissions utilisateur
+        qs = Eleve.objects.select_related('classe', 'classe__ecole')
+        if not user_is_admin(request.user):
+            qs = filter_by_user_school(qs, request.user, 'classe__ecole')
+        
+        eleve = qs.get(matricule__iexact=matricule)
+        
+        # Récupérer l'échéancier s'il existe
+        echeancier = None
+        try:
+            echeancier = eleve.echeancier
+        except:
+            pass
+        
+        # Calculer les montants dus et payés
+        montants_info = {}
+        if echeancier:
+            montants_info = {
+                'inscription_du': float(echeancier.frais_inscription_du or 0),
+                'inscription_paye': float(echeancier.frais_inscription_paye or 0),
+                'tranche_1_du': float(echeancier.tranche_1_due or 0),
+                'tranche_1_paye': float(echeancier.tranche_1_payee or 0),
+                'tranche_2_du': float(echeancier.tranche_2_due or 0),
+                'tranche_2_paye': float(echeancier.tranche_2_payee or 0),
+                'tranche_3_du': float(echeancier.tranche_3_due or 0),
+                'tranche_3_paye': float(echeancier.tranche_3_payee or 0),
+                'total_du': float((echeancier.frais_inscription_du or 0) + 
+                                (echeancier.tranche_1_due or 0) + 
+                                (echeancier.tranche_2_due or 0) + 
+                                (echeancier.tranche_3_due or 0)),
+                'total_paye': float((echeancier.frais_inscription_paye or 0) + 
+                                  (echeancier.tranche_1_payee or 0) + 
+                                  (echeancier.tranche_2_payee or 0) + 
+                                  (echeancier.tranche_3_payee or 0))
+            }
+            montants_info['reste_a_payer'] = montants_info['total_du'] - montants_info['total_paye']
+        
+        data = {
+            'success': True,
+            'eleve': {
+                'id': eleve.id,
+                'nom': eleve.nom,
+                'prenom': eleve.prenom,
+                'matricule': eleve.matricule,
+                'classe': eleve.classe.nom,
+                'ecole': eleve.classe.ecole.nom,
+                'photo_url': eleve.photo.url if eleve.photo else None,
+                'date_inscription': eleve.date_inscription.strftime('%d/%m/%Y') if eleve.date_inscription else None
+            },
+            'echeancier': montants_info,
+            'has_echeancier': echeancier is not None
+        }
+        
+        return JsonResponse(data)
+        
+    except Eleve.DoesNotExist:
+        return JsonResponse({
+            'success': False, 
+            'error': f'Aucun élève trouvé avec le matricule "{matricule}"'
+        })
+    except Exception as e:
+        return JsonResponse({
+            'success': False, 
+            'error': f'Erreur lors de la recherche: {str(e)}'
+        })
+
+
+@login_required
+def appliquer_remise_paiement(request, paiement_id):
+    """Vue pour appliquer des remises à un paiement existant"""
+    qs = Paiement.objects.select_related('eleve', 'type_paiement')
+    if not user_is_admin(request.user):
+        qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
+    
+    paiement = get_object_or_404(qs, id=paiement_id)
+    
+    # Vérifier que le paiement n'est pas encore validé
+    if paiement.statut == 'VALIDE':
+        messages.warning(request, "Impossible d'appliquer des remises à un paiement déjà validé.")
+        return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+    
+    if request.method == 'POST':
+        form = PaiementRemiseForm(request.POST, paiement=paiement)
+        if form.is_valid():
+            try:
+                with transaction.atomic():
+                    # Supprimer les anciennes remises
+                    PaiementRemise.objects.filter(paiement=paiement).delete()
+                    
+                    # Calculer et appliquer les nouvelles remises
+                    montant_original = paiement.montant
+                    total_remise = form.calculate_total_remise(montant_original)
+                    remises_details = form.get_remises_details(montant_original)
+                    
+                    # Créer les nouvelles associations remise-paiement
+                    for detail in remises_details:
+                        PaiementRemise.objects.create(
+                            paiement=paiement,
+                            remise=detail['remise'],
+                            montant_remise=detail['montant']
+                        )
+                    
+                    # Mettre à jour le montant du paiement
+                    nouveau_montant = montant_original - total_remise
+                    paiement.montant = nouveau_montant
+                    paiement.save()
+                    
+                    # Messages informatifs
+                    messages.success(request, f"Remises appliquées avec succès !")
+                    messages.info(request, f"Montant original: {montant_original:,.0f} GNF".replace(',', ' '))
+                    messages.info(request, f"Total des remises: {total_remise:,.0f} GNF".replace(',', ' '))
+                    messages.info(request, f"Nouveau montant: {nouveau_montant:,.0f} GNF".replace(',', ' '))
+                    
+                    for detail in remises_details:
+                        messages.info(request, f"• {detail['description']}")
+                    
+                    return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+                    
+            except Exception as e:
+                messages.error(request, f"Erreur lors de l'application des remises: {str(e)}")
+    else:
+        form = PaiementRemiseForm(paiement=paiement)
+    
+    context = {
+        'form': form,
+        'paiement': paiement,
+        'remises_existantes': paiement.remises.all()
+    }
+    
+    return render(request, 'paiements/appliquer_remise.html', context)
+
+
+@login_required
+@require_http_methods(["GET"])
+def ajax_calculer_remise(request):
+    """Vue AJAX pour calculer une remise en temps réel"""
+    try:
+        montant = Decimal(request.GET.get('montant', '0'))
+        remise_id = request.GET.get('remise_id')
+        
+        if not montant or montant <= 0:
+            return JsonResponse({'success': False, 'error': 'Montant invalide'})
+        
+        if not remise_id:
+            return JsonResponse({'success': False, 'error': 'Remise non sélectionnée'})
+        
+        try:
+            remise = RemiseReduction.objects.get(id=remise_id, actif=True)
+        except RemiseReduction.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Remise introuvable'})
+        
+        # Vérifier que la remise est valide à la date actuelle
+        today = date.today()
+        if not (remise.date_debut <= today <= remise.date_fin):
+            return JsonResponse({
+                'success': False, 
+                'error': f'Cette remise n\'est pas valide aujourd\'hui (valide du {remise.date_debut.strftime("%d/%m/%Y")} au {remise.date_fin.strftime("%d/%m/%Y")})'
+            })
+        
+        # Calculer la remise
+        montant_remise = remise.calculer_remise(montant)
+        montant_final = montant - montant_remise
+        pourcentage_remise = (montant_remise / montant * 100) if montant > 0 else 0
+        
+        return JsonResponse({
+            'success': True,
+            'calcul': {
+                'montant_original': float(montant),
+                'montant_remise': float(montant_remise),
+                'montant_final': float(montant_final),
+                'pourcentage_remise': round(pourcentage_remise, 2),
+                'remise_nom': remise.nom,
+                'remise_type': remise.get_type_remise_display(),
+                'remise_valeur': float(remise.valeur),
+                'description': f"{remise.nom} - {montant_remise:,.0f} GNF".replace(',', ' ')
+            }
+        })
+        
+    except (ValueError, TypeError) as e:
+        return JsonResponse({'success': False, 'error': 'Données invalides'})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': f'Erreur de calcul: {str(e)}'})
+
+
+@login_required
+def calculateur_remise(request):
+    """Vue pour le calculateur de remises (outil de simulation)"""
+    form = CalculateurRemiseForm()
+    resultat = None
+    
+    if request.method == 'POST':
+        form = CalculateurRemiseForm(request.POST)
+        if form.is_valid():
+            resultat = form.calculate_remise_preview()
+    
+    # Récupérer toutes les remises actives pour affichage
+    remises_actives = RemiseReduction.objects.filter(
+        actif=True,
+        date_debut__lte=date.today(),
+        date_fin__gte=date.today()
+    ).order_by('nom')
+    
+    context = {
+        'form': form,
+        'resultat': resultat,
+        'remises_actives': remises_actives
+    }
+    
+    return render(request, 'paiements/calculateur_remise.html', context)
+
+
+def _calculate_payment_with_remises(paiement, remises_ids=None):
+    """
+    Fonction utilitaire pour calculer un paiement avec remises
+    Utilisée lors de la création/modification de paiements
+    """
+    if not remises_ids:
+        return paiement.montant, []
+    
+    montant_original = paiement.montant
+    total_remise = Decimal('0')
+    remises_appliquees = []
+    
+    for remise_id in remises_ids:
+        try:
+            remise = RemiseReduction.objects.get(id=remise_id, actif=True)
+            
+            # Vérifier la validité de la remise
+            today = paiement.date_paiement
+            if remise.date_debut <= today <= remise.date_fin:
+                montant_remise = remise.calculer_remise(montant_original)
+                total_remise += montant_remise
+                remises_appliquees.append({
+                    'remise': remise,
+                    'montant': montant_remise
+                })
+        except RemiseReduction.DoesNotExist:
+            continue
+    
+    # Le montant final ne peut pas être négatif
+    montant_final = max(Decimal('0'), montant_original - total_remise)
+    
+    return montant_final, remises_appliquees

@@ -85,6 +85,44 @@ class Paiement(models.Model):
     def __str__(self):
         return f"{self.numero_recu} - {self.eleve.nom_complet} - {self.montant:,.0f} GNF"
     
+    def save(self, *args, **kwargs):
+        """Génère automatiquement un numéro de reçu si non défini"""
+        if not self.numero_recu:
+            from django.utils import timezone
+            from django.db import transaction, IntegrityError
+            
+            annee = timezone.now().year
+            prefix = f"REC{annee}"
+            
+            # Réessayer quelques fois en cas de collision concurrente
+            for _ in range(10):
+                dernier = (
+                    Paiement.objects
+                    .filter(numero_recu__startswith=prefix)
+                    .order_by('-numero_recu')
+                    .first()
+                )
+                if dernier and isinstance(dernier.numero_recu, str) and len(dernier.numero_recu) >= 4:
+                    try:
+                        seq = int(dernier.numero_recu[-4:]) + 1
+                    except ValueError:
+                        seq = 1
+                else:
+                    seq = 1
+
+                self.numero_recu = f"{prefix}{seq:04d}"
+                try:
+                    super().save(*args, **kwargs)
+                    return
+                except IntegrityError:
+                    # Une collision est survenue, on retente avec le numéro suivant
+                    continue
+            else:
+                # Si on n'arrive pas à générer un numéro unique après 10 tentatives
+                raise ValueError("Impossible de générer un numéro de reçu unique après 10 tentatives")
+        else:
+            super().save(*args, **kwargs)
+    
     @property
     def montant_avec_frais(self):
         return self.montant + self.mode_paiement.frais_supplementaires
