@@ -165,8 +165,10 @@ def export_tranches_par_classe_pdf(request):
                 total_paye = (insc or 0) + (t1 or 0) + (t2 or 0) + (t3 or 0)
                 reste = Decimal('0')
 
+            # Construire le nom de l'élève sans déclencher d'erreur si un attribut manque
+            nom_affiche = getattr(e, 'nom_complet', None) or f"{getattr(e, 'prenom', '')} {getattr(e, 'nom', '')}".strip()
             data.append([
-                P(getattr(e, 'nom_complet', f"{e.nom} {e.prenoms}")),
+                P(nom_affiche),
                 f"{insc:,}".replace(',', ' '),
                 f"{t1:,}".replace(',', ' '),
                 f"{t2:,}".replace(',', ' '),

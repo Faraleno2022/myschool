@@ -156,58 +156,65 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         }
         
         # Paiements de la période (liaison via Eleve -> Classe -> École)
-        # Utiliser plusieurs filtres pour capturer plus de paiements
         paiements_periode = Paiement.objects.filter(
             eleve__classe__ecole=ecole,
             date_paiement__range=[debut, fin]
-        ).exclude(statut='ANNULE')  # Exclure seulement les annulés
-        
-        # Si pas de paiements dans la période, essayer avec tous les paiements validés de l'école
+        ).exclude(statut='ANNULE')
+
+        # Si pas de paiements dans la période, fallback: tous les paiements validés de l'école
         if not paiements_periode.exists():
             paiements_periode = Paiement.objects.filter(
                 eleve__classe__ecole=ecole,
                 statut='VALIDE'
             )
-        
+
         donnees_ecole['paiements']['nombre'] = paiements_periode.count()
-        donnees_ecole['paiements']['montant_total'] = paiements_periode.aggregate(
-            total=Sum('montant')
-        )['total'] or Decimal('0')
-        
-        # Frais d'inscription - recherche précise pour éviter les faux positifs
-        frais_inscription = paiements_periode.filter(
-            Q(type_paiement__nom__iexact='Frais d\'inscription') |
-            Q(type_paiement__nom__iexact='Frais d\'inscription') |
-            Q(type_paiement__nom__icontains='Frais d\'inscription')
-        ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
-        
-        # Scolarité = paiements de scolarité (tranches) uniquement
-        scolarite = paiements_periode.filter(
-            Q(type_paiement__nom__icontains='Scolarité') |
-            Q(type_paiement__nom__icontains='tranche') |
-            Q(type_paiement__nom__icontains='1ère tranche') |
-            Q(type_paiement__nom__icontains='2ème tranche') |
-            Q(type_paiement__nom__icontains='3ème tranche')
-        ).aggregate(total=Sum('montant'))['total'] or Decimal('0')
-        
-        # Logique d'estimation des frais d'inscription améliorée
-        if frais_inscription == 0 and donnees_ecole['nouveaux_eleves'] > 0:
-            # Si il y a de nouveaux élèves mais pas de frais d'inscription détectés
-            # ET qu'il y a des paiements non catégorisés comme scolarité
-            montant_restant = donnees_ecole['paiements']['montant_total'] - scolarite
-            if montant_restant > 0:
-                # Estimer à 30 000 GNF par nouvel élève ou utiliser le montant restant
-                frais_inscription_estime = Decimal('30000') * donnees_ecole['nouveaux_eleves']
-                frais_inscription = min(frais_inscription_estime, montant_restant)
-        
-        # VÉRIFICATION DE COHÉRENCE : Si pas de nouveaux élèves mais des "frais d'inscription" détectés
-        # Cela peut indiquer un problème de période ou de catégorisation
-        if donnees_ecole['nouveaux_eleves'] == 0 and frais_inscription > 0:
-            # Les "frais d'inscription" détectés sont probablement d'anciens élèves
-            # ou mal catégorisés - les reclasser comme scolarité
+        montant_total_paiements = paiements_periode.aggregate(total=Sum('montant'))['total'] or Decimal('0')
+        donnees_ecole['paiements']['montant_total'] = montant_total_paiements
+
+        # Classification sans double comptage
+        frais_inscription = Decimal('0')
+        scolarite = Decimal('0')
+        non_categorises = Decimal('0')
+
+        for p in paiements_periode.select_related('type_paiement'):
+            montant = p.montant or Decimal('0')
+            nom = (getattr(getattr(p, 'type_paiement', None), 'nom', '') or '').lower()
+
+            has_inscription = 'inscription' in nom
+            has_scolarite = ('scolar' in nom) or ('tranche' in nom) or ('1ère tranche' in nom) or ('2ème tranche' in nom) or ('3ème tranche' in nom)
+
+            if has_inscription and has_scolarite:
+                # Paiement combiné: 30 000 GNF pour inscription, reste en scolarité
+                part_ins = min(Decimal('30000'), montant)
+                part_sco = montant - part_ins
+                frais_inscription += part_ins
+                scolarite += part_sco
+            elif has_inscription:
+                # Pur frais d'inscription
+                frais_inscription += montant
+            elif has_scolarite:
+                scolarite += montant
+            else:
+                non_categorises += montant
+
+        # Estimation/fallback: couvrir les frais d'inscription théoriques avec non catégorisés si besoin
+        nb_nouveaux = donnees_ecole['nouveaux_eleves']
+        theorique_insc = Decimal('30000') * nb_nouveaux
+
+        if frais_inscription == 0 and nb_nouveaux > 0 and non_categorises > 0:
+            a_affecter = min(theorique_insc, non_categorises)
+            frais_inscription += a_affecter
+            non_categorises -= a_affecter
+
+        # Cohérence: si 0 nouveaux élèves, ne pas compter des frais d'inscription → reclasser en scolarité
+        if nb_nouveaux == 0 and frais_inscription > 0:
             scolarite += frais_inscription
             frais_inscription = Decimal('0')
-        
+
+        # Ajouter le reste non catégorisé à la scolarité (par défaut)
+        scolarite += non_categorises
+
         donnees_ecole['paiements']['frais_inscription'] = frais_inscription
         donnees_ecole['paiements']['scolarite'] = scolarite
         

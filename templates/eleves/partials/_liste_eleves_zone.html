@@ -1,5 +1,35 @@
 {# Partial: zone complète = stats + résultats #}
 
+<!-- Export des élèves -->
+<div class="card mb-3">
+  <div class="card-header">
+    <h6 class="card-title mb-0"><i class="fas fa-download me-2"></i>Exporter les données</h6>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label for="export-classe-select" class="form-label">Sélectionner une classe</label>
+        <select id="export-classe-select" class="form-select">
+          <option value="">Toutes les classes</option>
+          {% for c in classes %}
+            <option value="{{ c.id }}">{{ c.ecole.nom }} - {{ c.nom }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-6 d-flex align-items-end">
+        <div class="btn-group" role="group">
+          <button type="button" id="btn-export-pdf" class="btn btn-outline-danger">
+            <i class="fas fa-file-pdf me-1"></i>PDF
+          </button>
+          <button type="button" id="btn-export-excel" class="btn btn-outline-success">
+            <i class="fas fa-file-excel me-1"></i>Excel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Statistiques rapides -->
 <div class="row mb-4">
     <div class="col-md-4">

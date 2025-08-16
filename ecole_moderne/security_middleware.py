@@ -9,6 +9,7 @@ from django.conf import settings
 from django.utils.deprecation import MiddlewareMixin
 from django.contrib.auth import logout
 from django.shortcuts import redirect
+from django.core.exceptions import TooManyFieldsSent
 import re
 
 logger = logging.getLogger(__name__)
@@ -18,17 +19,20 @@ class SecurityMiddleware(MiddlewareMixin):
     Middleware de sécurité avancé pour protéger contre diverses attaques
     """
     
-    # Patterns d'attaques SQL Injection
+    # Patterns d'attaques SQL Injection (plus stricts pour éviter les faux positifs)
     SQL_INJECTION_PATTERNS = [
-        r"(\%27)|(\')|(\-\-)|(\%23)|(#)",
-        r"((\%3D)|(=))[^\n]*((\%27)|(\')|(\-\-)|(\%3B)|(;))",
-        r"\w*((\%27)|(\'))((\%6F)|o|(\%4F))((\%72)|r|(\%52))",
-        r"((\%27)|(\'))union",
-        r"exec(\s|\+)+(s|x)p\w+",
-        r"UNION(.*)SELECT",
-        r"INSERT(.*)INTO",
-        r"DELETE(.*)FROM",
-        r"DROP(.*)TABLE",
+        # Commentaires/terminaisons SQL dangereuses
+        r"(--|;|/\*|\*/|%2D%2D|%3B)",
+        # UNION SELECT (avec mots-clés)
+        r"\bunion\b\s+\bselect\b",
+        # EXEC sp (procédures stockées)
+        r"\bexec\b(\s|\+)+(s|x)p\w+",
+        # Opérations DML/DDL complètes
+        r"\binsert\b\s+\binto\b",
+        r"\bdelete\b\s+\bfrom\b",
+        r"\bdrop\b\s+\btable\b",
+        # Tentatives d'évasion classiques avec quotes entourant des mots-clés SQL
+        r"(['\"])\s*\bor\b\s*\d\s*=\s*\d",
     ]
     
     # Patterns d'attaques XSS
@@ -76,6 +80,19 @@ class SecurityMiddleware(MiddlewareMixin):
         client_ip = self.get_client_ip(request)
         user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
         
+        # 0. Bypass sécurisé pour l'admin avec utilisateur staff authentifié
+        try:
+            if request.path.startswith('/admin/') and hasattr(request, 'user') and request.user.is_authenticated and request.user.is_staff:
+                # On applique seulement rate limiting et blocage IP existant, pas de détection agressive
+                if self.is_ip_blocked(client_ip):
+                    logger.info(f"Accès admin refusé pour IP bloquée: {client_ip}")
+                    return HttpResponseForbidden("Votre adresse IP a été bloquée.")
+                self.increment_request_count(client_ip)
+                return None
+        except Exception:
+            # En cas d'erreur inattendue, ne pas bloquer l'admin
+            pass
+
         # 1. Vérifier le rate limiting
         if self.is_rate_limited(client_ip):
             logger.warning(f"Rate limit dépassé pour IP: {client_ip}")
@@ -141,20 +158,25 @@ class SecurityMiddleware(MiddlewareMixin):
         return any(suspicious in user_agent for suspicious in self.SUSPICIOUS_USER_AGENTS)
     
     def detect_sql_injection(self, request):
-        """Détecte les tentatives d'injection SQL"""
-        # Vérifier dans l'URL
-        full_path = request.get_full_path().lower()
+        """Détecte les tentatives d'injection SQL (requêtes et POST), sans pénaliser les apostrophes normales)"""
+        # Vérifier dans la query string uniquement (pas tout le chemin)
+        query = (request.META.get('QUERY_STRING') or '').lower()
         for pattern in self.SQL_INJECTION_PATTERNS:
-            if re.search(pattern, full_path, re.IGNORECASE):
+            if re.search(pattern, query, re.IGNORECASE):
                 return True
         
-        # Vérifier dans les paramètres POST
+        # Vérifier dans les paramètres POST (valeurs texte)
         if request.method == 'POST':
-            for key, value in request.POST.items():
-                if isinstance(value, str):
-                    for pattern in self.SQL_INJECTION_PATTERNS:
-                        if re.search(pattern, value.lower(), re.IGNORECASE):
-                            return True
+            try:
+                for key, value in request.POST.items():
+                    if isinstance(value, str):
+                        val = value.lower()
+                        for pattern in self.SQL_INJECTION_PATTERNS:
+                            if re.search(pattern, val, re.IGNORECASE):
+                                return True
+            except TooManyFieldsSent:
+                logger.warning("[SECURITY] POST ignoré pour scan SQLi: trop de champs (TooManyFieldsSent)")
+                return False
         
         return False
     
@@ -168,11 +190,16 @@ class SecurityMiddleware(MiddlewareMixin):
         
         # Vérifier dans les paramètres POST
         if request.method == 'POST':
-            for key, value in request.POST.items():
-                if isinstance(value, str):
-                    for pattern in self.XSS_PATTERNS:
-                        if re.search(pattern, value.lower(), re.IGNORECASE):
-                            return True
+            try:
+                for key, value in request.POST.items():
+                    if isinstance(value, str):
+                        for pattern in self.XSS_PATTERNS:
+                            if re.search(pattern, value.lower(), re.IGNORECASE):
+                                return True
+            except TooManyFieldsSent:
+                # Si le formulaire contient trop de champs, ignorer l'analyse POST
+                logger.warning("[SECURITY] POST ignoré pour scan XSS: trop de champs (TooManyFieldsSent)")
+                return False
         
         return False
     
@@ -190,10 +217,15 @@ class SecurityMiddleware(MiddlewareMixin):
         return cache.get(cache_key, False)
     
     def block_ip(self, ip, reason):
-        """Bloque une IP pour 24 heures"""
+        """Bloque une IP (localhost bloquée brièvement pour éviter de verrouiller le dev)."""
         cache_key = f"blocked_ip_{ip}"
-        cache.set(cache_key, True, 86400)  # 24 heures
-        logger.critical(f"IP {ip} bloquée pour: {reason}")
+        # Ne pas bloquer durablement localhost
+        if ip in ('127.0.0.1', '::1'):
+            cache.set(cache_key, True, 300)  # 5 minutes en local
+            logger.warning(f"IP locale {ip} temporairement bloquée (5 min) pour: {reason}")
+        else:
+            cache.set(cache_key, True, 86400)  # 24 heures
+            logger.critical(f"IP {ip} bloquée pour: {reason}")
 
 
 class SessionSecurityMiddleware(MiddlewareMixin):

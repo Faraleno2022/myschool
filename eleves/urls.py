@@ -22,7 +22,19 @@ urlpatterns = [
     # Statistiques
     path('statistiques/', views.statistiques_eleves, name='statistiques_eleves'),
     
+    # PDF
+    path('<int:eleve_id>/fiche-inscription-pdf/', views.fiche_inscription_pdf, name='fiche_inscription_pdf'),
+
+    # Exports par classe
+    path('export/classe/<int:classe_id>/pdf/', views.export_eleves_classe_pdf, name='export_eleves_classe_pdf'),
+    path('export/classe/<int:classe_id>/excel/', views.export_eleves_classe_excel, name='export_eleves_classe_excel'),
+    
+    # Exports de tous les élèves
+    path('export/tous/pdf/', views.export_tous_eleves_pdf, name='export_tous_eleves_pdf'),
+    path('export/tous/excel/', views.export_tous_eleves_excel, name='export_tous_eleves_excel'),
+    
     # AJAX
     path('ajax/classes-par-ecole/<int:ecole_id>/', views.ajax_classes_par_ecole, name='ajax_classes_par_ecole'),
     path('ajax/statistiques/', views.ajax_statistiques_eleves, name='ajax_statistiques_eleves'),
 ]
+

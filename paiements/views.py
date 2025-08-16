@@ -19,6 +19,7 @@ from utilisateurs.permissions import can_add_payments, can_modify_payments, can_
 from rapports.utils import _draw_header_and_watermark
 from django.views.decorators.http import require_http_methods
 import re
+import unicodedata
 
 # ReportLab for PDF exports (used by tranches-par-classe)
 from reportlab.lib import colors
@@ -325,7 +326,10 @@ def _allocate_combined_payment(paiement, echeancier):
     Allocation intelligente des paiements combinés selon le type de paiement.
     Répartit automatiquement le montant dans les bonnes colonnes de l'échéancier.
     """
-    type_paiement_nom = paiement.type_paiement.nom.lower()
+    # Normaliser le libellé pour des correspondances robustes
+    raw_nom = (paiement.type_paiement.nom or '').strip()
+    type_paiement_nom = unicodedata.normalize('NFKD', raw_nom).encode('ascii', 'ignore').decode('ascii').lower()
+    type_paiement_nom = re.sub(r"\s+", " ", type_paiement_nom)
     montant_total = paiement.montant
     warnings = []
     infos = []
@@ -360,8 +364,16 @@ def _allocate_combined_payment(paiement, echeancier):
         'tranche_3': Decimal('0')
     }
     
+    # Indicateurs flexibles (robustes aux variations d'accents et d'espaces)
+    has_insc = 'inscription' in type_paiement_nom or 'insc' in type_paiement_nom
+    has_annuel = 'annuel' in type_paiement_nom or 'annuelle' in type_paiement_nom
+    has_t1 = 'tranche 1' in type_paiement_nom or '1ere tranche' in type_paiement_nom or '1er tranche' in type_paiement_nom or 't1' in type_paiement_nom
+    has_t2 = 'tranche 2' in type_paiement_nom or '2eme tranche' in type_paiement_nom or 't2' in type_paiement_nom
+    has_t3 = 'tranche 3' in type_paiement_nom or '3eme tranche' in type_paiement_nom or 't3' in type_paiement_nom
+    has_any_tranche = ('tranche' in type_paiement_nom) or has_t1 or has_t2 or has_t3
+
     # Logique de répartition selon le type de paiement
-    if 'inscription + 1ère tranche' in type_paiement_nom and '2ème' not in type_paiement_nom:
+    if has_insc and has_t1 and not has_t2 and not has_t3 and not has_annuel:
         # Frais d'inscription + 1ère tranche
         infos.append("🔄 Paiement combiné détecté: Inscription + 1ère tranche")
         
@@ -379,7 +391,7 @@ def _allocate_combined_payment(paiement, echeancier):
             montant_restant -= montant_tranche_1
             infos.append(f"✓ 1ère tranche: {int(montant_tranche_1):,} GNF".replace(',', ' '))
     
-    elif 'inscription + 1ère tranche + 2ème tranche' in type_paiement_nom:
+    elif has_insc and has_t1 and has_t2 and not has_t3 and not has_annuel:
         # Frais d'inscription + 1ère tranche + 2ème tranche
         infos.append("🔄 Paiement combiné détecté: Inscription + 1ère + 2ème tranche")
         
@@ -404,7 +416,7 @@ def _allocate_combined_payment(paiement, echeancier):
             montant_restant -= montant_tranche_2
             infos.append(f"✓ 2ème tranche: {int(montant_tranche_2):,} GNF".replace(',', ' '))
     
-    elif 'inscription + annuel' in type_paiement_nom:
+    elif has_insc and has_annuel:
         # Frais d'inscription + Paiement annuel complet
         infos.append("🔄 Paiement combiné détecté: Inscription + Annuel")
         
@@ -443,8 +455,39 @@ def _allocate_combined_payment(paiement, echeancier):
                     infos.append(f"✓ 3ème tranche: {int(montant_tranche_3):,} GNF".replace(',', ' '))
     
     else:
-        # Type de paiement non combiné, utiliser la logique existante
-        return _allocate_payment_to_echeancier(paiement, echeancier)
+        # Type de paiement non explicitement combiné
+        if has_insc and has_any_tranche:
+            # Cas générique combiné (Inscription + Tranche(s))
+            infos.append("🔄 Paiement combiné détecté: Inscription + Tranche(s)")
+
+            # Allouer d'abord l'inscription
+            if inscription_restante > 0:
+                montant_inscription = min(FRAIS_INSCRIPTION, inscription_restante, montant_restant)
+                allocations['inscription'] = montant_inscription
+                montant_restant -= montant_inscription
+                infos.append(f"✓ Inscription: {int(montant_inscription):,} GNF".replace(',', ' '))
+
+            # Ensuite, répartir séquentiellement T1 -> T2 -> T3
+            if montant_restant > 0 and tranche_1_restante > 0:
+                montant_tranche_1 = min(tranche_1_restante, montant_restant)
+                allocations['tranche_1'] = montant_tranche_1
+                montant_restant -= montant_tranche_1
+                infos.append(f"✓ 1ère tranche: {int(montant_tranche_1):,} GNF".replace(',', ' '))
+
+            if montant_restant > 0 and tranche_2_restante > 0:
+                montant_tranche_2 = min(tranche_2_restante, montant_restant)
+                allocations['tranche_2'] = montant_tranche_2
+                montant_restant -= montant_tranche_2
+                infos.append(f"✓ 2ème tranche: {int(montant_tranche_2):,} GNF".replace(',', ' '))
+
+            if montant_restant > 0 and tranche_3_restante > 0:
+                montant_tranche_3 = min(tranche_3_restante, montant_restant)
+                allocations['tranche_3'] = montant_tranche_3
+                montant_restant -= montant_tranche_3
+                infos.append(f"✓ 3ème tranche: {int(montant_tranche_3):,} GNF".replace(',', ' '))
+        else:
+            # Type non combiné: déléguer à la logique existante
+            return _allocate_payment_to_echeancier(paiement, echeancier)
     
     # Appliquer les allocations à l'échéancier
     if allocations['inscription'] > 0:
@@ -698,9 +741,10 @@ def liste_paiements(request):
     from datetime import datetime
     
     # Totaux généraux (sur les paiements filtrés)
+    paiements_valides = paiements.exclude(statut='ANNULE')
     totaux = {
-        'total_paiements': paiements.count(),
-        'montant_total': paiements.aggregate(total=Sum('montant'))['total'] or 0,
+        'total_paiements': paiements.count(),  # nombre total affiché (inclut tous statuts)
+        'montant_total': paiements_valides.aggregate(total=Sum('montant'))['total'] or 0,  # exclut les annulés
         'total_en_attente': paiements.filter(statut='EN_ATTENTE').count(),
         'montant_en_attente': paiements.filter(statut='EN_ATTENTE').aggregate(total=Sum('montant'))['total'] or 0,
     }
@@ -708,7 +752,7 @@ def liste_paiements(request):
     # Totaux ce mois (sur les paiements filtrés)
     current_month = datetime.now().month
     current_year = datetime.now().year
-    paiements_ce_mois = paiements.filter(
+    paiements_ce_mois = paiements_valides.filter(
         date_paiement__month=current_month,
         date_paiement__year=current_year
     )
@@ -1106,38 +1150,46 @@ def generer_recu_pdf(request, paiement_id):
     margin_x = 20 * mm
     margin_y = 20 * mm
 
-    # Filigrane (logo géant ~500%)
+    # Filigrane avec logo de l'école (même style que fiche d'inscription)
+    c.saveState()
     try:
-        logo_path = finders.find('logos/logo.png')
-    except Exception:
+        # Chemin vers le logo
         logo_path = None
-    # Fallback: chemin absolu vers static/logos/logo.png si non trouvé par les finders
-    if not logo_path:
         try:
-            from django.conf import settings
-            candidate = os.path.join(getattr(settings, 'BASE_DIR', ''), 'static', 'logos', 'logo.png')
-            if candidate and os.path.exists(candidate):
-                logo_path = candidate
+            logo_path = finders.find('logos/logo.png')
         except Exception:
             pass
-
-    if logo_path:
-        c.saveState()
-        try:
-            wm_width = width * 1.5  # ~150% de la largeur page -> effet 500%
-            wm_height = wm_width
-            wm_x = (width - wm_width) / 2
-            wm_y = (height - wm_height) / 2
+        # Fallback: chemin absolu vers static/logos/logo.png si non trouvé par les finders
+        if not logo_path:
             try:
-                c.setFillAlpha(0.04)  # Opacité légèrement augmentée pour rendre le filigrane plus visible
+                from django.conf import settings
+                candidate = os.path.join(getattr(settings, 'BASE_DIR', ''), 'static', 'logos', 'logo.png')
+                if candidate and os.path.exists(candidate):
+                    logo_path = candidate
             except Exception:
                 pass
+        
+        if logo_path:
+            # Taille ~150% de la largeur de page (comme dans fiche d'inscription)
+            wm_width = width * 1.5
+            wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
+            wm_x = (width - wm_width) / 2
+            wm_y = (height - wm_height) / 2
+            
+            # Opacité faible
+            try:
+                c.setFillAlpha(0.08)
+            except Exception:
+                pass
+            
+            # Légère rotation pour l'effet filigrane
             c.translate(width / 2.0, height / 2.0)
             c.rotate(30)
             c.translate(-width / 2.0, -height / 2.0)
+            
             c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
-        finally:
-            c.restoreState()
+    finally:
+        c.restoreState()
 
     # En-tête avec logo + titre (ajusté pour éviter chevauchement avec photo élève)
     c.saveState()
@@ -1146,18 +1198,25 @@ def generer_recu_pdf(request, paiement_id):
             c.drawImage(logo_path, margin_x, height - margin_y - 30, width=60, height=30, preserveAspectRatio=True, mask='auto')
         c.setFillColor(colors.HexColor('#0056b3'))
         try:
-            c.setFont("MainFont-Bold", 18)
+            c.setFont("MainFont-Bold", 20)
         except:
-            c.setFont("Helvetica-Bold", 18)
-        # Limiter la largeur du texte pour éviter chevauchement avec photo (réserver 100mm à droite)
-        max_text_width = width - margin_x - 70 - 100  # 100mm réservés pour photo + marge
-        c.drawString(margin_x + 70, height - margin_y - 10, "École Moderne HADJA KANFING DIANÉ")
+            c.setFont("Helvetica-Bold", 20)
+        
+        # Centrer le nom de l'école
+        text = "École Moderne HADJA KANFING DIANÉ"
+        text_width = c.stringWidth(text, "MainFont-Bold", 20) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 20)
+        c.drawString((width - text_width) / 2, height - margin_y - 10, text)
+        
         c.setFillColor(colors.black)
         try:
             c.setFont("MainFont-Bold", 16)
         except:
             c.setFont("Helvetica-Bold", 16)
-        c.drawString(margin_x + 70, height - margin_y - 28, f"Reçu de paiement #{paiement.numero_recu}")
+        
+        # Centrer le titre du reçu
+        text = f"REÇU DE PAIEMENT N° {paiement.numero_recu}"
+        text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+        c.drawString((width - text_width) / 2, height - margin_y - 28, text)
         # Ligne de séparation
         c.setStrokeColor(colors.HexColor('#0056b3'))
         c.setLineWidth(1)
@@ -1205,14 +1264,15 @@ def generer_recu_pdf(request, paiement_id):
         c.setLineWidth(1)
         c.rect(photo_x, photo_y, photo_box, photo_box, fill=1, stroke=1)
         
-        # Texte "Photo"
+        # Texte "Photo" centré
         c.setFillColor(colors.darkgrey)
         try:
             c.setFont("MainFont", 12)
         except:
             c.setFont("Helvetica", 12)
-        text_width = c.stringWidth("Photo")
-        c.drawString(photo_x + (photo_box - text_width) / 2, photo_y + photo_box / 2 - 5, "Photo")
+        text = "Photo"
+        text_width = c.stringWidth(text, "MainFont", 12) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 12)
+        c.drawString(photo_x + (photo_box - text_width) / 2, photo_y + photo_box / 2 - 5, text)
 
     # Informations élève et paiement (ajusté pour éviter chevauchement avec photo)
     y = height - margin_y - 70  # Descendre un peu plus pour laisser place à la photo agrandie
@@ -1400,13 +1460,21 @@ def generer_recu_pdf(request, paiement_id):
             c.setFont("Helvetica-Oblique", 12)
         c.drawString(margin_x, y, "Aucun échéancier n'est associé à cet élève.")
 
-    # Pied de page
+    # Pied de page centré
     try:
-        c.setFont("MainFont", 11)
+        c.setFont("MainFont", 10)
     except:
-        c.setFont("Helvetica-Oblique", 11)
+        c.setFont("Helvetica", 10)
     c.setFillColor(colors.grey)
-    c.drawString(margin_x, margin_y, "Ce reçu est généré automatiquement par le système de gestion scolaire.")
+    
+    from django.utils import timezone
+    text = f"Reçu généré le {timezone.now().strftime('%d/%m/%Y à %H:%M')}"
+    text_width = c.stringWidth(text, "MainFont", 10) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 10)
+    c.drawString((width - text_width) / 2, margin_y + 15, text)
+    
+    text = "Système de Gestion Scolaire - École Moderne HADJA KANFING DIANÉ"
+    text_width = c.stringWidth(text, "MainFont", 10) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 10)
+    c.drawString((width - text_width) / 2, margin_y, text)
 
     c.showPage()
     c.save()

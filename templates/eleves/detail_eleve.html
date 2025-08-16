@@ -285,6 +285,9 @@
                     <a href="{% url 'paiements:ajouter_paiement_eleve' eleve.pk %}" class="btn btn-success">
                         <i class="fas fa-money-bill"></i> Enregistrer un paiement
                     </a>
+                    <a href="{% url 'eleves:fiche_inscription_pdf' eleve.pk %}" class="btn btn-info" target="_blank">
+                        <i class="fas fa-file-pdf"></i> Fiche d'inscription PDF
+                    </a>
                     {% with paiements_eleve=eleve.paiement_set.all %}
                     {% if paiements_eleve %}
                     <div class="card p-2">

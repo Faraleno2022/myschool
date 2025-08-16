@@ -142,9 +142,7 @@ class EleveForm(forms.ModelForm):
             }),
             'photo': forms.FileInput(attrs={
                 'class': 'form-control',
-                'accept': 'image/*',
-                # Déclenche l'appareil photo sur mobiles compatibles (caméra arrière)
-                'capture': 'environment'
+                'accept': 'image/*'
             }),
             'classe': forms.Select(attrs={
                 'class': 'form-select',
@@ -177,8 +175,11 @@ class EleveForm(forms.ModelForm):
             self.fields['date_inscription'].initial = date.today()
             self.fields['date_inscription'].required = True
         else:
-            # En modification: ne pas rendre obligatoire
+            # En modification: ne pas rendre obligatoire et garder la valeur existante
             self.fields['date_inscription'].required = False
+            # Forcer la valeur initiale à celle de l'instance pour éviter les faux changements
+            if self.instance.date_inscription:
+                self.fields['date_inscription'].initial = self.instance.date_inscription
         
         # Filtrer les classes par école si nécessaire
         self.fields['classe'].queryset = Classe.objects.all().order_by('ecole__nom', 'niveau', 'nom')

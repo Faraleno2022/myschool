@@ -7,6 +7,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
+        <div class="alert alert-danger d-none" id="cameraError"></div>
         <div class="row g-3">
           <div class="col-md-7 text-center">
             <video id="cameraVideo" autoplay playsinline style="width:100%;border-radius:8px;background:#000"></video>
@@ -49,6 +50,9 @@
 
   async function startStream(){
     stopStream();
+    const errorEl = document.getElementById('cameraError');
+    errorEl.classList.add('d-none');
+    
     const constraints = {
       video: { facingMode: { ideal: currentFacing }, width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
@@ -63,7 +67,28 @@
         video.srcObject = stream;
       } catch (err){
         console.error('Camera not available', err);
-        alert("Impossible d'accéder à la caméra. Vérifiez les autorisations du navigateur.");
+        let msg = '';
+        const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+        
+        if (String(err).toLowerCase().includes('permission') || String(err).toLowerCase().includes('denied')) {
+          msg = `🚫 <strong>Permission refusée</strong><br>
+          <div class="mt-2">
+            <strong>Solutions :</strong><br>
+            1. Cliquez sur l'icône 🔒 dans la barre d'adresse<br>
+            2. Sélectionnez "Autoriser" pour la Caméra<br>
+            3. Rechargez la page (F5)<br>
+            4. Réessayez "Prendre une photo"
+          </div>`;
+        } else if (String(err).toLowerCase().includes('notfound') || String(err).toLowerCase().includes('not found')) {
+          msg = '📷 <strong>Aucune caméra détectée</strong><br>Vérifiez qu\'une caméra est connectée à votre appareil.';
+        } else if (!window.isSecureContext && !isLocalhost) {
+          msg = '🔐 <strong>Connexion non sécurisée</strong><br>La caméra nécessite HTTPS. Contactez l\'administrateur.';
+        } else {
+          msg = '⚠️ <strong>Erreur caméra :</strong> ' + (err.message || err);
+        }
+        
+        errorEl.innerHTML = msg;
+        errorEl.classList.remove('d-none');
       }
     }
   }

@@ -3,13 +3,33 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db.models import Q, Count
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
 from django.views.decorators.http import require_http_methods
 from django.urls import reverse
+from django.utils import timezone
+from django.utils.text import slugify
+from datetime import date
+import os
 from .models import Eleve, Responsable, Classe, Ecole, HistoriqueEleve
 from .forms import EleveForm, ResponsableForm, RechercheEleveForm, ClasseForm
 from utilisateurs.models import JournalActivite
 from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
+
+# ReportLab pour génération PDF
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.lib.units import cm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# Excel
+try:
+    from openpyxl import Workbook
+    from openpyxl.utils import get_column_letter
+except ImportError:
+    Workbook = None
+    get_column_letter = None
 
 @login_required
 def liste_eleves(request):
@@ -40,6 +60,9 @@ def liste_eleves(request):
                 Q(responsable_secondaire__prenom__icontains=recherche)
             )
     
+    # Sécurisation anti-doublons (au cas de jointures inattendues)
+    eleves = eleves.distinct()
+    
     # Statistiques
     stats = {
         'total_eleves': eleves.count(),
@@ -62,11 +85,18 @@ def liste_eleves(request):
         user_agent=request.META.get('HTTP_USER_AGENT', '')
     )
     
+    # Liste des classes pour export (restreinte si besoin)
+    if user_is_admin(request.user):
+        classes = Classe.objects.select_related('ecole').order_by('ecole__nom', 'niveau', 'nom')
+    else:
+        classes = Classe.objects.select_related('ecole').filter(ecole=user_school(request.user)).order_by('niveau', 'nom')
+
     context = {
         'page_obj': page_obj,
         'form_recherche': form_recherche,
         'stats': stats,
-        'titre_page': 'Gestion des Élèves'
+        'titre_page': 'Gestion des Élèves',
+        'classes': classes,
     }
 
     # Rendu partiel pour la recherche dynamique
@@ -259,6 +289,7 @@ def modifier_eleve(request, eleve_id):
     eleve = get_object_or_404(qs, id=eleve_id)
     
     if request.method == 'POST':
+        print(f"POST data received: {request.POST}")  # Debug
         form = EleveForm(request.POST, request.FILES, instance=eleve)
         if not user_is_admin(request.user):
             try:
@@ -266,7 +297,12 @@ def modifier_eleve(request, eleve_id):
             except Exception:
                 pass
         
+        print(f"Form is valid: {form.is_valid()}")  # Debug
+        if not form.is_valid():
+            print(f"Form errors: {form.errors}")  # Debug
+            
         if form.is_valid():
+            print("Form validation passed, saving...")  # Debug
             # Détecter les changements
             changements = []
             for field in form.changed_data:
@@ -276,26 +312,33 @@ def modifier_eleve(request, eleve_id):
                     changements.append(f"{form.fields[field].label}: {ancien_val} → {nouveau_val}")
             
             eleve = form.save()
+            print(f"Eleve saved successfully: {eleve}")  # Debug
             
             # Créer l'historique si des changements ont été effectués
             if changements:
-                HistoriqueEleve.objects.create(
-                    eleve=eleve,
-                    action='MODIFICATION',
-                    description=f"Modification: {', '.join(changements)}",
-                    utilisateur=request.user
-                )
+                try:
+                    HistoriqueEleve.objects.create(
+                        eleve=eleve,
+                        action='MODIFICATION',
+                        description=f"Modification: {', '.join(changements)}",
+                        utilisateur=request.user
+                    )
+                except Exception as e:
+                    print(f"Error creating history: {e}")
                 
                 # Log de l'activité
-                JournalActivite.objects.create(
-                    user=request.user,
-                    action='MODIFICATION',
-                    type_objet='ELEVE',
-                    objet_id=eleve.id,
-                    description=f"Modification de l'élève {eleve.nom_complet}: {', '.join(changements)}",
-                    adresse_ip=request.META.get('REMOTE_ADDR', ''),
-                    user_agent=request.META.get('HTTP_USER_AGENT', '')
-                )
+                try:
+                    JournalActivite.objects.create(
+                        user=request.user,
+                        action='MODIFICATION',
+                        type_objet='ELEVE',
+                        objet_id=eleve.id,
+                        description=f"Modification de l'élève {eleve.nom_complet}: {', '.join(changements)}",
+                        adresse_ip=request.META.get('REMOTE_ADDR', ''),
+                        user_agent=request.META.get('HTTP_USER_AGENT', '')
+                    )
+                except Exception as e:
+                    print(f"Error creating activity log: {e}")
             
             # Message de succès détaillé
             if changements:
@@ -306,14 +349,10 @@ def modifier_eleve(request, eleve_id):
                     f"✅ Les informations de {eleve.prenom} {eleve.nom} ont été mises à jour avec succès{message_changements}."
                 )
             else:
-                messages.info(request, f"ℹ️ Aucune modification détectée pour {eleve.prenom} {eleve.nom}.")
+                messages.success(request, f"✅ Les informations de {eleve.prenom} {eleve.nom} ont été sauvegardées.")
             
-            # Rediriger vers la liste si demandé, sinon vers le détail
-            action = request.POST.get('action', 'save')
-            if action == 'save_and_list' or request.POST.get('redirect_to_list'):
-                return redirect('eleves:liste_eleves')
-            else:
-                return redirect('eleves:detail_eleve', eleve_id=eleve.id)
+            # Rediriger vers la page de modification pour voir les messages
+            return redirect('eleves:modifier_eleve', eleve_id=eleve.id)
         else:
             # Formulaire invalide: informer l'utilisateur des erreurs
             # Construire un résumé concis des erreurs (limité pour l'UI)
@@ -343,7 +382,479 @@ def modifier_eleve(request, eleve_id):
         'action': 'Modifier'
     }
     
-    return render(request, 'eleves/modifier_eleve.html', context)
+    return render(request, 'eleves/modifier_eleve_simple.html', context)
+
+@login_required
+def _get_classe_or_403(request, classe_id):
+    qs = Classe.objects.select_related('ecole')
+    if not user_is_admin(request.user):
+        qs = qs.filter(ecole=user_school(request.user))
+    return get_object_or_404(qs, id=classe_id)
+
+@login_required
+def export_eleves_classe_pdf(request, classe_id):
+    """Exporte la liste des élèves d'une classe en PDF."""
+    classe = _get_classe_or_403(request, classe_id)
+    eleves = Eleve.objects.select_related('classe', 'responsable_principal').filter(classe=classe).order_by('nom', 'prenom')
+
+    # Log activité
+    JournalActivite.objects.create(
+        user=request.user,
+        action='EXPORT',
+        type_objet='ELEVE',
+        description=f"Export PDF élèves - Classe {classe.nom} ({classe.ecole.nom})",
+        adresse_ip=request.META.get('REMOTE_ADDR', ''),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"eleves_{slugify(classe.ecole.nom)}_{slugify(classe.nom)}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    c = canvas.Canvas(response, pagesize=landscape(A4))
+    width, height = landscape(A4)
+    c.setPageCompression(1)
+
+    # Polices (Calibri/Arial si dispo, sinon Helvetica par défaut)
+    font_name = 'Helvetica'
+    font_bold = 'Helvetica-Bold'
+    
+    try:
+        calibri_path = 'C:/Windows/Fonts/calibri.ttf'
+        calibri_bold_path = 'C:/Windows/Fonts/calibrib.ttf'
+        if os.path.exists(calibri_path) and os.path.exists(calibri_bold_path):
+            pdfmetrics.registerFont(TTFont('MainFont', calibri_path))
+            pdfmetrics.registerFont(TTFont('MainFont-Bold', calibri_bold_path))
+            font_name = 'MainFont'
+            font_bold = 'MainFont-Bold'
+        else:
+            arial_path = 'C:/Windows/Fonts/arial.ttf'
+            arial_bold_path = 'C:/Windows/Fonts/arialbd.ttf'
+            if os.path.exists(arial_path) and os.path.exists(arial_bold_path):
+                pdfmetrics.registerFont(TTFont('MainFont', arial_path))
+                pdfmetrics.registerFont(TTFont('MainFont-Bold', arial_bold_path))
+                font_name = 'MainFont'
+                font_bold = 'MainFont-Bold'
+    except Exception:
+        # Utiliser les polices par défaut de ReportLab
+        pass
+
+    # Ajouter le logo en filigrane (même style que fiche d'inscription)
+    def add_watermark():
+        c.saveState()
+        try:
+            logo_path = os.path.join('static', 'logos', 'logo.png')
+            if os.path.exists(logo_path):
+                # Taille ~150% de la largeur de page (comme dans fiche_inscription_pdf)
+                wm_width = width * 1.5
+                wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
+                wm_x = (width - wm_width) / 2
+                wm_y = (height - wm_height) / 2
+                
+                # Opacité faible
+                try:
+                    c.setFillAlpha(0.08)
+                except Exception:
+                    pass
+                
+                # Légère rotation pour l'effet filigrane
+                c.translate(width / 2.0, height / 2.0)
+                c.rotate(30)
+                c.translate(-width / 2.0, -height / 2.0)
+                
+                c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
+            else:
+                # Fallback vers texte si logo non trouvé
+                c.setFillAlpha(0.04)
+                c.setFont(font_bold, 60)
+                c.rotate(45)
+                c.drawString(200, -100, classe.ecole.nom.upper())
+                c.rotate(-45)
+        except Exception:
+            pass  # Continuer sans logo si erreur
+        finally:
+            c.restoreState()
+
+    add_watermark()
+
+    margin = 2*cm
+    y = height - margin
+
+    # En-tête
+    c.setFont(font_bold, 16)
+    c.drawString(margin, y, f"Liste des élèves - {classe.ecole.nom}")
+    y -= 18
+    c.setFont(font_name, 12)
+    c.drawString(margin, y, f"Classe: {classe.nom}")
+    y -= 10
+    c.setFillColor(colors.grey)
+    c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0)
+    c.setFillColor(colors.black)
+    y -= 18
+
+    # En-têtes du tableau
+    headers = ["Matricule", "Nom", "Sexe", "Date Naissance", "Responsable", "Téléphone"]
+    col_widths = [3.0*cm, 7.0*cm, 2.0*cm, 3.0*cm, 5.0*cm, 3.5*cm]
+    c.setFont(font_bold, 11)
+    x = margin
+    for i, htxt in enumerate(headers):
+        c.drawString(x, y, htxt)
+        x += col_widths[i]
+    y -= 14
+    c.setFillColor(colors.lightgrey)
+    c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0)
+    c.setFillColor(colors.black)
+    y -= 8
+
+    c.setFont(font_name, 10)
+    for e in eleves:
+        # Saut de page si nécessaire
+        if y < margin + 40:
+            c.showPage()
+            add_watermark()  # Ajouter le filigrane sur la nouvelle page
+            y = height - margin
+            c.setFont(font_bold, 11)
+            x = margin
+            for i, htxt in enumerate(headers):
+                c.drawString(x, y, htxt)
+                x += col_widths[i]
+            y -= 18
+            c.setFont(font_name, 10)
+
+        x = margin
+        values = [
+            e.matricule or '',
+            f"{e.nom} {e.prenom}",
+            e.get_sexe_display() if hasattr(e, 'get_sexe_display') else getattr(e, 'sexe', ''),
+            e.date_naissance.strftime('%d/%m/%Y') if getattr(e, 'date_naissance', None) else '',
+            e.responsable_principal.nom_complet if e.responsable_principal else '',
+            e.responsable_principal.telephone if e.responsable_principal else '',
+        ]
+        for i, val in enumerate(values):
+            c.drawString(x, y, str(val))
+            x += col_widths[i]
+        y -= 14
+
+    c.showPage()
+    c.save()
+    return response
+
+@login_required
+def export_eleves_classe_excel(request, classe_id):
+    """Exporte la liste des élèves d'une classe en Excel (.xlsx)."""
+    if Workbook is None or get_column_letter is None:
+        return HttpResponse("Erreur: openpyxl n'est pas installé sur le serveur.", status=500)
+
+    classe = _get_classe_or_403(request, classe_id)
+    eleves = Eleve.objects.select_related('classe', 'responsable_principal').filter(classe=classe).order_by('nom', 'prenom')
+
+    # Log activité
+    JournalActivite.objects.create(
+        user=request.user,
+        action='EXPORT',
+        type_objet='ELEVE',
+        description=f"Export Excel élèves - Classe {classe.nom} ({classe.ecole.nom})",
+        adresse_ip=request.META.get('REMOTE_ADDR', ''),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Élèves"
+
+        # En-têtes avec style
+        headers = ["Matricule", "Nom complet", "Sexe", "Date de naissance", "Responsable principal", "Téléphone"]
+        ws.append(headers)
+        
+        # Style pour les en-têtes
+        from openpyxl.styles import Font, PatternFill
+        header_font = Font(bold=True)
+        header_fill = PatternFill(start_color="CCCCCC", end_color="CCCCCC", fill_type="solid")
+        
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+
+        # Données des élèves
+        for e in eleves:
+            ws.append([
+                e.matricule or '',
+                f"{e.nom} {e.prenom}",
+                e.get_sexe_display() if hasattr(e, 'get_sexe_display') else getattr(e, 'sexe', ''),
+                e.date_naissance.strftime('%d/%m/%Y') if getattr(e, 'date_naissance', None) else '',
+                e.responsable_principal.nom_complet if e.responsable_principal else '',
+                e.responsable_principal.telephone if e.responsable_principal else '',
+            ])
+
+        # Largeur des colonnes optimisée
+        widths = [15, 30, 10, 18, 30, 18]
+        for idx, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(idx)].width = w
+
+        # Réponse HTTP
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        filename = f"eleves_{slugify(classe.ecole.nom)}_{slugify(classe.nom)}.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Erreur lors de la génération du fichier Excel: {str(e)}", status=500)
+
+@login_required
+def export_tous_eleves_pdf(request):
+    """Exporte la liste de tous les élèves en PDF."""
+    # Filtrer selon les permissions
+    if user_is_admin(request.user):
+        eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').all()
+    else:
+        eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').filter(
+            classe__ecole=user_school(request.user)
+        )
+    
+    eleves = eleves.order_by('classe__ecole__nom', 'classe__nom', 'nom', 'prenom')
+
+    # Log activité
+    JournalActivite.objects.create(
+        user=request.user,
+        action='EXPORT',
+        type_objet='ELEVE',
+        description="Export PDF - Tous les élèves",
+        adresse_ip=request.META.get('REMOTE_ADDR', ''),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+
+    response = HttpResponse(content_type='application/pdf')
+    filename = "tous_les_eleves.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+
+    try:
+        c = canvas.Canvas(response, pagesize=landscape(A4))
+        width, height = landscape(A4)
+        c.setPageCompression(1)
+
+        # Configuration des polices
+        font_name = 'Helvetica'
+        font_bold = 'Helvetica-Bold'
+        
+        try:
+            calibri_path = 'C:/Windows/Fonts/calibri.ttf'
+            calibri_bold_path = 'C:/Windows/Fonts/calibrib.ttf'
+            if os.path.exists(calibri_path) and os.path.exists(calibri_bold_path):
+                pdfmetrics.registerFont(TTFont('MainFont', calibri_path))
+                pdfmetrics.registerFont(TTFont('MainFont-Bold', calibri_bold_path))
+                font_name = 'MainFont'
+                font_bold = 'MainFont-Bold'
+        except Exception:
+            pass
+
+        # Ajouter le logo en filigrane sur chaque page (même style que fiche d'inscription)
+        def add_watermark():
+            c.saveState()
+            try:
+                from django.conf import settings
+                logo_path = os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
+                if os.path.exists(logo_path):
+                    # Taille ~150% de la largeur de page (comme dans fiche_inscription_pdf)
+                    wm_width = width * 1.5
+                    wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
+                    wm_x = (width - wm_width) / 2
+                    wm_y = (height - wm_height) / 2
+                    
+                    # Opacité faible
+                    try:
+                        c.setFillAlpha(0.08)
+                    except Exception:
+                        pass
+                    
+                    # Légère rotation pour l'effet filigrane
+                    c.translate(width / 2.0, height / 2.0)
+                    c.rotate(30)
+                    c.translate(-width / 2.0, -height / 2.0)
+                    
+                    c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
+                else:
+                    # Fallback vers texte si logo non trouvé
+                    c.setFillAlpha(0.04)
+                    c.setFont(font_bold, 60)
+                    c.rotate(45)
+                    c.drawString(200, -100, "GS HADJA KANFING DIANÉ")
+                    c.rotate(-45)
+            except Exception:
+                pass  # Continuer sans logo si erreur
+            finally:
+                c.restoreState()
+
+        add_watermark()
+
+        margin = 2*cm
+        y = height - margin
+
+        # En-tête principal
+        c.setFont(font_bold, 18)
+        c.drawString(margin, y, "Liste complète des élèves")
+        y -= 25
+        
+        c.setFont(font_name, 12)
+        from datetime import datetime
+        c.drawString(margin, y, f"Généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
+        y -= 15
+        
+        c.setFillColor(colors.grey)
+        c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0)
+        c.setFillColor(colors.black)
+        y -= 25
+
+        # En-têtes du tableau
+        headers = ["École", "Classe", "Matricule", "Nom", "Responsable"]
+        col_widths = [4.5*cm, 3*cm, 3*cm, 6*cm, 5*cm]
+        
+        current_ecole = None
+        
+        for eleve in eleves:
+            # Nouvelle école
+            if current_ecole != eleve.classe.ecole.nom:
+                if y < margin + 80:
+                    c.showPage()
+                    add_watermark()  # Ajouter le filigrane sur la nouvelle page
+                    y = height - margin
+                
+                current_ecole = eleve.classe.ecole.nom
+                
+                # Titre de l'école
+                c.setFont(font_bold, 14)
+                c.drawString(margin, y, f"École: {current_ecole}")
+                y -= 20
+                
+                # En-têtes du tableau
+                c.setFont(font_bold, 10)
+                x = margin
+                for i, header in enumerate(headers[1:]):  # Skip "École" pour cette section
+                    c.drawString(x, y, header)
+                    x += col_widths[i+1]
+                y -= 15
+                
+                c.setFillColor(colors.lightgrey)
+                c.rect(margin, y-2, width-2*margin, 1, fill=1, stroke=0)
+                c.setFillColor(colors.black)
+                y -= 8
+            
+            # Vérifier l'espace pour une nouvelle ligne
+            if y < margin + 40:
+                c.showPage()
+                add_watermark()  # Ajouter le filigrane sur la nouvelle page
+                y = height - margin
+                
+                # Répéter le titre de l'école et les en-têtes
+                c.setFont(font_bold, 14)
+                c.drawString(margin, y, f"École: {current_ecole} (suite)")
+                y -= 20
+                
+                c.setFont(font_bold, 10)
+                x = margin
+                for i, header in enumerate(headers[1:]):
+                    c.drawString(x, y, header)
+                    x += col_widths[i+1]
+                y -= 18
+            
+            # Ligne de données
+            c.setFont(font_name, 9)
+            x = margin
+            values = [
+                eleve.classe.nom,
+                eleve.matricule or '',
+                f"{eleve.nom} {eleve.prenom}",
+                eleve.responsable_principal.nom_complet if eleve.responsable_principal else '',
+            ]
+            
+            for i, val in enumerate(values):
+                # Tronquer si trop long
+                text = str(val)[:25] + '...' if len(str(val)) > 25 else str(val)
+                c.drawString(x, y, text)
+                x += col_widths[i+1]
+            y -= 12
+
+        c.showPage()
+        c.save()
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Erreur lors de la génération du PDF: {str(e)}", status=500)
+
+@login_required
+def export_tous_eleves_excel(request):
+    """Exporte la liste de tous les élèves en Excel (.xlsx)."""
+    if Workbook is None or get_column_letter is None:
+        return HttpResponse("Erreur: openpyxl n'est pas installé sur le serveur.", status=500)
+
+    # Filtrer selon les permissions
+    if user_is_admin(request.user):
+        eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').all()
+    else:
+        eleves = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').filter(
+            classe__ecole=user_school(request.user)
+        )
+    
+    eleves = eleves.order_by('classe__ecole__nom', 'classe__nom', 'nom', 'prenom')
+
+    # Log activité
+    JournalActivite.objects.create(
+        user=request.user,
+        action='EXPORT',
+        type_objet='ELEVE',
+        description="Export Excel - Tous les élèves",
+        adresse_ip=request.META.get('REMOTE_ADDR', ''),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Tous les élèves"
+
+        # En-têtes avec style
+        headers = ["École", "Classe", "Matricule", "Nom complet", "Sexe", "Date de naissance", "Responsable principal", "Téléphone"]
+        ws.append(headers)
+        
+        # Style pour les en-têtes
+        from openpyxl.styles import Font, PatternFill, Alignment
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="366092", end_color="366092", fill_type="solid")
+        header_alignment = Alignment(horizontal="center")
+        
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+            cell.alignment = header_alignment
+
+        # Données des élèves
+        for eleve in eleves:
+            ws.append([
+                eleve.classe.ecole.nom,
+                eleve.classe.nom,
+                eleve.matricule or '',
+                f"{eleve.nom} {eleve.prenom}",
+                eleve.get_sexe_display() if hasattr(eleve, 'get_sexe_display') else getattr(eleve, 'sexe', ''),
+                eleve.date_naissance.strftime('%d/%m/%Y') if getattr(eleve, 'date_naissance', None) else '',
+                eleve.responsable_principal.nom_complet if eleve.responsable_principal else '',
+                eleve.responsable_principal.telephone if eleve.responsable_principal else '',
+            ])
+
+        # Largeur des colonnes optimisée
+        widths = [20, 15, 15, 25, 10, 15, 25, 15]
+        for idx, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(idx)].width = w
+
+        # Réponse HTTP
+        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        filename = "tous_les_eleves.xlsx"
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        wb.save(response)
+        return response
+        
+    except Exception as e:
+        return HttpResponse(f"Erreur lors de la génération du fichier Excel: {str(e)}", status=500)
 
 @login_required
 @require_http_methods(["POST"])
@@ -692,3 +1203,296 @@ def statistiques_eleves(request):
     }
     
     return render(request, 'eleves/statistiques.html', context)
+
+@login_required
+def fiche_inscription_pdf(request, eleve_id):
+    """Génère la fiche d'inscription d'un élève en PDF"""
+    qs = Eleve.objects.select_related(
+        'classe', 'classe__ecole', 'responsable_principal', 'responsable_secondaire'
+    )
+    if not user_is_admin(request.user):
+        qs = filter_by_user_school(qs, request.user, 'classe__ecole')
+    eleve = get_object_or_404(qs, id=eleve_id)
+    
+    # Log de l'activité
+    JournalActivite.objects.create(
+        user=request.user,
+        action='IMPRESSION',
+        type_objet='ELEVE',
+        objet_id=eleve.id,
+        description=f"Impression fiche d'inscription PDF de {eleve.nom_complet}",
+        adresse_ip=request.META.get('REMOTE_ADDR', ''),
+        user_agent=request.META.get('HTTP_USER_AGENT', '')
+    )
+    
+    # Créer la réponse HTTP pour le PDF
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'inline; filename="fiche_inscription_{eleve.matricule}.pdf"'
+    
+    # Créer le PDF
+    c = canvas.Canvas(response, pagesize=A4)
+    width, height = A4
+    
+    # Configuration des polices
+    try:
+        # Essayer d'utiliser Calibri (plus moderne)
+        calibri_path = 'C:/Windows/Fonts/calibri.ttf'
+        calibri_bold_path = 'C:/Windows/Fonts/calibrib.ttf'
+        if os.path.exists(calibri_path) and os.path.exists(calibri_bold_path):
+            pdfmetrics.registerFont(TTFont('Calibri', calibri_path))
+            pdfmetrics.registerFont(TTFont('Calibri-Bold', calibri_bold_path))
+            pdfmetrics.registerFont(TTFont('MainFont', calibri_path))
+            pdfmetrics.registerFont(TTFont('MainFont-Bold', calibri_bold_path))
+        else:
+            # Fallback vers Arial
+            arial_path = 'C:/Windows/Fonts/arial.ttf'
+            arial_bold_path = 'C:/Windows/Fonts/arialbd.ttf'
+            if os.path.exists(arial_path) and os.path.exists(arial_bold_path):
+                pdfmetrics.registerFont(TTFont('Arial', arial_path))
+                pdfmetrics.registerFont(TTFont('Arial-Bold', arial_bold_path))
+                pdfmetrics.registerFont(TTFont('MainFont', arial_path))
+                pdfmetrics.registerFont(TTFont('MainFont-Bold', arial_bold_path))
+    except Exception:
+        pass  # Utiliser les polices par défaut
+    
+    # Compression PDF pour meilleure qualité
+    c.setPageCompression(1)
+    
+    # Filigrane avec logo de l'école (même taille que les autres exports PDF)
+    c.saveState()
+    try:
+        # Chemin vers le logo
+        logo_path = os.path.join('static', 'logos', 'logo.png')
+        if os.path.exists(logo_path):
+            # Taille ~150% de la largeur de page (comme dans rapports/utils.py)
+            wm_width = width * 1.5
+            wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
+            wm_x = (width - wm_width) / 2
+            wm_y = (height - wm_height) / 2
+            
+            # Opacité faible
+            try:
+                c.setFillAlpha(0.08)
+            except Exception:
+                pass
+            
+            # Légère rotation pour l'effet filigrane
+            c.translate(width / 2.0, height / 2.0)
+            c.rotate(30)
+            c.translate(-width / 2.0, -height / 2.0)
+            
+            c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
+        else:
+            # Fallback vers texte si logo non trouvé
+            c.setFillAlpha(0.04)
+            c.setFont("MainFont-Bold", 60)
+            c.rotate(45)
+            c.drawString(200, -100, eleve.classe.ecole.nom.upper())
+            c.rotate(-45)
+    finally:
+        c.restoreState()
+    
+    # En-tête
+    y = height - 2*cm
+    try:
+        c.setFont("MainFont-Bold", 20)
+    except:
+        c.setFont("Helvetica-Bold", 20)
+    
+    # Centrer le texte manuellement
+    text = eleve.classe.ecole.nom.upper()
+    text_width = c.stringWidth(text, "MainFont-Bold", 20) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 20)
+    c.drawString((width - text_width) / 2, y, text)
+    y -= 0.8*cm
+    
+    try:
+        c.setFont("MainFont-Bold", 16)
+    except:
+        c.setFont("Helvetica-Bold", 16)
+    
+    text = "FICHE D'INSCRIPTION"
+    text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+    c.drawString((width - text_width) / 2, y, text)
+    
+    y -= 1.5*cm
+    
+    # Photo de l'élève (si disponible)
+    photo_x = width - 4*cm
+    photo_y = y - 3*cm
+    photo_width = 3*cm
+    photo_height = 4*cm
+    
+    if eleve.photo:
+        try:
+            c.drawImage(eleve.photo.path, photo_x, photo_y, width=photo_width, height=photo_height)
+        except Exception:
+            # Placeholder si l'image ne peut pas être chargée
+            c.rect(photo_x, photo_y, photo_width, photo_height)
+            try:
+                c.setFont("MainFont", 12)
+            except:
+                c.setFont("Helvetica", 12)
+            text = "Photo"
+            text_width = c.stringWidth(text, "MainFont", 12) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 12)
+            c.drawString(photo_x + (photo_width - text_width)/2, photo_y + photo_height/2, text)
+    else:
+        # Placeholder pour photo
+        c.rect(photo_x, photo_y, photo_width, photo_height)
+        try:
+            c.setFont("MainFont", 12)
+        except:
+            c.setFont("Helvetica", 12)
+        text = "Photo"
+        text_width = c.stringWidth(text, "MainFont", 12) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 12)
+        c.drawString(photo_x + (photo_width - text_width)/2, photo_y + photo_height/2, text)
+    
+    # Informations de l'élève
+    try:
+        c.setFont("MainFont-Bold", 14)
+    except:
+        c.setFont("Helvetica-Bold", 14)
+    
+    # Section Informations personnelles
+    c.drawString(2*cm, y, "INFORMATIONS PERSONNELLES")
+    y -= 0.8*cm
+    
+    try:
+        c.setFont("MainFont", 12)
+    except:
+        c.setFont("Helvetica", 12)
+    
+    # Colonne gauche
+    left_col = 2*cm
+    right_col = 10*cm
+    line_height = 0.6*cm
+    
+    c.drawString(left_col, y, f"Matricule: {eleve.matricule}")
+    c.drawString(right_col, y, f"Date d'inscription: {eleve.date_inscription.strftime('%d/%m/%Y')}")
+    y -= line_height
+    
+    c.drawString(left_col, y, f"Nom: {eleve.nom}")
+    c.drawString(right_col, y, f"Prénom: {eleve.prenom}")
+    y -= line_height
+    
+    c.drawString(left_col, y, f"Sexe: {eleve.get_sexe_display()}")
+    c.drawString(right_col, y, f"Date de naissance: {eleve.date_naissance.strftime('%d/%m/%Y')}")
+    y -= line_height
+    
+    c.drawString(left_col, y, f"Lieu de naissance: {eleve.lieu_naissance}")
+    c.drawString(right_col, y, f"Âge: {eleve.age} ans")
+    y -= line_height
+    
+    c.drawString(left_col, y, f"Statut: {eleve.get_statut_display()}")
+    y -= line_height * 1.5
+    
+    # Section Informations scolaires
+    try:
+        c.setFont("MainFont-Bold", 14)
+    except:
+        c.setFont("Helvetica-Bold", 14)
+    
+    c.drawString(left_col, y, "INFORMATIONS SCOLAIRES")
+    y -= 0.8*cm
+    
+    try:
+        c.setFont("MainFont", 12)
+    except:
+        c.setFont("Helvetica", 12)
+    
+    c.drawString(left_col, y, f"École: {eleve.classe.ecole.nom}")
+    y -= line_height
+    
+    c.drawString(left_col, y, f"Classe: {eleve.classe.nom}")
+    c.drawString(right_col, y, f"Niveau: {eleve.classe.get_niveau_display()}")
+    y -= line_height
+    
+    c.drawString(left_col, y, f"Année scolaire: {eleve.classe.annee_scolaire}")
+    y -= line_height * 1.5
+    
+    # Section Responsable principal
+    try:
+        c.setFont("MainFont-Bold", 14)
+    except:
+        c.setFont("Helvetica-Bold", 14)
+    
+    c.drawString(left_col, y, "RESPONSABLE PRINCIPAL")
+    y -= 0.8*cm
+    
+    try:
+        c.setFont("MainFont", 12)
+    except:
+        c.setFont("Helvetica", 12)
+    
+    resp_principal = eleve.responsable_principal
+    c.drawString(left_col, y, f"Nom complet: {resp_principal.nom_complet}")
+    c.drawString(right_col, y, f"Relation: {resp_principal.get_relation_display()}")
+    y -= line_height
+    
+    c.drawString(left_col, y, f"Téléphone: {resp_principal.telephone}")
+    if resp_principal.email:
+        c.drawString(right_col, y, f"Email: {resp_principal.email}")
+    y -= line_height
+    
+    if resp_principal.profession:
+        c.drawString(left_col, y, f"Profession: {resp_principal.profession}")
+        y -= line_height
+    
+    if resp_principal.adresse:
+        c.drawString(left_col, y, f"Adresse: {resp_principal.adresse}")
+        y -= line_height
+    
+    # Section Responsable secondaire (si existe)
+    if eleve.responsable_secondaire:
+        y -= line_height * 0.5
+        
+        try:
+            c.setFont("MainFont-Bold", 14)
+        except:
+            c.setFont("Helvetica-Bold", 14)
+        
+        c.drawString(left_col, y, "RESPONSABLE SECONDAIRE")
+        y -= 0.8*cm
+        
+        try:
+            c.setFont("MainFont", 12)
+        except:
+            c.setFont("Helvetica", 12)
+        
+        resp_secondaire = eleve.responsable_secondaire
+        c.drawString(left_col, y, f"Nom complet: {resp_secondaire.nom_complet}")
+        c.drawString(right_col, y, f"Relation: {resp_secondaire.get_relation_display()}")
+        y -= line_height
+        
+        c.drawString(left_col, y, f"Téléphone: {resp_secondaire.telephone}")
+        if resp_secondaire.email:
+            c.drawString(right_col, y, f"Email: {resp_secondaire.email}")
+        y -= line_height
+        
+        if resp_secondaire.profession:
+            c.drawString(left_col, y, f"Profession: {resp_secondaire.profession}")
+            y -= line_height
+        
+        if resp_secondaire.adresse:
+            c.drawString(left_col, y, f"Adresse: {resp_secondaire.adresse}")
+            y -= line_height
+    
+    # Pied de page
+    y = 3*cm
+    try:
+        c.setFont("MainFont", 10)
+    except:
+        c.setFont("Helvetica", 10)
+    
+    text = f"Fiche générée le {timezone.now().strftime('%d/%m/%Y à %H:%M')}"
+    text_width = c.stringWidth(text, "MainFont", 10) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 10)
+    c.drawString((width - text_width) / 2, y, text)
+    y -= 0.5*cm
+    
+    text = "Système de Gestion Scolaire - École Moderne HADJA KANFING DIANÉ"
+    text_width = c.stringWidth(text, "MainFont", 10) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 10)
+    c.drawString((width - text_width) / 2, y, text)
+    
+    # Finaliser le PDF
+    c.save()
+    
+    return response

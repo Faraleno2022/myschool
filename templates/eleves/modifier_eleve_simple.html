@@ -1,0 +1,493 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Modifier {{ eleve.prenom }} {{ eleve.nom }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .form-container {
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        padding: 30px;
+        margin: 20px 0;
+    }
+    .form-group { margin-bottom: 20px; }
+    .form-label { font-weight: 600; color: #333; margin-bottom: 8px; }
+    .required { color: #dc3545; }
+    .btn-save {
+        background: linear-gradient(45deg, #007bff, #0056b3);
+        border: none;
+        padding: 12px 32px;
+        font-weight: 600;
+        border-radius: 8px;
+        color: white;
+        font-size: 16px;
+        transition: all 0.3s ease;
+    }
+    .btn-save:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,123,255,0.4); color: white; }
+    .section-title { color: #007bff; border-bottom: 2px solid #007bff; padding-bottom: 10px; margin-bottom: 25px; font-weight: 600; }
+    .form-control, .form-select { border: 2px solid #e9ecef; border-radius: 8px; padding: 12px; transition: border-color 0.3s ease; }
+    .form-control:focus, .form-select:focus { border-color: #007bff; box-shadow: 0 0 0 0.2rem rgba(0,123,255,0.25); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-user-edit text-primary"></i> Modifier l'élève</h2>
+                    <p class="text-muted">{{ eleve.nom_complet }} • Matricule: <strong>{{ eleve.matricule }}</strong></p>
+                </div>
+                <div>
+                    <a href="{% url 'eleves:detail_eleve' eleve.id %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour au profil
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Messages -->
+    {% if messages %}
+        <div class="row mb-3">
+            <div class="col-12">
+                {% for message in messages %}
+                    <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+                        {% if message.tags == 'success' %}
+                            <i class="fas fa-check-circle me-2"></i>
+                        {% elif message.tags == 'error' %}
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                        {% elif message.tags == 'warning' %}
+                            <i class="fas fa-exclamation-triangle me-2"></i>
+                        {% else %}
+                            <i class="fas fa-info-circle me-2"></i>
+                        {% endif %}
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    {% endif %}
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="form-container">
+                <form method="post" enctype="multipart/form-data" action="{% url 'eleves:modifier_eleve' eleve.id %}">
+                    {% csrf_token %}
+
+                    <!-- Informations personnelles -->
+                    <h4 class="section-title"><i class="fas fa-user me-2"></i>Informations personnelles</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Matricule <span class="required">*</span></label>
+                                {{ form.matricule }}
+                                {% if form.matricule.errors %}
+                                    <div class="text-danger small mt-1">{{ form.matricule.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Sexe <span class="required">*</span></label>
+                                {{ form.sexe }}
+                                {% if form.sexe.errors %}
+                                    <div class="text-danger small mt-1">{{ form.sexe.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Prénom <span class="required">*</span></label>
+                                {{ form.prenom }}
+                                {% if form.prenom.errors %}
+                                    <div class="text-danger small mt-1">{{ form.prenom.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Nom <span class="required">*</span></label>
+                                {{ form.nom }}
+                                {% if form.nom.errors %}
+                                    <div class="text-danger small mt-1">{{ form.nom.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Date de naissance <span class="required">*</span></label>
+                                {{ form.date_naissance }}
+                                {% if form.date_naissance.errors %}
+                                    <div class="text-danger small mt-1">{{ form.date_naissance.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Lieu de naissance <span class="required">*</span></label>
+                                {{ form.lieu_naissance }}
+                                {% if form.lieu_naissance.errors %}
+                                    <div class="text-danger small mt-1">{{ form.lieu_naissance.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Informations scolaires -->
+                    <h4 class="section-title mt-4"><i class="fas fa-school me-2"></i>Informations scolaires</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Classe <span class="required">*</span></label>
+                                {{ form.classe }}
+                                {% if form.classe.errors %}
+                                    <div class="text-danger small mt-1">{{ form.classe.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Date d'inscription</label>
+                                {{ form.date_inscription }}
+                                {% if form.date_inscription.errors %}
+                                    <div class="text-danger small mt-1">{{ form.date_inscription.errors.0 }}</div>
+                                {% endif %}
+                                <div class="form-text">La date d'inscription existante est conservée si vous laissez vide.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Statut <span class="required">*</span></label>
+                                {{ form.statut }}
+                                {% if form.statut.errors %}
+                                    <div class="text-danger small mt-1">{{ form.statut.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Responsables -->
+                    <h4 class="section-title mt-4"><i class="fas fa-users me-2"></i>Responsables</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Responsable principal <span class="required">*</span></label>
+                                {{ form.responsable_principal }}
+                                {% if form.responsable_principal.errors %}
+                                    <div class="text-danger small mt-1">{{ form.responsable_principal.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label class="form-label">Responsable secondaire</label>
+                                {{ form.responsable_secondaire }}
+                                {% if form.responsable_secondaire.errors %}
+                                    <div class="text-danger small mt-1">{{ form.responsable_secondaire.errors.0 }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Photo -->
+                    <h4 class="section-title mt-4"><i class="fas fa-camera me-2"></i>Photo</h4>
+                    <div class="row">
+                        <div class="col-md-12">
+                            <div class="form-group">
+                                <label class="form-label">Photo de l'élève</label>
+                                <div class="d-flex align-items-center gap-3 flex-wrap">
+                                    {{ form.photo }}
+                                    <!-- Le bouton caméra sera inséré par JS juste après l'input -->
+                                    <img data-photo-preview style="display:none; max-width:120px; max-height:120px; border-radius:8px; border:1px solid #dee2e6;"/>
+                                </div>
+                                {% if form.photo.errors %}
+                                    <div class="text-danger small mt-1">{{ form.photo.errors.0 }}</div>
+                                {% endif %}
+                                <div class="form-text">Formats: JPG, PNG. Taille max: 2MB</div>
+                                {% if eleve.photo %}
+                                    <div class="mt-2">
+                                        <small class="text-muted d-block">Photo actuelle:</small>
+                                        <img src="{{ eleve.photo.url }}" alt="Photo actuelle" class="rounded" style="max-width:120px; max-height:120px; object-fit:cover; border:1px solid #dee2e6;"/>
+                                    </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Boutons -->
+                    <div class="row mt-5">
+                        <div class="col-12 text-center">
+                            <button type="submit" class="btn btn-save me-3" id="saveBtn">
+                                <i class="fas fa-save me-2"></i>Enregistrer les modifications
+                            </button>
+                            <a href="{% url 'eleves:detail_eleve' eleve.id %}" class="btn btn-outline-secondary">
+                                <i class="fas fa-times me-2"></i>Annuler
+                            </a>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Sidebar: Infos rapides -->
+        <div class="col-lg-4">
+            <div class="form-container">
+                <h5 class="section-title"><i class="fas fa-id-card me-2"></i>Informations élève</h5>
+                <div class="d-flex align-items-center gap-3">
+                    <div>
+                        <img src="{% if eleve.photo %}{{ eleve.photo.url }}{% else %}{% static 'images/ecole.jpg' %}{% endif %}" class="rounded" style="width:80px; height:80px; object-fit:cover; border:1px solid #dee2e6;" alt="Photo"/>
+                    </div>
+                    <div>
+                        <div class="fw-bold">{{ eleve.nom_complet }}</div>
+                        <div class="text-muted small">Matricule: {{ eleve.matricule }}</div>
+                        <div class="text-muted small">Classe: {{ eleve.classe.nom }}</div>
+                        <div class="text-muted small">Statut: {{ eleve.get_statut_display }}</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+ 
+<!-- Modal Caméra -->
+<div class="modal fade" id="cameraModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Prendre une photo</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="ratio ratio-4x3 mb-2" id="videoWrapper">
+          <video id="cameraVideo" autoplay playsinline style="width:100%; height:100%; background:#000; object-fit:cover;"></video>
+        </div>
+        <canvas id="cameraCanvas" class="d-none"></canvas>
+        <div class="small text-muted" id="cameraHelp">Autorisez l'accès à la caméra pour prendre une photo.</div>
+        <div class="alert alert-danger d-none mt-2" id="cameraError"></div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between w-100">
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary" id="switchCameraBtn">Basculer caméra</button>
+          <button type="button" class="btn btn-outline-danger d-none" id="retakeBtn">Reprendre</button>
+        </div>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-primary" id="captureBtn">Capturer</button>
+          <button type="button" class="btn btn-success d-none" id="usePhotoBtn">Utiliser cette photo</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  const fileInput = document.getElementById('id_photo');
+  if (!fileInput) return;
+
+  // Insérer bouton "Prendre une photo" après l'input fichier
+  if (!document.getElementById('btnOpenCamera')) {
+    const camBtn = document.createElement('button');
+    camBtn.type = 'button';
+    camBtn.id = 'btnOpenCamera';
+    camBtn.className = 'btn btn-outline-primary btn-sm ms-2';
+    camBtn.innerHTML = '<i class="fas fa-camera me-1"></i>Prendre une photo';
+    fileInput.insertAdjacentElement('afterend', camBtn);
+  }
+
+  // Nettoyage défensif: s'il existe plusieurs #btnOpenCamera auprès de l'input, ne garder que le premier
+  const allCamBtns = fileInput.parentElement.querySelectorAll('#btnOpenCamera');
+  if (allCamBtns.length > 1) {
+    for (let i = 1; i < allCamBtns.length; i++) {
+      allCamBtns[i].remove();
+    }
+  }
+
+  // Zone d'aperçu: utiliser l'élément existant dans le template
+  const preview = document.querySelector('[data-photo-preview]');
+
+  // Modal & éléments caméra
+  const modalEl = document.getElementById('cameraModal');
+  const video = document.getElementById('cameraVideo');
+  const canvas = document.getElementById('cameraCanvas');
+  const captureBtn = document.getElementById('captureBtn');
+  const usePhotoBtn = document.getElementById('usePhotoBtn');
+  const retakeBtn = document.getElementById('retakeBtn');
+  const switchBtn = document.getElementById('switchCameraBtn');
+  const cameraError = document.getElementById('cameraError');
+  const videoWrapper = document.getElementById('videoWrapper');
+  let currentStream = null;
+  let facingMode = 'environment'; // arrière par défaut
+  let capturedBlob = null;
+  const isLocalhost = ['localhost', '127.0.0.1', '::1'].includes(location.hostname);
+
+  // Helpers
+  function stopStream() {
+    if (currentStream) {
+      currentStream.getTracks().forEach(t => t.stop());
+      currentStream = null;
+    }
+  }
+
+  async function startStream() {
+    stopStream();
+    cameraError.classList.add('d-none');
+    try {
+      // Sécurité: getUserMedia requiert HTTPS ou localhost
+      if (!window.isSecureContext && !isLocalhost) {
+        throw new Error("Contexte non sécurisé (HTTPS requis). Ouvrez le site en HTTPS ou sur localhost.");
+      }
+      const constraints = {
+        video: { facingMode: { ideal: facingMode } },
+        audio: false
+      };
+      const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      currentStream = stream;
+      video.srcObject = stream;
+      video.play();
+    } catch (e) {
+      let msg = '';
+      // Messages d'erreur spécifiques selon le type
+      if (String(e).toLowerCase().includes('permission') || String(e).toLowerCase().includes('denied')) {
+        msg = `🚫 <strong>Permission refusée</strong><br>
+        <div class="mt-2">
+          <strong>Solutions :</strong><br>
+          1. Cliquez sur l'icône 🔒 dans la barre d'adresse<br>
+          2. Sélectionnez "Autoriser" pour la Caméra<br>
+          3. Rechargez la page (F5)<br>
+          4. Réessayez "Prendre une photo"
+        </div>`;
+      } else if (String(e).toLowerCase().includes('notfound') || String(e).toLowerCase().includes('not found')) {
+        msg = '📷 <strong>Aucune caméra détectée</strong><br>Vérifiez qu\'une caméra est connectée à votre appareil.';
+      } else if (!window.isSecureContext && !isLocalhost) {
+        msg = '🔐 <strong>Connexion non sécurisée</strong><br>La caméra nécessite HTTPS. Contactez l\'administrateur.';
+      } else {
+        msg = '⚠️ <strong>Erreur caméra :</strong> ' + (e.message || e);
+      }
+      cameraError.innerHTML = msg;
+      cameraError.classList.remove('d-none');
+    }
+  }
+
+  function showVideoUI() {
+    video.classList.remove('d-none');
+    canvas.classList.add('d-none');
+    captureBtn.classList.remove('d-none');
+    usePhotoBtn.classList.add('d-none');
+    retakeBtn.classList.add('d-none');
+  }
+
+  function showCaptureUI() {
+    video.classList.add('d-none');
+    canvas.classList.remove('d-none');
+    captureBtn.classList.add('d-none');
+    usePhotoBtn.classList.remove('d-none');
+    retakeBtn.classList.remove('d-none');
+  }
+
+  // Ouvrir la caméra
+  const camBtn = document.getElementById('btnOpenCamera');
+  camBtn.addEventListener('click', () => {
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    showVideoUI();
+    capturedBlob = null;
+    startStream();
+    modal.show();
+  });
+
+
+  // Basculer caméra
+  switchBtn.addEventListener('click', () => {
+    facingMode = (facingMode === 'environment') ? 'user' : 'environment';
+    startStream();
+  });
+
+  // Capturer
+  captureBtn.addEventListener('click', () => {
+    try {
+      const width = video.videoWidth || 640;
+      const height = video.videoHeight || 480;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, width, height);
+      canvas.toBlob(function (blob) {
+        capturedBlob = blob;
+        showCaptureUI();
+      }, 'image/jpeg', 0.92);
+    } catch (e) {
+      cameraError.textContent = 'Erreur lors de la capture: ' + (e.message || e);
+      cameraError.classList.remove('d-none');
+    }
+  });
+
+  // Reprendre
+  retakeBtn.addEventListener('click', () => {
+    capturedBlob = null;
+    showVideoUI();
+  });
+
+  // Utiliser la photo
+  usePhotoBtn.addEventListener('click', () => {
+    if (!capturedBlob) return;
+    const file = new File([capturedBlob], 'photo_eleve.jpg', { type: 'image/jpeg' });
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    fileInput.files = dt.files;
+
+    // Aperçu
+    if (preview) {
+      const url = URL.createObjectURL(file);
+      preview.src = url;
+      preview.style.display = 'block';
+      preview.classList.remove('d-none');
+    }
+
+    // Fermer le modal
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.hide();
+  });
+
+  // Arrêter la caméra à la fermeture du modal
+  modalEl.addEventListener('hidden.bs.modal', () => {
+    stopStream();
+    showVideoUI();
+  });
+
+  // Aperçu si un fichier est choisi manuellement
+  fileInput.addEventListener('change', () => {
+    if (preview && fileInput.files && fileInput.files[0]) {
+      preview.src = URL.createObjectURL(fileInput.files[0]);
+      preview.style.display = 'block';
+      preview.classList.remove('d-none');
+    }
+  });
+
+  // Anti double-submit
+  const saveBtn = document.getElementById('saveBtn');
+  const form = saveBtn ? saveBtn.closest('form') : null;
+  if (form && saveBtn) {
+    form.addEventListener('submit', () => {
+      saveBtn.disabled = true;
+      saveBtn.classList.add('disabled');
+    });
+  }
+});
+</script>
+{% endblock %}
+{% endblock %}

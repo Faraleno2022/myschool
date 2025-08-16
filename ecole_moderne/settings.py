@@ -73,7 +73,7 @@ USE_TZ = True
 # Limitation des uploads
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
-DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 
 # En-têtes de sécurité supplémentaires
 SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
@@ -292,7 +292,7 @@ if not DEBUG:
     CSRF_COOKIE_SECURE = True
 
 # Protection contre les attaques par déni de service
-DATA_UPLOAD_MAX_NUMBER_FIELDS = 100
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000
 DATA_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
 
 # Limitation du nombre de connexions simultanées par IP
