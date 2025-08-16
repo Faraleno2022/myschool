@@ -1,0 +1,444 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .table-responsive {
+        border-radius: 10px;
+        overflow-x: auto;
+        overflow-y: visible;
+        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        max-width: 100%;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Style personnalisé pour la barre de défilement horizontale */
+    .table-responsive::-webkit-scrollbar {
+        height: 12px;
+    }
+    
+    .table-responsive::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 6px;
+    }
+    
+    .table-responsive::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 6px;
+        border: 2px solid #f1f1f1;
+    }
+    
+    .table-responsive::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+    }
+    .detail-card {
+        border: none;
+        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        border-radius: 15px;
+    }
+    .field-row {
+        border-bottom: 1px solid #f0f0f0;
+        padding: 15px 0;
+    }
+    .field-row:last-child {
+        border-bottom: none;
+    }
+    .field-label {
+        font-weight: 600;
+        color: #495057;
+        margin-bottom: 5px;
+    }
+    .field-value {
+        color: #212529;
+        word-wrap: break-word;
+    }
+    .field-type {
+        font-size: 0.8rem;
+        color: #6c757d;
+        font-style: italic;
+    }
+    .header-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 15px 15px 0 0;
+        padding: 30px;
+    }
+    .action-buttons {
+        position: sticky;
+        top: 20px;
+        z-index: 100;
+    }
+    .delete-record-btn {
+        animation: pulse-danger 3s infinite;
+        transition: all 0.3s ease;
+    }
+    .delete-record-btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 4px 15px rgba(220, 53, 69, 0.5);
+    }
+    @keyframes pulse-danger {
+        0% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(220, 53, 69, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(220, 53, 69, 0); }
+    }
+    .boolean-true {
+        color: #28a745;
+    }
+    .boolean-false {
+        color: #dc3545;
+    }
+    .null-value {
+        color: #6c757d;
+        font-style: italic;
+    }
+    .foreign-key-value {
+        background: #e3f2fd;
+        padding: 5px 10px;
+        border-radius: 20px;
+        display: inline-block;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Navigation -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'administration:database_management' %}">
+                            <i class="fas fa-database"></i> Administration BDD
+                        </a>
+                    </li>
+                    <li class="breadcrumb-item">
+                        <a href="{% url 'administration:model_list' app_label model_name %}">
+                            {{ verbose_name_plural|title }}
+                        </a>
+                    </li>
+                    <li class="breadcrumb-item active">Détail #{{ object.pk }}</li>
+                </ol>
+            </nav>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Contenu principal -->
+        <div class="col-lg-9">
+            <div class="detail-card card">
+                <!-- En-tête -->
+                <div class="header-section">
+                    <div class="row align-items-center">
+                        <div class="col-md-8">
+                            <h2 class="mb-2">
+                                <i class="fas fa-info-circle"></i> {{ titre_page }}
+                            </h2>
+                            <p class="mb-0 opacity-75">
+                                <strong>ID:</strong> {{ object.pk }} | 
+                                <strong>Modèle:</strong> {{ app_label }}.{{ model_name }}
+                            </p>
+                        </div>
+                        <div class="col-md-4 text-right">
+                            <div class="text-white-50">
+                                <i class="fas fa-table fa-3x"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Corps de la carte -->
+                <div class="card-body p-4">
+                    <div class="row">
+                        {% for field in field_values %}
+                        <div class="col-md-6">
+                            <div class="field-row">
+                                <div class="field-label">
+                                    {{ field.verbose_name|title }}
+                                    <span class="field-type">({{ field.type }})</span>
+                                </div>
+                                <div class="field-value">
+                                    {% if field.type == 'BooleanField' %}
+                                        {% if field.value %}
+                                            <i class="fas fa-check boolean-true"></i> 
+                                            <span class="boolean-true">Oui / Vrai</span>
+                                        {% else %}
+                                            <i class="fas fa-times boolean-false"></i> 
+                                            <span class="boolean-false">Non / Faux</span>
+                                        {% endif %}
+                                    {% elif field.type == 'DateTimeField' %}
+                                        {% if field.value %}
+                                            <i class="fas fa-calendar-alt text-info"></i> 
+                                            {{ field.value|date:"d/m/Y à H:i:s" }}
+                                        {% else %}
+                                            <span class="null-value">Non défini</span>
+                                        {% endif %}
+                                    {% elif field.type == 'DateField' %}
+                                        {% if field.value %}
+                                            <i class="fas fa-calendar text-info"></i> 
+                                            {{ field.value|date:"d/m/Y" }}
+                                        {% else %}
+                                            <span class="null-value">Non défini</span>
+                                        {% endif %}
+                                    {% elif field.type == 'TimeField' %}
+                                        {% if field.value %}
+                                            <i class="fas fa-clock text-info"></i> 
+                                            {{ field.value|time:"H:i:s" }}
+                                        {% else %}
+                                            <span class="null-value">Non défini</span>
+                                        {% endif %}
+                                    {% elif field.type == 'DecimalField' or field.type == 'FloatField' %}
+                                        {% if field.value %}
+                                            <i class="fas fa-calculator text-success"></i> 
+                                            {{ field.value|floatformat:2 }}
+                                        {% else %}
+                                            <span class="text-muted">0.00</span>
+                                        {% endif %}
+                                    {% elif field.type == 'IntegerField' or field.type == 'BigIntegerField' or field.type == 'SmallIntegerField' %}
+                                        {% if field.value is not None %}
+                                            <i class="fas fa-hashtag text-primary"></i> 
+                                            {{ field.value }}
+                                        {% else %}
+                                            <span class="text-muted">0</span>
+                                        {% endif %}
+                                    {% elif field.type == 'ForeignKey' %}
+                                        {% if field.value %}
+                                            <span class="foreign-key-value">
+                                                <i class="fas fa-link text-info"></i> 
+                                                {{ field.value }}
+                                            </span>
+                                        {% else %}
+                                            <span class="null-value">Aucune relation</span>
+                                        {% endif %}
+                                    {% elif field.type == 'EmailField' %}
+                                        {% if field.value %}
+                                            <i class="fas fa-envelope text-info"></i> 
+                                            <a href="mailto:{{ field.value }}">{{ field.value }}</a>
+                                        {% else %}
+                                            <span class="null-value">Aucun email</span>
+                                        {% endif %}
+                                    {% elif field.type == 'URLField' %}
+                                        {% if field.value %}
+                                            <i class="fas fa-external-link-alt text-info"></i> 
+                                            <a href="{{ field.value }}" target="_blank">{{ field.value }}</a>
+                                        {% else %}
+                                            <span class="null-value">Aucune URL</span>
+                                        {% endif %}
+                                    {% elif field.type == 'TextField' %}
+                                        {% if field.value %}
+                                            <div class="border p-3 bg-light rounded">
+                                                <i class="fas fa-align-left text-secondary"></i>
+                                                <pre class="mb-0" style="white-space: pre-wrap;">{{ field.value }}</pre>
+                                            </div>
+                                        {% else %}
+                                            <span class="null-value">Aucun texte</span>
+                                        {% endif %}
+                                    {% elif field.type == 'ImageField' or field.type == 'FileField' %}
+                                        {% if field.value %}
+                                            <i class="fas fa-file text-warning"></i> 
+                                            <a href="{{ field.value.url }}" target="_blank">{{ field.value.name }}</a>
+                                        {% else %}
+                                            <span class="null-value">Aucun fichier</span>
+                                        {% endif %}
+                                    {% else %}
+                                        {% if field.value %}
+                                            <i class="fas fa-text-width text-secondary"></i> 
+                                            {{ field.value }}
+                                        {% else %}
+                                            <span class="null-value">Vide</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                        {% if forloop.counter|divisibleby:2 %}
+                            </div><div class="row">
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Panneau d'actions -->
+        <div class="col-lg-3">
+            <div class="action-buttons">
+                <div class="card">
+                    <div class="card-header bg-dark text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-cogs"></i> Actions
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <div class="btn-group">
+                            <a href="{% url 'administration:model_list' app_label model_name %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Retour à la liste
+                            </a>
+                            <button type="button" class="btn btn-danger btn-lg delete-record-btn" onclick="deleteRecord()" 
+                                    title="Suppression définitive de cet enregistrement" data-toggle="tooltip">
+                                <i class="fas fa-trash-alt"></i> SUPPRIMER DÉFINITIVEMENT
+                            </button>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <button type="button" class="btn btn-info btn-sm btn-block" onclick="exportRecord()">
+                                <i class="fas fa-download"></i> Exporter les données
+                            </button>
+                        </div>
+                            
+                        <hr>
+                            
+                            <div class="text-center">
+                                <small class="text-muted">
+                                    <i class="fas fa-info-circle"></i> 
+                                    Modèle: {{ verbose_name }}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Informations techniques -->
+                <div class="card mt-3">
+                    <div class="card-header bg-info text-white">
+                        <h6 class="mb-0">
+                            <i class="fas fa-info"></i> Informations techniques
+                        </h6>
+                    </div>
+                    <div class="card-body">
+                        <small>
+                            <strong>Application:</strong> {{ app_label }}<br>
+                            <strong>Modèle:</strong> {{ model_name }}<br>
+                            <strong>Table:</strong> {{ db_table }}<br>
+                            <strong>Champs:</strong> {{ field_values|length }}<br>
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de confirmation de suppression -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle"></i> Confirmer la suppression
+                </h5>
+                <button type="button" class="close text-white" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>Attention!</strong> Cette action est irréversible.
+                </div>
+                <p>Êtes-vous sûr de vouloir supprimer définitivement cet enregistrement ?</p>
+                <div class="bg-light p-3 rounded">
+                    <strong>Élément à supprimer:</strong><br>
+                    <span id="deleteItemName"></span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-dismiss="modal">
+                    <i class="fas fa-times"></i> Annuler
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmDelete">
+                    <i class="fas fa-trash"></i> Supprimer définitivement
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let deleteId = null;
+
+function deleteRecord() {
+    const confirmMessage = `⚠️ SUPPRESSION DÉFINITIVE ⚠️\n\n` +
+        `Vous êtes sur le point de supprimer DÉFINITIVEMENT cet enregistrement de la base de données.\n\n` +
+        `Enregistrement: {{ object|truncatechars:50 }}\n` +
+        `ID: {{ object.pk }}\n\n` +
+        `Cette action est IRRÉVERSIBLE et supprimera toutes les données associées.\n\n` +
+        `Êtes-vous absolument certain de vouloir continuer ?`;
+        
+    if (confirm(confirmMessage)) {
+        // Deuxième confirmation pour les actions critiques
+        const finalConfirm = `DERNIÈRE CONFIRMATION\n\n` +
+            `Tapez "SUPPRIMER" pour confirmer la suppression définitive :`;
+            
+        const userInput = prompt(finalConfirm);
+        if (userInput === "SUPPRIMER") {
+            fetch(`/administration/model/{{ app_label }}/{{ model_name }}/{{ object.pk }}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('✅ Enregistrement supprimé avec succès');
+                    window.location.href = '{% url "administration:model_list" app_label model_name %}';
+                } else {
+                    alert('❌ Erreur: ' + data.error);
+                }
+            })
+            .catch(error => {
+                console.error('Erreur:', error);
+                alert('❌ Erreur lors de la suppression');
+            });
+        } else {
+            alert('❌ Suppression annulée - Texte de confirmation incorrect');
+        }
+    }
+}
+
+function exportRecord() {
+    // Créer un objet avec toutes les données
+    const data = {
+        model: '{{ app_label }}.{{ model_name }}',
+        id: {{ object.pk }},
+        fields: {
+            {% for field in field_values %}
+            '{{ field.name }}': '{{ field.value|escapejs }}',
+            {% endfor %}
+        }
+    };
+    
+    // Créer un fichier JSON et le télécharger
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type: 'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `{{ model_name }}_{{ object.pk }}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Afficher un message si l'enregistrement vient d'être créé ou modifié
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('created') === '1') {
+    // Afficher une notification de succès
+    const alert = document.createElement('div');
+    alert.className = 'alert alert-success alert-dismissible fade show';
+    alert.innerHTML = `
+        <i class="fas fa-check-circle"></i> Enregistrement créé avec succès!
+        <button type="button" class="close" data-dismiss="alert">
+            <span>&times;</span>
+        </button>
+    `;
+    document.querySelector('.container-fluid').insertBefore(alert, document.querySelector('.row'));
+}
+</script>
+{% endblock %}
