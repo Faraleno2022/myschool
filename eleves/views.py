@@ -1233,27 +1233,49 @@ def fiche_inscription_pdf(request, eleve_id):
     c = canvas.Canvas(response, pagesize=A4)
     width, height = A4
     
-    # Configuration des polices
+    # Configuration des polices avec détection cross-platform
+    main_font_registered = False
     try:
-        # Essayer d'utiliser Calibri (plus moderne)
-        calibri_path = 'C:/Windows/Fonts/calibri.ttf'
-        calibri_bold_path = 'C:/Windows/Fonts/calibrib.ttf'
-        if os.path.exists(calibri_path) and os.path.exists(calibri_bold_path):
-            pdfmetrics.registerFont(TTFont('Calibri', calibri_path))
-            pdfmetrics.registerFont(TTFont('Calibri-Bold', calibri_bold_path))
-            pdfmetrics.registerFont(TTFont('MainFont', calibri_path))
-            pdfmetrics.registerFont(TTFont('MainFont-Bold', calibri_bold_path))
+        # Chemins possibles pour les polices selon l'OS
+        font_paths = []
+        
+        # Windows
+        if os.name == 'nt':
+            font_paths.extend([
+                ('C:/Windows/Fonts/calibri.ttf', 'C:/Windows/Fonts/calibrib.ttf'),
+                ('C:/Windows/Fonts/arial.ttf', 'C:/Windows/Fonts/arialbd.ttf'),
+            ])
+        
+        # Linux/Unix (PythonAnywhere, Ubuntu, etc.)
         else:
-            # Fallback vers Arial
-            arial_path = 'C:/Windows/Fonts/arial.ttf'
-            arial_bold_path = 'C:/Windows/Fonts/arialbd.ttf'
-            if os.path.exists(arial_path) and os.path.exists(arial_bold_path):
-                pdfmetrics.registerFont(TTFont('Arial', arial_path))
-                pdfmetrics.registerFont(TTFont('Arial-Bold', arial_bold_path))
-                pdfmetrics.registerFont(TTFont('MainFont', arial_path))
-                pdfmetrics.registerFont(TTFont('MainFont-Bold', arial_bold_path))
+            font_paths.extend([
+                ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', 
+                 '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'),
+                ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', 
+                 '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
+                ('/System/Library/Fonts/Arial.ttf', '/System/Library/Fonts/Arial Bold.ttf'),  # macOS
+            ])
+        
+        # Essayer chaque paire de polices
+        for regular_path, bold_path in font_paths:
+            if os.path.exists(regular_path) and os.path.exists(bold_path):
+                try:
+                    pdfmetrics.registerFont(TTFont('MainFont', regular_path))
+                    pdfmetrics.registerFont(TTFont('MainFont-Bold', bold_path))
+                    main_font_registered = True
+                    break
+                except Exception:
+                    continue
+        
+        # Si aucune police système trouvée, utiliser les polices par défaut de ReportLab
+        if not main_font_registered:
+            # Les polices Helvetica sont déjà disponibles par défaut dans ReportLab
+            # On n'a pas besoin de les enregistrer, juste de s'assurer qu'elles existent
+            pass
+            
     except Exception:
-        pass  # Utiliser les polices par défaut
+        # En cas d'erreur, s'assurer que les alias existent
+        main_font_registered = False
     
     # Compression PDF pour meilleure qualité
     c.setPageCompression(1)
@@ -1285,7 +1307,10 @@ def fiche_inscription_pdf(request, eleve_id):
         else:
             # Fallback vers texte si logo non trouvé
             c.setFillAlpha(0.04)
-            c.setFont("MainFont-Bold", 60)
+            try:
+                c.setFont("MainFont-Bold", 60)
+            except:
+                c.setFont("Helvetica-Bold", 60)
             c.rotate(45)
             c.drawString(200, -100, eleve.classe.ecole.nom.upper())
             c.rotate(-45)
