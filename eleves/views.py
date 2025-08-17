@@ -1320,13 +1320,13 @@ def fiche_inscription_pdf(request, eleve_id):
     # En-tête
     y = height - 2*cm
     try:
-        c.setFont("MainFont-Bold", 20)
+        c.setFont("MainFont-Bold", 16)
     except:
-        c.setFont("Helvetica-Bold", 20)
+        c.setFont("Helvetica-Bold", 16)
     
-    # Centrer le texte manuellement
+    # Centrer le texte manuellement avec taille réduite
     text = eleve.classe.ecole.nom.upper()
-    text_width = c.stringWidth(text, "MainFont-Bold", 20) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 20)
+    text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
     c.drawString((width - text_width) / 2, y, text)
     y -= 0.8*cm
     

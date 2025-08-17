@@ -1198,13 +1198,13 @@ def generer_recu_pdf(request, paiement_id):
             c.drawImage(logo_path, margin_x, height - margin_y - 30, width=60, height=30, preserveAspectRatio=True, mask='auto')
         c.setFillColor(colors.HexColor('#0056b3'))
         try:
-            c.setFont("MainFont-Bold", 20)
+            c.setFont("MainFont-Bold", 16)
         except:
-            c.setFont("Helvetica-Bold", 20)
+            c.setFont("Helvetica-Bold", 16)
         
-        # Centrer le nom de l'école
+        # Centrer le nom de l'école avec taille réduite
         text = "École Moderne HADJA KANFING DIANÉ"
-        text_width = c.stringWidth(text, "MainFont-Bold", 20) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 20)
+        text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
         c.drawString((width - text_width) / 2, height - margin_y - 10, text)
         
         c.setFillColor(colors.black)

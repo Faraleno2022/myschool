@@ -371,7 +371,7 @@ def export_enseignants_pdf(request):
                 canvas.drawImage(logo_path, doc_.leftMargin, doc_.pagesize[1]-40, width=30, height=30, preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
-        canvas.setFont('Helvetica-Bold', 10)
+        canvas.setFont('Helvetica-Bold', 8)
         canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne HADJA KANFING DIANÉ')
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, title_text)
@@ -739,7 +739,7 @@ def export_etats_salaire_pdf(request):
                 canvas.drawImage(logo_path, doc_.leftMargin, doc_.pagesize[1]-40, width=30, height=30, preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
-        canvas.setFont('Helvetica-Bold', 10)
+        canvas.setFont('Helvetica-Bold', 8)
         canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne HADJA KANFING DIANÉ')
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, title_text)
@@ -1075,7 +1075,7 @@ def export_rapport_paiements_pdf(request):
                 canvas.drawImage(logo_path, doc_.leftMargin, doc_.pagesize[1]-40, width=30, height=30, preserveAspectRatio=True, mask='auto')
         except Exception:
             pass
-        canvas.setFont('Helvetica-Bold', 10)
+        canvas.setFont('Helvetica-Bold', 8)
         canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne HADJA KANFING DIANÉ')
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, titre)

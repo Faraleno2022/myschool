@@ -82,9 +82,9 @@ def _draw_header_and_watermark(c, doc):
         if logo_path:
             c.drawImage(logo_path, margin_x, height - margin_y - 30, width=60, height=30, preserveAspectRatio=True, mask='auto')
 
-        # Titre à droite du logo
+        # Titre à droite du logo avec taille réduite
         c.setFillColor(colors.HexColor('#0d47a1'))
-        c.setFont('Helvetica-Bold', 14)
+        c.setFont('Helvetica-Bold', 12)
         c.drawString(margin_x + 70, height - margin_y - 10, "École Moderne HADJA KANFING DIANÉ")
 
         # Ligne de séparation
