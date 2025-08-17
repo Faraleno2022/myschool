@@ -376,14 +376,37 @@ def export_enseignants_pdf(request):
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, title_text)
 
-        # Filigrane simple en texte (réduit et léger)
+        # Filigrane avec logo (comme les autres documents)
         canvas.saveState()
-        canvas.setFont('Helvetica-Bold', 42)
-        canvas.setFillGray(0.97)
-        canvas.translate(doc_.pagesize[0]/2, doc_.pagesize[1]/2)
-        canvas.rotate(30)
-        canvas.drawCentredString(0, 0, 'H.K. DIANÉ')
-        canvas.restoreState()
+        try:
+            if os.path.exists(logo_path):
+                # Taille ~150% de la largeur de page
+                wm_width = doc_.pagesize[0] * 1.5
+                wm_height = wm_width
+                wm_x = (doc_.pagesize[0] - wm_width) / 2
+                wm_y = (doc_.pagesize[1] - wm_height) / 2
+                
+                # Opacité visible mais discrète
+                try:
+                    canvas.setFillAlpha(0.15)
+                except Exception:
+                    pass
+                
+                # Rotation pour l'effet filigrane
+                canvas.translate(doc_.pagesize[0] / 2.0, doc_.pagesize[1] / 2.0)
+                canvas.rotate(30)
+                canvas.translate(-doc_.pagesize[0] / 2.0, -doc_.pagesize[1] / 2.0)
+                
+                canvas.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
+            else:
+                # Fallback vers texte si logo non trouvé
+                canvas.setFont('Helvetica-Bold', 42)
+                canvas.setFillGray(0.85)
+                canvas.translate(doc_.pagesize[0]/2, doc_.pagesize[1]/2)
+                canvas.rotate(30)
+                canvas.drawCentredString(0, 0, 'H.K. DIANÉ')
+        finally:
+            canvas.restoreState()
 
     doc.build(elements, onFirstPage=_draw_header_and_watermark, onLaterPages=_draw_header_and_watermark)
     return response
@@ -744,14 +767,37 @@ def export_etats_salaire_pdf(request):
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, title_text)
 
-        # Filigrane (réduit et plus léger)
+        # Filigrane avec logo (comme les autres documents)
         canvas.saveState()
-        canvas.setFont('Helvetica-Bold', 42)
-        canvas.setFillGray(0.97)
-        canvas.translate(doc_.pagesize[0]/2, doc_.pagesize[1]/2)
-        canvas.rotate(30)
-        canvas.drawCentredString(0, 0, 'H.K. DIANÉ')
-        canvas.restoreState()
+        try:
+            if os.path.exists(logo_path):
+                # Taille ~150% de la largeur de page
+                wm_width = doc_.pagesize[0] * 1.5
+                wm_height = wm_width
+                wm_x = (doc_.pagesize[0] - wm_width) / 2
+                wm_y = (doc_.pagesize[1] - wm_height) / 2
+                
+                # Opacité visible mais discrète
+                try:
+                    canvas.setFillAlpha(0.15)
+                except Exception:
+                    pass
+                
+                # Rotation pour l'effet filigrane
+                canvas.translate(doc_.pagesize[0] / 2.0, doc_.pagesize[1] / 2.0)
+                canvas.rotate(30)
+                canvas.translate(-doc_.pagesize[0] / 2.0, -doc_.pagesize[1] / 2.0)
+                
+                canvas.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
+            else:
+                # Fallback vers texte si logo non trouvé
+                canvas.setFont('Helvetica-Bold', 42)
+                canvas.setFillGray(0.85)
+                canvas.translate(doc_.pagesize[0]/2, doc_.pagesize[1]/2)
+                canvas.rotate(30)
+                canvas.drawCentredString(0, 0, 'H.K. DIANÉ')
+        finally:
+            canvas.restoreState()
 
     doc.build(elements, onFirstPage=_draw_header_and_watermark, onLaterPages=_draw_header_and_watermark)
     return response
@@ -1080,13 +1126,37 @@ def export_rapport_paiements_pdf(request):
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, titre)
 
+        # Filigrane avec logo (comme les autres documents)
         canvas.saveState()
-        canvas.setFont('Helvetica-Bold', 50)
-        canvas.setFillGray(0.95)
-        canvas.translate(doc_.pagesize[0]/2, doc_.pagesize[1]/2)
-        canvas.rotate(30)
-        canvas.drawCentredString(0, 0, 'H.K. DIANÉ')
-        canvas.restoreState()
+        try:
+            if os.path.exists(logo_path):
+                # Taille ~150% de la largeur de page
+                wm_width = doc_.pagesize[0] * 1.5
+                wm_height = wm_width
+                wm_x = (doc_.pagesize[0] - wm_width) / 2
+                wm_y = (doc_.pagesize[1] - wm_height) / 2
+                
+                # Opacité visible mais discrète
+                try:
+                    canvas.setFillAlpha(0.15)
+                except Exception:
+                    pass
+                
+                # Rotation pour l'effet filigrane
+                canvas.translate(doc_.pagesize[0] / 2.0, doc_.pagesize[1] / 2.0)
+                canvas.rotate(30)
+                canvas.translate(-doc_.pagesize[0] / 2.0, -doc_.pagesize[1] / 2.0)
+                
+                canvas.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
+            else:
+                # Fallback vers texte si logo non trouvé
+                canvas.setFont('Helvetica-Bold', 42)
+                canvas.setFillGray(0.85)
+                canvas.translate(doc_.pagesize[0]/2, doc_.pagesize[1]/2)
+                canvas.rotate(30)
+                canvas.drawCentredString(0, 0, 'H.K. DIANÉ')
+        finally:
+            canvas.restoreState()
 
     doc.build(elements, onFirstPage=_draw_header_and_watermark, onLaterPages=_draw_header_and_watermark)
     return response

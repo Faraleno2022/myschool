@@ -49,9 +49,9 @@ def _draw_header_and_watermark(c, doc):
             wm_x = (width - wm_width) / 2
             wm_y = (height - wm_height) / 2
 
-            # Opacité faible si supportée
+            # Opacité visible mais discrète (comme dans les reçus de paiement)
             try:
-                c.setFillAlpha(0.08)
+                c.setFillAlpha(0.15)
             except Exception:
                 # Certaines versions de reportlab ne supportent pas l'alpha, on continue sans transparence
                 pass

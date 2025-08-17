@@ -1176,9 +1176,9 @@ def generer_recu_pdf(request, paiement_id):
             wm_x = (width - wm_width) / 2
             wm_y = (height - wm_height) / 2
             
-            # Opacité faible
+            # Opacité visible mais discrète
             try:
-                c.setFillAlpha(0.08)
+                c.setFillAlpha(0.15)
             except Exception:
                 pass
             
