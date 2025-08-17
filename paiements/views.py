@@ -487,7 +487,7 @@ def _allocate_combined_payment(paiement, echeancier):
                 infos.append(f"✓ 3ème tranche: {int(montant_tranche_3):,} GNF".replace(',', ' '))
         else:
             # Type non combiné: déléguer à la logique existante
-            return _allocate_payment_to_echeancier(paiement, echeancier)
+            return _allocate_payment_to_echeancier(echeancier, paiement.montant, paiement.date_paiement, None)
     
     # Appliquer les allocations à l'échéancier
     if allocations['inscription'] > 0:
