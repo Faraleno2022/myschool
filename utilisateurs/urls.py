@@ -1,6 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from .views import comptable_create_view, comptable_list_view
+from .security_views import secure_login, secure_logout, SecurePasswordChangeView
 from .permission_views import (
     gestion_permissions, update_permissions, ajax_toggle_permission,
     bulk_update_permissions, ajax_user_permissions, export_permissions_csv
@@ -9,8 +10,10 @@ from .permission_views import (
 app_name = 'utilisateurs'
 
 urlpatterns = [
-    path('login/', auth_views.LoginView.as_view(template_name='utilisateurs/login.html'), name='login'),
-    path('logout/', auth_views.LogoutView.as_view(next_page='home'), name='logout'),
+    # Auth sécurisé (utiliser les vues custom pour limiter les écritures DB)
+    path('login/', secure_login, name='login'),
+    path('logout/', secure_logout, name='logout'),
+    path('password/change/', SecurePasswordChangeView.as_view(), name='password_change'),
     path('comptables/ajouter/', comptable_create_view, name='comptable_create'),
     path('comptables/', comptable_list_view, name='comptable_list'),
     

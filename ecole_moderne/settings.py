@@ -65,7 +65,8 @@ CSRF_COOKIE_SAMESITE = 'Strict'
 # Expiration de session (30 minutes d'inactivité)
 SESSION_COOKIE_AGE = 1800  # 30 minutes
 SESSION_EXPIRE_AT_BROWSER_CLOSE = True
-SESSION_SAVE_EVERY_REQUEST = True
+# Réduire les écritures en base à chaque requête (utile avec SQLite)
+SESSION_SAVE_EVERY_REQUEST = False
 
 # Protection contre les attaques de timing
 USE_TZ = True
@@ -160,6 +161,12 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        # Options pour atténuer les verrous SQLite en prod
+        'OPTIONS': {
+            'timeout': 30,  # secondes
+        },
+        # Fermer la connexion à la fin de chaque requête pour éviter de garder des verrous
+        'CONN_MAX_AGE': 0,
     }
 }
 
@@ -285,6 +292,11 @@ if not os.path.exists(logs_dir):
 # Désactiver les informations de debug en production
 if not DEBUG:
     ALLOWED_HOSTS = ['gshadjakanfingdiane.pythonanywhere.com']
+    # Recommandations PythonAnywhere: signaler le schéma HTTPS derrière le proxy
+    # pour éviter les problèmes de détection de HTTP/HTTPS (redirections, cookies Secure, CSRF)
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    # Utiliser l'hôte transmis par le proxy
+    USE_X_FORWARDED_HOST = True
     
     # Masquer la version de Django
     SECURE_BROWSER_XSS_FILTER = True
@@ -296,6 +308,9 @@ if not DEBUG:
     # Sécuriser les cookies
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
+    # Utiliser les sessions via cookies signés en production pour éviter les écritures DB
+    # (réduit fortement les risques de "database is locked" avec SQLite)
+    SESSION_ENGINE = 'django.contrib.sessions.backends.signed_cookies'
 
 # Protection contre les attaques par déni de service
 DATA_UPLOAD_MAX_NUMBER_FIELDS = 5000

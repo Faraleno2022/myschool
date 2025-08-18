@@ -11,6 +11,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.cache import never_cache
 from django.utils.decorators import method_decorator
 from django.views.generic import View
+from django.db import OperationalError, transaction, connection
 import logging
 import time
 from datetime import datetime, timedelta
@@ -179,9 +180,32 @@ class SecurePasswordChangeView(View):
             messages.error(request, 'Mot de passe actuel incorrect.')
             return render(request, 'utilisateurs/change_password.html')
         
-        # Changer le mot de passe
-        request.user.set_password(new_password)
-        request.user.save()
+        # Changer le mot de passe avec retries pour éviter les verrous SQLite
+        last_error = None
+        for attempt in range(3):
+            try:
+                with transaction.atomic():
+                    request.user.set_password(new_password)
+                    request.user.save()
+                last_error = None
+                break
+            except OperationalError as e:
+                last_error = e
+                # Retente uniquement si c'est un verrou SQLite
+                if 'locked' in str(e).lower() or 'database is locked' in str(e).lower():
+                    # Fermer la connexion et attendre un peu avant de retenter
+                    try:
+                        connection.close()
+                    except Exception:
+                        pass
+                    time.sleep(1 + attempt)
+                    continue
+                else:
+                    break
+        if last_error:
+            logger.error(f"Erreur lors de l'enregistrement du nouveau mot de passe pour {request.user.username}: {last_error}")
+            messages.error(request, "Impossible d'enregistrer le nouveau mot de passe pour le moment. Veuillez réessayer.")
+            return render(request, 'utilisateurs/change_password.html')
         
         # Log du changement
         client_ip = get_client_ip(request)
