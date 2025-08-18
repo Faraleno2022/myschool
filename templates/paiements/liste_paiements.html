@@ -22,7 +22,11 @@
                 <i class="fas fa-download me-1"></i>Exporter
             </button>
             <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="?export=excel"><i class="fas fa-file-excel me-2"></i>Excel</a></li>
+                <li>
+                    <a class="dropdown-item" href="#" onclick="exportListeExcel(); return false;">
+                        <i class="fas fa-file-excel me-2"></i>Excel (liste affichée)
+                    </a>
+                </li>
                 <li><a class="dropdown-item" href="?export=pdf"><i class="fas fa-file-pdf me-2"></i>PDF</a></li>
                 <li><hr class="dropdown-divider"></li>
                 <li>
@@ -323,6 +327,16 @@ function exportTranchesParClassePdf() {
     if (classe) out.searchParams.set('classe', classe);
     if (ecole) out.searchParams.set('ecole', ecole);
 
+    window.open(out.toString(), '_blank');
+}
+
+// Export Excel de la liste courante (préserve le filtre q)
+function exportListeExcel() {
+    const u = new URL(window.location.href);
+    const base = '{% url "paiements:export_liste_paiements_excel" %}';
+    const out = new URL(base, window.location.origin);
+    const q = u.searchParams.get('q') || (document.getElementById('q')?.value || '').trim();
+    if (q) out.searchParams.set('q', q);
     window.open(out.toString(), '_blank');
 }
 

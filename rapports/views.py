@@ -18,7 +18,8 @@ from reportlab.lib.units import inch
 from .models import Rapport, TypeRapport, ExportProgramme
 from .utils import collecter_donnees_periode, generer_pdf_periode, _draw_header_and_watermark
 from eleves.models import Eleve, Ecole
-from paiements.models import Paiement, PaiementRemise, EcheancierPaiement
+from paiements.models import Paiement, PaiementRemise, EcheancierPaiement, TypePaiement
+from bus.models import AbonnementBus
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
 from utilisateurs.utils import user_is_admin, user_school
@@ -207,6 +208,101 @@ def liste_rapports(request):
         'rapports': rapports
     }
     return render(request, 'rapports/liste_rapports.html', context)
+
+
+@login_required
+@admin_required
+def rapport_transport_scolaire(request):
+    """Tableau Transport scolaire par classe: Classe | Nombre d'abonnés | Total payé | Reste à payer
+
+    Logique:
+    - Nombre d'abonnés: nombre d'abonnements bus ACTIFS par classe (\n pas les élèves uniques si plusieurs abonnements).
+    - Total dû: somme des montants d'abonnements ACTIFS par classe.
+    - Total payé: si un TypePaiement dont le nom contient 'bus' ou 'transport' existe,
+      on additionne les paiements VALIDÉS de ces types par classe.
+    - Reste à payer: max(Total dû - Total payé, 0).
+    """
+    # Restreindre par école selon l'utilisateur
+    ecole_user = user_school(request.user)
+    abonnements_qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe')
+    paiements_qs = Paiement.objects.select_related('eleve', 'eleve__classe', 'type_paiement')
+
+    if ecole_user:
+        abonnements_qs = abonnements_qs.filter(eleve__classe__ecole=ecole_user)
+        paiements_qs = paiements_qs.filter(eleve__classe__ecole=ecole_user)
+
+    # Abonnements actifs uniquement
+    abonnements_qs = abonnements_qs.filter(statut=AbonnementBus.Statut.ACTIF)
+
+    # Agrégation abonnements par classe
+    from django.db.models import F
+    abonnements_par_classe = abonnements_qs.values(
+        'eleve__classe__id', 'eleve__classe__nom'
+    ).annotate(
+        nb_abonnes=Count('id'),
+        total_du=Sum('montant')
+    )
+
+    # Détecter TypePaiement "Transport/Bus"
+    transport_types = TypePaiement.objects.filter(
+        Q(nom__icontains='transport') | Q(nom__icontains='bus')
+    )
+
+    total_paye_par_classe = {}
+    if transport_types.exists():
+        paiements_transport = paiements_qs.filter(
+            type_paiement__in=transport_types,
+            statut='VALIDE'
+        )
+        paiements_group = paiements_transport.values(
+            'eleve__classe__id'
+        ).annotate(
+            total_paye=Sum('montant')
+        )
+        total_paye_par_classe = {row['eleve__classe__id']: row['total_paye'] or 0 for row in paiements_group}
+
+    lignes = []
+    totals = {
+        'nb_abonnes': 0,
+        'total_du': 0,
+        'total_paye': 0,
+        'reste': 0,
+    }
+
+    for row in abonnements_par_classe:
+        classe_id = row['eleve__classe__id']
+        classe_nom = row['eleve__classe__nom'] or 'Classe'
+        nb_abonnes = row['nb_abonnes'] or 0
+        total_du = row['total_du'] or 0
+        total_paye = total_paye_par_classe.get(classe_id, 0)
+        reste = total_du - total_paye
+        if reste < 0:
+            reste = 0
+
+        lignes.append({
+            'classe': classe_nom,
+            'nb_abonnes': nb_abonnes,
+            'total_paye': total_paye,
+            'reste': reste,
+            'total_du': total_du,
+        })
+
+        totals['nb_abonnes'] += nb_abonnes
+        totals['total_du'] += total_du
+        totals['total_paye'] += total_paye
+        totals['reste'] += reste
+
+    # Ordonner par nom de classe
+    lignes = sorted(lignes, key=lambda x: x['classe'])
+
+    context = {
+        'lignes': lignes,
+        'totals': totals,
+        'has_payment_types': transport_types.exists(),
+        'ecole': getattr(ecole_user, 'nom', None),
+    }
+
+    return render(request, 'rapports/transport_scolaire.html', context)
 
 def get_or_create_type_rapport(nom):
     """Récupère ou crée un type de rapport"""

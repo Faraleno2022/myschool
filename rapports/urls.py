@@ -11,4 +11,5 @@ urlpatterns = [
     path('annuel/', views.generer_rapport_annuel, name='rapport_annuel'),
     path('liste/', views.liste_rapports, name='liste_rapports'),
     path('remises/', views.rapport_remises_detaille, name='rapport_remises'),
+    path('transport/', views.rapport_transport_scolaire, name='rapport_transport'),
 ]

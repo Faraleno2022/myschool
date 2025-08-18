@@ -1,4 +1,4 @@
-from django.shortcuts import render, redirect, get_object_or_404
+from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
@@ -943,6 +943,20 @@ def liste_paiements(request):
         'montant_ce_mois': paiements_ce_mois.aggregate(total=Sum('montant'))['total'] or 0,
     })
     
+    # Calcul du nombre d'élèves à relancer (en retard / solde > 0)
+    from django.db.models import F
+    echeanciers_qs = EcheancierPaiement.objects.all()
+    if not user_is_admin(request.user):
+        echeanciers_qs = filter_by_user_school(echeanciers_qs, request.user, 'eleve__classe__ecole')
+    echeanciers_avec_solde = echeanciers_qs.annotate(
+        total_du=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
+        total_paye=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
+        solde_calcule=F('total_du') - F('total_paye')
+    )
+    eleves_retard = echeanciers_avec_solde.filter(solde_calcule__gt=0).count()
+    if eleves_retard == 0:
+        eleves_retard = echeanciers_qs.filter(statut='EN_RETARD').count()
+
     # Pagination
     paginator = Paginator(paiements, 15)
     page_number = request.GET.get('page')
@@ -953,6 +967,7 @@ def liste_paiements(request):
         'totaux': totaux,
         'titre_page': 'Liste des Paiements',
         'q': q,
+        'eleves_en_retard': eleves_retard,
     }
     
     # Si requête AJAX, renvoyer uniquement le fragment (totaux + tableau + pagination)
@@ -960,6 +975,98 @@ def liste_paiements(request):
         return render(request, 'paiements/_paiements_resultats.html', context)
 
     return render(request, 'paiements/liste_paiements.html', context)
+
+@login_required
+def export_liste_paiements_excel(request):
+    """Export Excel de la liste des paiements (selon le filtre q), avec colonne Tranche.
+
+    Colonnes: Élève, Classe, École, Tranche, Montant, Mode, Date, Statut, N° Reçu.
+    Respecte la séparation par école pour les non-admins.
+    """
+    # Contrôle d'accès similaire aux exports: Admin ou Comptable
+    is_admin = user_is_admin(request.user)
+    is_comptable = False
+    try:
+        if hasattr(request.user, 'profil'):
+            is_comptable = (getattr(request.user.profil, 'role', None) == 'COMPTABLE')
+    except Exception:
+        is_comptable = False
+    if not (is_admin or is_comptable):
+        # On autorise aussi la simple consultation export pour les utilisateurs de l'école
+        # mais on filtre strictement leur école. Ici on n'interdit pas, on continue.
+        pass
+
+    try:
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+    except Exception:
+        return HttpResponse("OpenPyXL n'est pas installé. Veuillez exécuter: pip install openpyxl", status=500)
+
+    paiements = Paiement.objects.select_related(
+        'eleve', 'type_paiement', 'mode_paiement', 'eleve__classe', 'eleve__classe__ecole'
+    ).order_by('-date_paiement')
+
+    # Restriction école pour non-admin
+    if not user_is_admin(request.user):
+        paiements = filter_by_user_school(paiements, request.user, 'eleve__classe__ecole')
+
+    # Réappliquer le même filtre libre 'q' que la vue liste
+    q = (request.GET.get('q') or '').strip()
+    if q:
+        q_lower = q.lower()
+        filtres = (
+            Q(eleve__nom__icontains=q) |
+            Q(eleve__prenom__icontains=q) |
+            Q(eleve__matricule__icontains=q) |
+            Q(numero_recu__icontains=q) |
+            Q(eleve__classe__nom__icontains=q) |
+            Q(eleve__classe__ecole__nom__icontains=q) |
+            Q(type_paiement__nom__icontains=q) |
+            Q(mode_paiement__nom__icontains=q)
+        )
+        statut_map = {
+            'valide': 'VALIDE', 'validé': 'VALIDE', 'ok': 'VALIDE',
+            'attente': 'EN_ATTENTE', 'en attente': 'EN_ATTENTE', 'pending': 'EN_ATTENTE',
+            'rejete': 'REJETE', 'rejeté': 'REJETE',
+            'annule': 'ANNULE', 'annulé': 'ANNULE', 'annulee': 'ANNULE', 'annulée': 'ANNULE'
+        }
+        for key, code in statut_map.items():
+            if key in q_lower:
+                filtres = filtres | Q(statut=code)
+        paiements = paiements.filter(filtres)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Paiements'
+    headers = ['Élève', 'Classe', 'École', 'Tranche', 'Montant (GNF)', 'Mode', 'Date', 'Statut', 'N° Reçu']
+    ws.append(headers)
+
+    for p in paiements[:20000]:  # garde-fou
+        eleve_nom = getattr(p.eleve, 'nom_complet', f"{getattr(p.eleve, 'prenom', '')} {getattr(p.eleve, 'nom', '')}".strip())
+        classe_nom = getattr(p.eleve.classe, 'nom', '') if getattr(p.eleve, 'classe', None) else ''
+        ecole_nom = getattr(p.eleve.classe.ecole, 'nom', '') if getattr(p.eleve, 'classe', None) else ''
+        tranche = getattr(p.type_paiement, 'nom', '')  # Utilisé comme colonne Tranche
+        montant = int(p.montant or 0)
+        mode = getattr(p.mode_paiement, 'nom', '')
+        date_str = p.date_paiement.strftime('%d/%m/%Y') if getattr(p, 'date_paiement', None) else ''
+        statut = p.get_statut_display() if hasattr(p, 'get_statut_display') else p.statut
+        ws.append([eleve_nom, classe_nom, ecole_nom, tranche, montant, mode, date_str, statut, p.numero_recu])
+
+    # Largeurs colonnes simples
+    widths = [28, 16, 22, 18, 18, 16, 14, 14, 16]
+    for idx, w in enumerate(widths, start=1):
+        ws.column_dimensions[get_column_letter(idx)].width = w
+
+    from io import BytesIO
+    stream = BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+
+    resp = HttpResponse(stream.read(), content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    suffix = datetime.now().strftime('%Y%m%d')
+    filename = f'paiements_liste_{suffix}.xlsx'
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
 
 @login_required
 def detail_paiement(request, paiement_id):
@@ -1373,24 +1480,26 @@ def generer_recu_pdf(request, paiement_id):
                 pass
         
         if logo_path:
-            # Taille ~150% de la largeur de page (comme dans fiche d'inscription)
-            wm_width = width * 1.5
-            wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
+            # Taille réduite pour ne pas interférer avec la netteté du texte
+            wm_width = width * 0.8
+            wm_height = wm_width  # approximatif, le ratio sera préservé
             wm_x = (width - wm_width) / 2
             wm_y = (height - wm_height) / 2
-            
-            # Opacité du filigrane alignée sur la fiche d'inscription (plus claire pour mieux lire le texte)
+
+            # Opacité très faible pour un texte parfaitement lisible
             try:
-                c.setFillAlpha(0.08)
+                c.setFillAlpha(0.03)
             except Exception:
                 pass
-            
-            # Légère rotation pour l'effet filigrane
-            c.translate(width / 2.0, height / 2.0)
-            c.rotate(30)
-            c.translate(-width / 2.0, -height / 2.0)
-            
+
+            # Pas de rotation pour éviter tout flou dû à l'anti-aliasing
             c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
+
+            # Réinitialiser explicitement l'opacité
+            try:
+                c.setFillAlpha(1)
+            except Exception:
+                pass
     finally:
         c.restoreState()
 
@@ -1401,24 +1510,24 @@ def generer_recu_pdf(request, paiement_id):
             c.drawImage(logo_path, margin_x, height - margin_y - 30, width=60, height=30, preserveAspectRatio=True, mask='auto')
         c.setFillColor(colors.HexColor('#0056b3'))
         try:
-            c.setFont("MainFont-Bold", 16)
+            c.setFont("MainFont-Bold", 18)
         except:
-            c.setFont("Helvetica-Bold", 16)
+            c.setFont("Helvetica-Bold", 18)
         
         # Centrer le nom de l'école avec taille réduite
         text = "École Moderne HADJA KANFING DIANÉ"
-        text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+        text_width = c.stringWidth(text, "MainFont-Bold", 18) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 18)
         c.drawString((width - text_width) / 2, height - margin_y - 10, text)
         
         c.setFillColor(colors.black)
         try:
-            c.setFont("MainFont-Bold", 16)
+            c.setFont("MainFont-Bold", 18)
         except:
-            c.setFont("Helvetica-Bold", 16)
+            c.setFont("Helvetica-Bold", 18)
         
         # Centrer le titre du reçu
         text = f"REÇU DE PAIEMENT N° {paiement.numero_recu}"
-        text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+        text_width = c.stringWidth(text, "MainFont-Bold", 18) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 18)
         c.drawString((width - text_width) / 2, height - margin_y - 28, text)
         # Ligne de séparation
         c.setStrokeColor(colors.HexColor('#0056b3'))
@@ -1480,23 +1589,23 @@ def generer_recu_pdf(request, paiement_id):
     # Informations élève et paiement (ajusté pour éviter chevauchement avec photo)
     y = height - margin_y - 70  # Descendre un peu plus pour laisser place à la photo agrandie
     try:
-        c.setFont("MainFont", 13)
+        c.setFont("MainFont", 14)
     except:
-        c.setFont("Helvetica", 13)
+        c.setFont("Helvetica", 14)
 
     def line(label, value):
         nonlocal y
         try:
-            c.setFont("MainFont-Bold", 13)
+            c.setFont("MainFont-Bold", 14)
         except:
-            c.setFont("Helvetica-Bold", 13)
+            c.setFont("Helvetica-Bold", 14)
         c.drawString(margin_x, y, f"{label} :")
         try:
-            c.setFont("MainFont", 13)
+            c.setFont("MainFont", 14)
         except:
-            c.setFont("Helvetica", 13)
+            c.setFont("Helvetica", 14)
         c.drawString(margin_x + 140, y, str(value))
-        y -= 18
+        y -= 20
 
     # Formatage
     montant_fmt = f"{int(paiement.montant):,}".replace(',', ' ')
@@ -1522,18 +1631,18 @@ def generer_recu_pdf(request, paiement_id):
     if paiement.observations:
         y -= 6
         try:
-            c.setFont("MainFont-Bold", 13)
+            c.setFont("MainFont-Bold", 14)
         except:
-            c.setFont("Helvetica-Bold", 13)
+            c.setFont("Helvetica-Bold", 14)
         c.drawString(margin_x, y, "Observations :")
         y -= 16
         try:
-            c.setFont("MainFont", 12)
+            c.setFont("MainFont", 13)
         except:
-            c.setFont("Helvetica", 12)
+            c.setFont("Helvetica", 13)
         lines = str(paiement.observations).split('\n')
         text_obj = c.beginText(margin_x, y)
-        text_obj.setLeading(16)
+        text_obj.setLeading(18)
         for part in lines:
             text_obj.textLine(part)
         c.drawText(text_obj)
@@ -1621,15 +1730,15 @@ def generer_recu_pdf(request, paiement_id):
 
         y -= 10
         try:
-            c.setFont("MainFont-Bold", 14)
+            c.setFont("MainFont-Bold", 15)
         except:
-            c.setFont("Helvetica-Bold", 14)
+            c.setFont("Helvetica-Bold", 15)
         c.drawString(margin_x, y, "Résumé de l'échéancier")
         y -= 20
         try:
-            c.setFont("MainFont", 13)
+            c.setFont("MainFont", 14)
         except:
-            c.setFont("Helvetica", 13)
+            c.setFont("Helvetica", 14)
         line("Total à payer", fmt_money(total_a_payer))
         line("Déjà payé", fmt_money(total_paye))
         line("Reste à payer", fmt_money(reste))
@@ -1637,15 +1746,15 @@ def generer_recu_pdf(request, paiement_id):
         # Détail par tranche
         y -= 4
         try:
-            c.setFont("MainFont-Bold", 13)
+            c.setFont("MainFont-Bold", 14)
         except:
-            c.setFont("Helvetica-Bold", 13)
+            c.setFont("Helvetica-Bold", 14)
         c.drawString(margin_x, y, "Détail des tranches :")
         y -= 18
         try:
-            c.setFont("Arial", 12)
+            c.setFont("Arial", 13)
         except:
-            c.setFont("Helvetica", 12)
+            c.setFont("Helvetica", 13)
         detail = [
             ("Inscription", echeancier.frais_inscription_du or Decimal('0'), paye_insc),
             ("Tranche 1", echeancier.tranche_1_due or Decimal('0'), paye_t1),

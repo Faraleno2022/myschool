@@ -1,5 +1,19 @@
 {% load humanize %}
 
+{% if eleves_en_retard and eleves_en_retard|add:0 > 0 %}
+<div class="alert alert-warning d-flex align-items-center" role="alert" style="border-radius: 10px;">
+    <i class="fas fa-bell me-2"></i>
+    <div>
+        <strong>{{ eleves_en_retard|intcomma }} élève{{ eleves_en_retard|pluralize }} à relancer.</strong>
+        <a href="{% url 'administration:eleves_retard_paiement' %}" class="alert-link ms-1">Voir la liste pour envoyer des rappels</a>
+    </div>
+    <a href="{% url 'administration:eleves_retard_paiement' %}" class="btn btn-sm btn-outline-warning ms-auto">
+        <i class="fas fa-paper-plane me-1"></i>Relancer
+    </a>
+    
+</div>
+{% endif %}
+
 <!-- Totaux dynamiques (adaptatifs aux filtres) -->
 <div class="stats-row">
     <div class="row">
