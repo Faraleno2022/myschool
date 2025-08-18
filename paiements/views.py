@@ -10,7 +10,7 @@ from decimal import Decimal
 from datetime import date, datetime
 import os
 
-from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
+from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise, Relance
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from .forms import PaiementForm, EcheancierForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
@@ -20,6 +20,12 @@ from rapports.utils import _draw_header_and_watermark
 from django.views.decorators.http import require_http_methods
 import re
 import unicodedata
+
+# --- Configuration des tolérances (ajustables) ---
+# Tolérance absolue pour la détection "Inscription + 1ère tranche"
+TOLERANCE_INSCRIPTION_T1 = Decimal('50000')  # 50 000 GNF
+# Tolérance relative (pourcentage) pour la détection de paiement annuel
+TOLERANCE_ANNUEL_PERCENT = Decimal('0.10')   # ±10%
 
 # ReportLab for PDF exports (used by tranches-par-classe)
 from reportlab.lib import colors
@@ -165,7 +171,7 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
     # **RÈGLE 1: Détection automatique Inscription + 1ère tranche**
     if (inscription_restant > 0 and t1_restant > 0 and 
         restant >= (FRAIS_INSCRIPTION + t1_restant) and 
-        restant <= (FRAIS_INSCRIPTION + t1_restant + Decimal('50000'))):  # Tolérance
+        restant <= (FRAIS_INSCRIPTION + t1_restant + TOLERANCE_INSCRIPTION_T1)):
         
         # Validation des surpaiements AVANT traitement
         montant_inscription_prevu = min(FRAIS_INSCRIPTION, inscription_restant)
@@ -195,8 +201,11 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
             warnings.append(f"Excédent de {restant:,.0f} GNF après paiement inscription + 1ère tranche")
     
     # **RÈGLE 2: Paiement annuel (scolarité complète)**
-    elif (inscription_restant == 0 and restant >= scolarite_restante * Decimal('0.9') and 
-          restant <= scolarite_restante * Decimal('1.1')):  # Tolérance de ±10%
+    elif (
+        inscription_restant == 0 and
+        restant >= scolarite_restante * (Decimal('1') - TOLERANCE_ANNUEL_PERCENT) and 
+        restant <= scolarite_restante * (Decimal('1') + TOLERANCE_ANNUEL_PERCENT)
+    ):
         
         # Répartir proportionnellement sur les tranches restantes
         tranches_actives = []
@@ -251,17 +260,43 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
         # Définition des tranches dans l'ordre à payer
         ordre = ['inscription', 't1', 't2', 't3']
         if cible in ordre:
-            # Si un type est ciblé, utiliser la validation centralisée
-            erreur = valider_surpaiement(cible, restant)
-            if erreur:
-                warnings.append(erreur)
-                return {'warnings': warnings, 'info': infos}
-            
-            # Paiement ciblé validé
-            due_field, paid_field, due_date_field, label = tranche_data(cible)
-            paid = getattr(echeancier, paid_field)
-            setattr(echeancier, paid_field, paid + restant)
-            restant = Decimal('0')
+            # Paiement ciblé: appliquer séquentiellement depuis le début jusqu'à la tranche ciblée
+            # Exemple: cible = t2 => compléter inscription puis T1 avant T2
+            for key in ordre:
+                if restant <= 0:
+                    break
+                # Arrêter après avoir traité la tranche ciblée
+                # (on ne dépasse pas la tranche ciblée lors d'un paiement ciblé)
+                due_field, paid_field, due_date_field, label = tranche_data(key)
+                due = getattr(echeancier, due_field)
+                paid = getattr(echeancier, paid_field)
+                to_pay = max(Decimal('0'), due - paid)
+                if to_pay <= 0:
+                    # Déjà soldée, passer à la suivante
+                    # Continuer même si key == cible pour permettre d'aller jusqu'à la cible
+                    pass
+                else:
+                    pay_now = min(restant, to_pay)
+                    # Validation surpaiement pour la tranche courante
+                    erreur = valider_surpaiement(key, pay_now)
+                    if erreur:
+                        warnings.append(erreur)
+                        return {'warnings': warnings, 'info': infos}
+
+                    # Vérifier le retard pour la tranche courante
+                    due_date = getattr(echeancier, due_date_field)
+                    if date_pay > due_date:
+                        delta = (date_pay - due_date).days
+                        warnings.append(f"Retard sur {label}: {delta} jour(s) après l'échéance ({due_date.strftime('%d/%m/%Y')})")
+
+                    # Appliquer le paiement pour la tranche courante
+                    setattr(echeancier, paid_field, paid + pay_now)
+                    restant -= pay_now
+
+                # Si on a atteint la tranche ciblée, on ne s'arrête que si tout le montant a été alloué
+                # Cela évite d'avoir un "montant non alloué" alors qu'il reste d'autres tranches à couvrir
+                if key == cible and restant <= 0:
+                    break
         else:
             # Paiement séquentiel normal avec validation à chaque étape
             for key in ordre:
@@ -317,6 +352,11 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
     # Message de félicitation pour paiement complet
     if total_paye_avant == 0 and nouveau_solde <= 0:
         infos.append("🎉 Toutes les tranches ont été réglées ! Merci pour votre paiement.")
+
+    # Persister les modifications de l'échéancier
+    # Important: cette fonction peut être appelée via délégation depuis _allocate_combined_payment,
+    # il faut donc sauvegarder ici pour éviter de perdre les mises à jour.
+    echeancier.save()
 
     return {'warnings': warnings, 'info': infos}
 
@@ -427,32 +467,86 @@ def _allocate_combined_payment(paiement, echeancier):
             montant_restant -= montant_inscription
             infos.append(f"✓ Inscription: {int(montant_inscription):,} GNF".replace(',', ' '))
         
-        # Répartir le reste proportionnellement entre les tranches
+        # Répartir le reste entre les tranches en garantissant 0 reliquat
         if montant_restant > 0:
             total_tranches_restantes = tranche_1_restante + tranche_2_restante + tranche_3_restante
-            
+
             if total_tranches_restantes > 0:
-                # Répartition proportionnelle
-                if tranche_1_restante > 0:
-                    proportion_1 = tranche_1_restante / total_tranches_restantes
-                    montant_tranche_1 = min(tranche_1_restante, montant_restant * proportion_1)
-                    allocations['tranche_1'] = montant_tranche_1
-                    montant_restant -= montant_tranche_1
-                    infos.append(f"✓ 1ère tranche: {int(montant_tranche_1):,} GNF".replace(',', ' '))
-                
-                if tranche_2_restante > 0 and montant_restant > 0:
-                    proportion_2 = tranche_2_restante / total_tranches_restantes
-                    montant_tranche_2 = min(tranche_2_restante, montant_restant * proportion_2)
-                    allocations['tranche_2'] = montant_tranche_2
-                    montant_restant -= montant_tranche_2
-                    infos.append(f"✓ 2ème tranche: {int(montant_tranche_2):,} GNF".replace(',', ' '))
-                
-                if tranche_3_restante > 0 and montant_restant > 0:
-                    # Le reste va à la 3ème tranche
-                    montant_tranche_3 = min(tranche_3_restante, montant_restant)
-                    allocations['tranche_3'] = montant_tranche_3
-                    montant_restant -= montant_tranche_3
-                    infos.append(f"✓ 3ème tranche: {int(montant_tranche_3):,} GNF".replace(',', ' '))
+                # 1) Cas exact: si le montant couvre (quasi) exactement le total restant
+                #    on alloue séquentiellement T1 -> T2 -> T3 pour éviter tout arrondi
+                if abs(montant_restant - total_tranches_restantes) <= Decimal('1'):
+                    # Allocation séquentielle exacte
+                    a1 = min(tranche_1_restante, montant_restant)
+                    restant_tmp = montant_restant - a1
+                    a2 = min(tranche_2_restante, restant_tmp)
+                    restant_tmp -= a2
+                    a3 = min(tranche_3_restante, restant_tmp)
+
+                    allocations['tranche_1'] = a1
+                    allocations['tranche_2'] = a2
+                    allocations['tranche_3'] = a3
+
+                    infos.append(f"✓ 1ère tranche: {int(a1):,} GNF".replace(',', ' '))
+                    if a2 > 0:
+                        infos.append(f"✓ 2ème tranche: {int(a2):,} GNF".replace(',', ' '))
+                    if a3 > 0:
+                        infos.append(f"✓ 3ème tranche: {int(a3):,} GNF".replace(',', ' '))
+                    
+                    # tout alloué, ajuster le reliquat interne à 0
+                    montant_restant = Decimal('0')
+                else:
+                    # 2) Cas proportionnel: on arrondit à l'unité GNF et on affecte le reliquat
+                    pool = montant_restant
+                    a1 = Decimal('0')
+                    a2 = Decimal('0')
+                    a3 = Decimal('0')
+
+                    if tranche_1_restante > 0 or tranche_2_restante > 0 or tranche_3_restante > 0:
+                        # Calcul des parts brutes
+                        raw1 = pool * (tranche_1_restante / total_tranches_restantes) if tranche_1_restante > 0 else Decimal('0')
+                        raw2 = pool * (tranche_2_restante / total_tranches_restantes) if tranche_2_restante > 0 else Decimal('0')
+
+                        # Arrondir à l'unité GNF (arrondi inférieur via int())
+                        a1 = min(tranche_1_restante, Decimal(int(raw1)))
+                        a2 = min(tranche_2_restante, Decimal(int(raw2)))
+                        # Le reste pour T3
+                        a3 = pool - a1 - a2
+                        a3 = min(tranche_3_restante, a3)
+
+                        # S'il reste encore du reliquat après plafonnement de T3, le redistribuer
+                        residual = pool - (a1 + a2 + a3)
+                        # Distribuer 1 GNF par 1 GNF en respectant les plafonds
+                        while residual > 0:
+                            progressed = False
+                            if a1 < tranche_1_restante and residual > 0:
+                                a1 += Decimal('1')
+                                residual -= Decimal('1')
+                                progressed = True
+                            if a2 < tranche_2_restante and residual > 0:
+                                a2 += Decimal('1')
+                                residual -= Decimal('1')
+                                progressed = True
+                            if a3 < tranche_3_restante and residual > 0:
+                                a3 += Decimal('1')
+                                residual -= Decimal('1')
+                                progressed = True
+                            if not progressed:
+                                # Plus de capacité sur les tranches, on sort (ne devrait pas arriver)
+                                break
+
+                        allocations['tranche_1'] = a1
+                        allocations['tranche_2'] = a2
+                        allocations['tranche_3'] = a3
+
+                        if a1 > 0:
+                            infos.append(f"✓ 1ère tranche: {int(a1):,} GNF".replace(',', ' '))
+                        if a2 > 0:
+                            infos.append(f"✓ 2ème tranche: {int(a2):,} GNF".replace(',', ' '))
+                        if a3 > 0:
+                            infos.append(f"✓ 3ème tranche: {int(a3):,} GNF".replace(',', ' '))
+
+                        # Ajuster le reliquat interne en fonction des allocations
+                        montant_restant = pool - (a1 + a2 + a3)
     
     else:
         # Type de paiement non explicitement combiné
@@ -486,8 +580,9 @@ def _allocate_combined_payment(paiement, echeancier):
                 montant_restant -= montant_tranche_3
                 infos.append(f"✓ 3ème tranche: {int(montant_tranche_3):,} GNF".replace(',', ' '))
         else:
-            # Type non combiné: déléguer à la logique existante
-            return _allocate_payment_to_echeancier(echeancier, paiement.montant, paiement.date_paiement, None)
+            # Type non combiné: déléguer à la logique existante avec une cible si identifiable
+            cible = _map_type_to_tranche(getattr(paiement.type_paiement, 'nom', ''))
+            return _allocate_payment_to_echeancier(echeancier, paiement.montant, paiement.date_paiement, cible)
     
     # Appliquer les allocations à l'échéancier
     if allocations['inscription'] > 0:
@@ -502,22 +597,23 @@ def _allocate_combined_payment(paiement, echeancier):
     if allocations['tranche_3'] > 0:
         echeancier.tranche_3_payee = (echeancier.tranche_3_payee or Decimal('0')) + allocations['tranche_3']
     
-    # Vérifier s'il reste un montant non alloué
-    if montant_restant > 0:
-        warnings.append(f"⚠️ Montant non alloué: {int(montant_restant):,} GNF - Vérifiez les montants dus".replace(',', ' '))
-    
     # Calculer le nouveau solde
     total_du = (echeancier.frais_inscription_du or Decimal('0')) + (echeancier.tranche_1_due or Decimal('0')) + (echeancier.tranche_2_due or Decimal('0')) + (echeancier.tranche_3_due or Decimal('0'))
     total_paye = (echeancier.frais_inscription_paye or Decimal('0')) + (echeancier.tranche_1_payee or Decimal('0')) + (echeancier.tranche_2_payee or Decimal('0')) + (echeancier.tranche_3_payee or Decimal('0'))
     nouveau_solde = total_du - total_paye
     
+    # Afficher l'alerte de reliquat uniquement s'il reste effectivement un solde
+    if montant_restant > 0 and nouveau_solde > 0:
+        warnings.append(f"⚠️ Montant non alloué: {int(montant_restant):,} GNF - Vérifiez les montants dus".replace(',', ' '))
+
     # Mettre à jour le statut
     if nouveau_solde <= 0:
         echeancier.statut = 'PAYE_COMPLET'
         infos.append("🎉 Échéancier entièrement réglé ! Félicitations.")
     else:
-        # Vérifier les retards
-        now = timezone.now().date()
+        # Vérifier les retards par rapport à la date du paiement courant
+        # (important pour les tests et la cohérence historique)
+        now = paiement.date_paiement
         en_retard = (
             (now > echeancier.date_echeance_inscription and echeancier.frais_inscription_paye < echeancier.frais_inscription_du) or
             (now > echeancier.date_echeance_tranche_1 and echeancier.tranche_1_payee < echeancier.tranche_1_due) or
@@ -618,6 +714,91 @@ def tableau_bord_paiements(request):
     }
     
     return render(request, 'paiements/tableau_bord.html', context)
+
+@login_required
+@require_http_methods(["POST"])
+def relancer_eleve(request, eleve_id):
+    """Action simple pour relancer un élève en retard (placeholder).
+    Enregistre un message UI et redirige. À étendre avec modèle Relance + envoi réel.
+    """
+    # Autorisation: admin ou droit de validation paiements (comptable)
+    if not (user_is_admin(request.user) or can_validate_payments(request.user)):
+        messages.error(request, "Vous n'avez pas l'autorisation pour relancer.")
+        return redirect('paiements:tableau_bord')
+
+    # Charger l'échéancier pour vérifier la situation
+    eleve = get_object_or_404(Eleve, id=eleve_id)
+    try:
+        echeancier = eleve.echeancier
+    except EcheancierPaiement.DoesNotExist:
+        messages.warning(request, "Aucun échéancier pour cet élève: relance non effectuée.")
+        return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
+
+    # Vérifier retard/solde
+    total_du = (echeancier.frais_inscription_du or Decimal('0')) + (echeancier.tranche_1_due or Decimal('0')) + (echeancier.tranche_2_due or Decimal('0')) + (echeancier.tranche_3_due or Decimal('0'))
+    total_paye = (echeancier.frais_inscription_paye or Decimal('0')) + (echeancier.tranche_1_payee or Decimal('0')) + (echeancier.tranche_2_payee or Decimal('0')) + (echeancier.tranche_3_payee or Decimal('0'))
+    solde = total_du - total_paye
+
+    if solde <= 0 and echeancier.statut != 'EN_RETARD':
+        messages.info(request, "Échéancier soldé: aucune relance nécessaire.")
+    else:
+        # Enregistrer une relance (journal)
+        contenu = request.POST.get('message') or (
+            f"Relance de paiement – Solde restant estimé: {int(solde):,} GNF.".replace(',', ' ')
+        )
+        canal = (request.POST.get('canal') or 'AUTRE').upper()
+        if canal not in dict(Relance.CANAL_CHOICES):
+            canal = 'AUTRE'
+        Relance.objects.create(
+            eleve=eleve,
+            canal=canal,
+            message=contenu,
+            statut='ENREGISTREE',
+            solde_estime=solde,
+            cree_par=request.user
+        )
+        messages.success(request, f"Relance enregistrée pour {eleve.nom_complet} (solde: {int(solde):,} GNF)".replace(',', ' '))
+
+    # Redirection: si `next` fourni, y retourner, sinon vers l'échéancier
+    next_url = request.POST.get('next') or request.GET.get('next')
+    if next_url:
+        return redirect(next_url)
+    return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
+
+@login_required
+def liste_relances(request):
+    """Historique des relances avec filtres simples et pagination."""
+    relances = Relance.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole', 'cree_par')
+    # Filtrer par école pour non-admin
+    if not user_is_admin(request.user):
+        relances = filter_by_user_school(relances, request.user, 'eleve__classe__ecole')
+
+    # Filtres
+    q = (request.GET.get('q') or '').strip()
+    canal = (request.GET.get('canal') or '').strip().upper()
+    statut = (request.GET.get('statut') or '').strip().upper()
+    if q:
+        relances = relances.filter(
+            Q(eleve__nom__icontains=q) | Q(eleve__prenom__icontains=q) | Q(eleve__matricule__icontains=q) | Q(message__icontains=q)
+        )
+    if canal and canal in dict(Relance.CANAL_CHOICES):
+        relances = relances.filter(canal=canal)
+    if statut and statut in dict(Relance.STATUT_CHOICES):
+        relances = relances.filter(statut=statut)
+
+    # Pagination
+    paginator = Paginator(relances.order_by('-date_creation'), 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    context = {
+        'page_obj': page_obj,
+        'q': q,
+        'canal': canal,
+        'statut': statut,
+        'titre_page': 'Historique des relances',
+    }
+    return render(request, 'paiements/relances.html', context)
 
 @login_required
 def ajax_statistiques_paiements(request):
@@ -803,7 +984,7 @@ def ajouter_paiement(request, eleve_id=None):
     """Ajouter un nouveau paiement"""
     eleve = None
     if eleve_id:
-        eleves_qs = Eleve.objects.select_related('classe', 'classe__ecole')
+        eleves_qs = Eleve.objects.select_related('classe', 'classe__ecole').prefetch_related('echeancier')
         if not user_is_admin(request.user):
             eleves_qs = filter_by_user_school(eleves_qs, request.user, 'classe__ecole')
         eleve = get_object_or_404(eleves_qs, id=eleve_id)
@@ -1060,25 +1241,47 @@ def valider_paiement(request, paiement_id):
         paiement = get_object_or_404(qs, id=paiement_id)
         
         if paiement.statut == 'EN_ATTENTE':
-            paiement.statut = 'VALIDE'
-            paiement.valide_par = request.user
-            paiement.date_validation = timezone.now()
-            paiement.save()
-            
-            # Impacter l'échéancier à la validation avec allocation intelligente
+            # 1) Exécuter l'allocation D'ABORD dans une transaction
             try:
-                echeancier = paiement.eleve.echeancier
-                
-                # Utiliser la nouvelle fonction d'allocation intelligente pour les paiements combinés
-                feedback = _allocate_combined_payment(paiement, echeancier)
-                
-                # Afficher les messages de feedback
-                for w in feedback['warnings']:
-                    messages.warning(request, w)
-                for info in feedback['info']:
-                    messages.info(request, info)
-            except EcheancierPaiement.DoesNotExist:
-                messages.info(request, "Aucun échéancier n'existe pour cet élève. Veuillez le créer pour refléter ce paiement dans les tranches.")
+                with transaction.atomic():
+                    try:
+                        echeancier = paiement.eleve.echeancier
+                    except EcheancierPaiement.DoesNotExist:
+                        messages.info(request, "Aucun échéancier n'existe pour cet élève. Veuillez le créer pour refléter ce paiement dans les tranches.")
+                        return redirect('paiements:detail_paiement', paiement_id=paiement_id)
+
+                    feedback = _allocate_combined_payment(paiement, echeancier)
+
+                    # Détecter les erreurs bloquantes (surpaiements)
+                    blocking_errors = [w for w in feedback.get('warnings', []) if isinstance(w, str) and w.strip().upper().startswith('ERREUR')]
+                    if blocking_errors:
+                        # Annuler l'allocation via rollback transactionnel
+                        for w in blocking_errors:
+                            messages.error(request, w)
+                        # Conserver aussi les autres infos utiles
+                        for w in feedback.get('warnings', []):
+                            if w not in blocking_errors:
+                                messages.warning(request, w)
+                        for info in feedback.get('info', []):
+                            messages.info(request, info)
+                        # Déclencher un rollback explicite en levant une exception
+                        raise IntegrityError("Blocking validation error: overpayment detected")
+
+                    # Pas d'erreur bloquante: commit de l'allocation et validation du paiement
+                    paiement.statut = 'VALIDE'
+                    paiement.valide_par = request.user
+                    paiement.date_validation = timezone.now()
+                    paiement.save()
+
+                    # Afficher les messages non bloquants
+                    for w in feedback.get('warnings', []):
+                        messages.warning(request, w)
+                    for info in feedback.get('info', []):
+                        messages.info(request, info)
+
+            except IntegrityError:
+                # Transaction annulée: le paiement reste EN_ATTENTE
+                return redirect('paiements:detail_paiement', paiement_id=paiement_id)
 
             messages.success(request, f"Paiement #{paiement.numero_recu} validé avec succès.")
         else:
@@ -1176,9 +1379,9 @@ def generer_recu_pdf(request, paiement_id):
             wm_x = (width - wm_width) / 2
             wm_y = (height - wm_height) / 2
             
-            # Opacité visible mais discrète
+            # Opacité du filigrane alignée sur la fiche d'inscription (plus claire pour mieux lire le texte)
             try:
-                c.setFillAlpha(0.15)
+                c.setFillAlpha(0.08)
             except Exception:
                 pass
             
@@ -1328,9 +1531,10 @@ def generer_recu_pdf(request, paiement_id):
             c.setFont("MainFont", 12)
         except:
             c.setFont("Helvetica", 12)
+        lines = str(paiement.observations).split('\n')
         text_obj = c.beginText(margin_x, y)
         text_obj.setLeading(16)
-        for part in str(paiement.observations).split('\n'):
+        for part in lines:
             text_obj.textLine(part)
         c.drawText(text_obj)
         y = text_obj.getY() - 8

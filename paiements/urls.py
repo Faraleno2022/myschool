@@ -14,6 +14,8 @@ urlpatterns = [
     path('ajouter/', views.ajouter_paiement, name='ajouter_paiement'),
     path('ajouter/<int:eleve_id>/', views.ajouter_paiement, name='ajouter_paiement_eleve'),
     path('valider/<int:paiement_id>/', views.valider_paiement, name='valider_paiement'),
+    path('relancer/<int:eleve_id>/', views.relancer_eleve, name='relancer_eleve'),
+    path('relances/', views.liste_relances, name='liste_relances'),
     
     # Échéanciers
     path('echeancier/<int:eleve_id>/', views.echeancier_eleve, name='echeancier_eleve'),

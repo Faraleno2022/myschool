@@ -196,6 +196,13 @@
                                                class="btn btn-sm btn-outline-primary" title="Ajouter paiement">
                                                 <i class="fas fa-plus"></i>
                                             </a>
+                                            <form method="post" action="{% url 'paiements:relancer_eleve' echeancier.eleve.id %}" class="d-inline ms-1">
+                                                {% csrf_token %}
+                                                <input type="hidden" name="next" value="{% url 'paiements:tableau_bord' %}">
+                                                <button type="submit" class="btn btn-sm btn-warning" title="Relancer" onclick="return confirm('Envoyer une relance à ce responsable ?');">
+                                                    <i class="fas fa-bell"></i>
+                                                </button>
+                                            </form>
                                         </div>
                                     </div>
                                 </div>

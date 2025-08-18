@@ -113,18 +113,23 @@ INSTALLED_APPS = [
 ]
 
 
+
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
-    'ecole_moderne.security_middleware.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'ecole_moderne.security_middleware.SessionSecurityMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'ecole_moderne.security_middleware.CSRFSecurityMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# Activer les middlewares de sécurité avancés uniquement en production
+if not DEBUG:
+    # Insertion après la SecurityMiddleware standard et avant les autres
+    MIDDLEWARE.insert(1, 'ecole_moderne.security_middleware.SecurityMiddleware')
+    MIDDLEWARE.insert(3, 'ecole_moderne.security_middleware.SessionSecurityMiddleware')
+    MIDDLEWARE.insert(5, 'ecole_moderne.security_middleware.CSRFSecurityMiddleware')
 
 ROOT_URLCONF = 'ecole_moderne.urls'
 

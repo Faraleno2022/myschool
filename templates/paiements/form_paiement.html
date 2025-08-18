@@ -73,7 +73,13 @@
 
                 <!-- Détails du paiement -->
                 <div class="form-section">
-                    <h5><i class="fas fa-money-bill-wave me-2"></i>Détails du paiement</h5>
+                    <h5 class="d-flex align-items-center">
+                        <i class="fas fa-money-bill-wave me-2"></i>
+                        Détails du paiement
+                        <span id="montantSuggestionBadge" class="badge bg-info text-dark ms-2" style="display:none;">
+                            Montant suggéré: <span id="montantSuggestionValue">0</span> GNF
+                        </span>
+                    </h5>
                     
                     <div class="row">
                         {% if not eleve %}
@@ -376,22 +382,257 @@
 
 {% block extra_js %}
 <script>
+// Test immédiat pour vérifier que le JS se charge
+console.log('=== PAYMENT FORM JS LOADING ===');
+
 document.addEventListener('DOMContentLoaded', function() {
-    const montantInput = document.getElementById('{{ form.montant.id_for_label }}');
+    console.log('=== DOM CONTENT LOADED ===');
+    let montantInput = document.getElementById('id_montant');
+    console.log('montantInput found:', !!montantInput, montantInput);
+    
     const montantDisplay = document.getElementById('montantDisplay');
+    // Badge de montant suggéré
+    const badge = document.getElementById('montantSuggestionBadge');
+    const badgeValue = document.getElementById('montantSuggestionValue');
+    console.log('montantDisplay found:', !!montantDisplay);
+    
     const submitBtn = document.getElementById('submitBtn');
     const form = document.getElementById('paiementForm');
+    let typeSelect = document.getElementById('id_type_paiement');
+    console.log('typeSelect found:', !!typeSelect, typeSelect);
     // Pré-remplir la date du jour si le champ est vide (sécurité côté front)
-    const dateInput = document.getElementById('{{ form.date_paiement.id_for_label }}');
+    const dateInput = document.getElementById('id_date_paiement');
     if (dateInput && !dateInput.value) {
         const today = new Date();
         const yyyy = today.getFullYear();
         const mm = String(today.getMonth() + 1).padStart(2, '0');
         const dd = String(today.getDate()).padStart(2, '0');
-        dateInput.value = `${yyyy}-${mm}-${dd}`; // format attendu par input type=date
+        dateInput.value = yyyy + '-' + mm + '-' + dd; // format YYYY-MM-DD requis
     }
     
-    // Formatage du montant en temps réel
+    // Données d'échéancier côté serveur si un élève est déjà sélectionné
+    let serverEcheancier = null;
+    {% if eleve %}
+        try {
+            {% if eleve.echeancier %}
+            serverEcheancier = {
+                inscription_du: {{ eleve.echeancier.frais_inscription_du|default:0 }},
+                inscription_paye: {{ eleve.echeancier.frais_inscription_paye|default:0 }},
+                t1_du: {{ eleve.echeancier.tranche_1_due|default:0 }},
+                t1_paye: {{ eleve.echeancier.tranche_1_payee|default:0 }},
+                t2_du: {{ eleve.echeancier.tranche_2_due|default:0 }},
+                t2_paye: {{ eleve.echeancier.tranche_2_payee|default:0 }},
+                t3_du: {{ eleve.echeancier.tranche_3_due|default:0 }},
+                t3_paye: {{ eleve.echeancier.tranche_3_payee|default:0 }},
+                total_du: {{ eleve.echeancier.total_du|default:0 }},
+                total_paye: {{ eleve.echeancier.total_paye|default:0 }},
+                reste: {{ eleve.echeancier.solde_restant|default:0 }}
+            };
+            console.log('Server echeancier loaded:', serverEcheancier);
+            {% else %}
+            console.log('Eleve exists but no echeancier found - will try AJAX with matricule {{ eleve.matricule }}');
+            {% endif %}
+        } catch(e) {
+            console.error('Error loading server echeancier:', e);
+        }
+    {% else %}
+        console.log('No eleve in server context');
+    {% endif %}
+
+    // URL AJAX pour récupérer les infos élève
+    const ajaxEleveInfoUrl = '{% url "paiements:ajax_eleve_info" %}';
+
+    // Récupérer l'échéancier courant (AJAX ou serveur)
+    function getEcheancier() {
+        try {
+            if (typeof currentEleveData !== 'undefined' && currentEleveData && currentEleveData.echeancier) {
+                const e = currentEleveData.echeancier;
+                return {
+                    inscription_du: e.inscription_du || 0,
+                    inscription_paye: e.inscription_paye || 0,
+                    t1_du: e.tranche_1_du || 0,
+                    t1_paye: e.tranche_1_paye || 0,
+                    t2_du: e.tranche_2_du || 0,
+                    t2_paye: e.tranche_2_paye || 0,
+                    t3_du: e.tranche_3_du || 0,
+                    t3_paye: e.tranche_3_paye || 0,
+                    total_du: e.total_du || 0,
+                    total_paye: e.total_paye || 0,
+                    reste: (e.reste_a_payer != null ? e.reste_a_payer : Math.max(0, (e.total_du||0)-(e.total_paye||0)))
+                };
+            }
+        } catch(_) {}
+        return serverEcheancier;
+    }
+
+    // Extraire le matricule depuis la saisie libre (format: "Prenom Nom (MAT) - Classe / École")
+    function extractMatriculeFromInput() {
+        const el = document.getElementById('eleveInput');
+        if (!el || !el.value) return null;
+        const m = el.value.match(/\(([^)]+)\)/);
+        return m ? m[1] : null;
+    }
+
+    // Charger l'échéancier via AJAX si possible
+    async function ensureEcheancierLoaded() {
+        if (getEcheancier()) return true;
+        try {
+            let matricule = extractMatriculeFromInput();
+            // Si pas de matricule depuis l'input, essayer le matricule de l'élève serveur
+            {% if eleve %}
+            if (!matricule) {
+                matricule = '{{ eleve.matricule }}';
+                console.log('Using server eleve matricule:', matricule);
+            }
+            {% endif %}
+            if (!matricule) return false;
+            
+            console.log('Fetching echeancier via AJAX for matricule:', matricule);
+            const url = new URL(ajaxEleveInfoUrl, window.location.origin);
+            url.searchParams.set('matricule', matricule);
+            const resp = await fetch(url.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+            const data = await resp.json();
+            console.log('AJAX response:', data);
+            if (data && data.success) {
+                window.currentEleveData = data;
+                console.log('AJAX echeancier loaded successfully');
+                return true;
+            }
+        } catch (e) {
+            console.error('Error loading echeancier via AJAX:', e);
+        }
+        return false;
+    }
+
+    function updateMontantSuggestion() {
+        console.log('updateMontantSuggestion called');
+        if (!typeSelect || !montantInput) {
+            console.log('Missing elements - typeSelect:', !!typeSelect, 'montantInput:', !!montantInput);
+            return;
+        }
+        
+        const ech = getEcheancier();
+        if (!ech) {
+            console.log('No echeancier available');
+            return;
+        }
+
+        console.log('Echeancier data:', ech);
+
+        // Restes par poste
+        const remIns = Math.max(0, (ech.inscription_du||0) - (ech.inscription_paye||0));
+        const rem1 = Math.max(0, (ech.t1_du||0) - (ech.t1_paye||0));
+        const rem2 = Math.max(0, (ech.t2_du||0) - (ech.t2_paye||0));
+        const rem3 = Math.max(0, (ech.t3_du||0) - (ech.t3_paye||0));
+        const reste = (ech.reste != null) ? ech.reste : Math.max(0, (ech.total_du||0)-(ech.total_paye||0));
+
+        console.log('Remaining amounts - Ins:', remIns, 'T1:', rem1, 'T2:', rem2, 'T3:', rem3, 'Total:', reste);
+
+        // Normaliser le libellé du type
+        let selectedText = '';
+        if (typeSelect.selectedIndex >= 0 && typeSelect.options[typeSelect.selectedIndex]) {
+            selectedText = typeSelect.options[typeSelect.selectedIndex].text.toLowerCase();
+            selectedText = selectedText.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+            selectedText = selectedText.replace(/\s+/g, ' ').trim();
+        }
+
+        console.log('Selected type text:', selectedText);
+
+        var amount = 0;
+
+        const hasIns = selectedText.includes('inscription') || selectedText.includes('insc');
+        const hasAnn = selectedText.includes('annuel') || selectedText.includes('annuelle');
+        var nearTranche = function(n) { 
+            return new RegExp('(tranche\\\\D{0,8}' + n + '|' + n + '\\\\D{0,8}tranche)').test(selectedText);
+        };
+        const hasT1 = /tranche\s*1|1ere|1er|premiere|\bt1\b/.test(selectedText) || nearTranche(1);
+        const hasT2 = /tranche\s*2|2eme|deuxieme|\bt2\b/.test(selectedText) || nearTranche(2);
+        const hasT3 = /tranche\s*3|3eme|troisieme|\bt3\b/.test(selectedText) || nearTranche(3);
+
+        console.log('Type detection - Ins:', hasIns, 'Ann:', hasAnn, 'T1:', hasT1, 'T2:', hasT2, 'T3:', hasT3);
+
+        if (hasIns && hasT1 && hasT2) {
+            amount = remIns + rem1 + rem2;
+        } else if (hasIns && hasT1) {
+            amount = remIns + rem1;
+        } else if (hasIns && hasAnn) {
+            amount = reste;
+        } else if (hasAnn) {
+            amount = reste;
+        } else if (hasT1) {
+            amount = rem1;
+        } else if (hasT2) {
+            amount = rem2;
+        } else if (hasT3) {
+            amount = rem3;
+        } else if (hasIns) {
+            amount = remIns;
+        } else {
+            amount = reste;
+        }
+
+        console.log('Calculated amount:', amount);
+
+        // Toujours renseigner le champ
+        var suggested = Math.floor(amount);
+        montantInput.value = suggested;
+        // Mettre à jour le badge
+        if (badge && badgeValue) {
+            try {
+                badgeValue.textContent = Number(suggested || 0).toLocaleString('fr-FR');
+                badge.style.display = 'inline-flex';
+            } catch(_) {
+                badgeValue.textContent = String(suggested || 0);
+                badge.style.display = 'inline-flex';
+            }
+        }
+        montantInput.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        console.log('Montant field updated to:', montantInput.value);
+    }
+
+    // Écouteurs d'événements
+    if (typeSelect) {
+        typeSelect.addEventListener('change', updateMontantSuggestion);
+        // Déclencher aussi sur focus pour s'assurer que ça marche
+        typeSelect.addEventListener('focus', updateMontantSuggestion);
+    }
+
+    // Déclenchement immédiat et répété pour s'assurer que ça marche
+    async function tryUpdateMontant() {
+        console.log('tryUpdateMontant called');
+        
+        // Si pas d'échéancier, essayer de le charger via AJAX
+        if (!getEcheancier()) {
+            console.log('No echeancier found, trying AJAX...');
+            const loaded = await ensureEcheancierLoaded();
+            if (!loaded) {
+                console.log('Failed to load echeancier via AJAX');
+                return;
+            }
+        }
+        
+        updateMontantSuggestion();
+        
+        // Réessayer dans 500ms si le montant n'est toujours pas rempli
+        setTimeout(async () => {
+            if (montantInput && !montantInput.value) {
+                console.log('Retrying montant update...');
+                if (!getEcheancier()) {
+                    await ensureEcheancierLoaded();
+                }
+                updateMontantSuggestion();
+            }
+        }, 500);
+    }
+    
+    // Déclencher immédiatement
+    tryUpdateMontant();
+    
+    // Déclencher aussi après un délai
+    setTimeout(() => tryUpdateMontant(), 100);
+
+    // Formatage du montant en temps réel et maj badge
     montantInput.addEventListener('input', function() {
         const value = parseFloat(this.value);
         if (!isNaN(value) && value > 0) {
@@ -400,11 +641,17 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
             montantDisplay.style.display = 'none';
         }
-    });
+        if (badge && badgeValue) {
+            const v = isNaN(value) ? 0 : Math.max(0, Math.floor(value));
+            badgeValue.textContent = v.toLocaleString('fr-FR');
+            badge.style.display = 'inline-flex';
+        }
+    })
     
     // Validation du formulaire
     form.addEventListener('submit', function(e) {
-        const eleveSelect = document.getElementById('{{ form.eleve.id_for_label }}');
+        // Récupérer de manière robuste le champ élève (input hidden ou select visible)
+        const eleveSelect = document.querySelector('[name="eleve"]');
         const eleveError = document.getElementById('eleveError');
         
         // Vérifier qu'un élève est sélectionné (soit via AJAX, soit via sélection manuelle)
@@ -521,6 +768,9 @@ document.addEventListener('DOMContentLoaded', function() {
             eleveErrorElement.style.display = 'none';
             eleveErrorElement.textContent = '';
         }
+
+        // Mettre à jour la suggestion de montant en fonction du type choisi
+        updateMontantSuggestion();
     }
     
     // Fonction pour réinitialiser la sélection

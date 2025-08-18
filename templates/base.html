@@ -233,9 +233,11 @@
                 
                 {% block page_header %}
                     {% if titre_page %}
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <h1 class="h3">{{ titre_page }}</h1>
-                            {% block page_actions %}{% endblock %}
+                        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap" style="gap: .5rem 1rem;">
+                            <h1 class="h3 mb-0">{{ titre_page }}</h1>
+                            <div class="page-actions d-flex flex-wrap justify-content-end" style="gap: .5rem;">
+                                {% block page_actions %}{% endblock %}
+                            </div>
                         </div>
                     {% endif %}
                 {% endblock %}

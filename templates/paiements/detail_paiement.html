@@ -23,14 +23,27 @@
                 <i class="fas fa-file-pdf me-1"></i>Télécharger le reçu
             </a>
         {% endif %}
-        {% if paiement.statut == 'EN_ATTENTE' and perms.paiements.change_paiement %}
-            <a href="{% url 'paiements:appliquer_remise' paiement.id %}" class="btn btn-warning">
-                <i class="fas fa-percentage me-1"></i>Appliquer remises
-            </a>
-            <a href="{% url 'paiements:valider_paiement' paiement.id %}" class="btn btn-success">
-                <i class="fas fa-check me-1"></i>Valider le paiement
-            </a>
+        {% if paiement.statut == 'EN_ATTENTE' %}
+            {% if is_admin or user_permissions.can_validate_payments %}
+                <a href="{% url 'paiements:appliquer_remise' paiement.id %}" class="btn btn-warning">
+                    <i class="fas fa-percentage me-1"></i>Appliquer remises
+                </a>
+                <form method="post" action="{% url 'paiements:valider_paiement' paiement.id %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-success" onclick="return confirm('Confirmer la validation de ce paiement ?');">
+                        <i class="fas fa-check me-1"></i>Valider le paiement
+                    </button>
+                </form>
+            {% endif %}
         {% endif %}
+        <!-- Nouveau paiement en tête de page -->
+        <a href="{% url 'paiements:ajouter_paiement_eleve' paiement.eleve.id %}" class="btn btn-outline-success">
+            <i class="fas fa-plus me-1"></i>Nouveau paiement
+        </a>
+        <!-- Bouton Relance visible en tête de page -->
+        <button type="button" class="btn btn-outline-warning" data-bs-toggle="modal" data-bs-target="#relanceModal">
+            <i class="fas fa-bell me-1"></i>Relance
+        </button>
     </div>
 {% endblock %}
 
@@ -218,6 +231,20 @@
                     <a href="{% url 'paiements:ajouter_paiement_eleve' paiement.eleve.id %}" class="btn btn-outline-success btn-sm w-100">
                         <i class="fas fa-plus me-1"></i>Nouveau paiement pour cet élève
                     </a>
+
+                    <!-- Bouton relance rapide (confirmation directe) -->
+                    <form method="post" action="{% url 'paiements:relancer_eleve' paiement.eleve.id %}" class="mt-2">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{% url 'paiements:detail_paiement' paiement.id %}">
+                        <button type="submit" class="btn btn-warning btn-sm w-100" onclick="return confirm('Envoyer une relance à ce responsable ?');">
+                            <i class="fas fa-bell me-1"></i>Relancer le responsable
+                        </button>
+                    </form>
+
+                    <!-- Bouton pour ouvrir la modale relance (choisir canal/message) -->
+                    <button type="button" class="btn btn-primary btn-sm w-100 mt-2" data-bs-toggle="modal" data-bs-target="#relanceModal">
+                        <i class="fas fa-paper-plane me-1"></i>Relance (choisir canal/message)
+                    </button>
                 </div>
             </div>
         </div>
@@ -267,4 +294,43 @@
         border-bottom: 1px solid #dee2e6;
     }
 </style>
+{% endblock %}
+
+{% block extra_js %}
+<!-- Modal Relance avec canal et message -->
+<div class="modal fade" id="relanceModal" tabindex="-1" aria-labelledby="relanceModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="relanceModalLabel">Envoyer une relance</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <form method="post" action="{% url 'paiements:relancer_eleve' paiement.eleve.id %}">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% url 'paiements:detail_paiement' paiement.id %}">
+        <div class="modal-body">
+          <div class="mb-3">
+            <label class="form-label">Canal</label>
+            <select class="form-select" name="canal" required>
+              <option value="SMS">SMS</option>
+              <option value="WHATSAPP">WhatsApp</option>
+              <option value="EMAIL">Email</option>
+              <option value="APPEL">Appel</option>
+              <option value="AUTRE" selected>Autre</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Message</label>
+            <textarea class="form-control" name="message" rows="4" placeholder="Votre message de relance..."></textarea>
+            <div class="form-text">Laissez vide pour utiliser le message automatique avec le solde estimé.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuler</button>
+          <button type="submit" class="btn btn-primary">Envoyer la relance</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 {% endblock %}

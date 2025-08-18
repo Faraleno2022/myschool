@@ -281,3 +281,38 @@ class PaiementRemise(models.Model):
     def __str__(self):
         return f"{self.paiement.numero_recu} - {self.remise.nom} - {self.montant_remise:,.0f} GNF"
 
+
+class Relance(models.Model):
+    """Journal des relances envoyées aux responsables/élèves en retard."""
+    CANAL_CHOICES = [
+        ('SMS', 'SMS'),
+        ('WHATSAPP', 'WhatsApp'),
+        ('EMAIL', 'E-mail'),
+        ('APPEL', 'Appel téléphonique'),
+        ('AUTRE', 'Autre'),
+    ]
+    STATUT_CHOICES = [
+        ('ENREGISTREE', 'Enregistrée'),
+        ('ENVOYEE', 'Envoyée'),
+        ('ECHEC', 'Échec'),
+    ]
+
+    eleve = models.ForeignKey(Eleve, on_delete=models.CASCADE, related_name='relances')
+    canal = models.CharField(max_length=20, choices=CANAL_CHOICES, default='AUTRE', verbose_name="Canal")
+    message = models.TextField(verbose_name="Message de relance")
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ENREGISTREE', verbose_name="Statut")
+    solde_estime = models.DecimalField(max_digits=10, decimal_places=0, default=Decimal('0'), verbose_name="Solde estimé (GNF)")
+
+    # Métadonnées
+    date_creation = models.DateTimeField(auto_now_add=True)
+    cree_par = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='relances_creees')
+    date_envoi = models.DateTimeField(blank=True, null=True, verbose_name="Date d'envoi")
+
+    class Meta:
+        verbose_name = "Relance"
+        verbose_name_plural = "Relances"
+        ordering = ['-date_creation']
+
+    def __str__(self):
+        return f"Relance {self.eleve.nom_complet} - {self.canal} - {self.statut}"
+
