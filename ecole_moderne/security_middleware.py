@@ -321,3 +321,45 @@ class CSRFSecurityMiddleware(MiddlewareMixin):
         referer_host = urlparse(referer).netloc
         
         return request_host == referer_host
+
+
+class CSPMiddleware(MiddlewareMixin):
+    """
+    Middleware ajoutant des en-têtes de sécurité forts (CSP, Permissions-Policy, COOP/COEP).
+    Compatible avec les templates existants (autorise le CSS inline minimal et les fonts/images statiques).
+    """
+
+    def process_response(self, request, response):
+        try:
+            # Politique CSP restrictive mais compatible
+            # - default-src 'self'
+            # - scripts/styles principalement locaux, style inline autorisé pour Bootstrap
+            # - images depuis 'self' + data: (logos encodés), fonts depuis self et data:
+            csp = [
+                "default-src 'self'",
+                "script-src 'self'",
+                "style-src 'self' 'unsafe-inline'",
+                "img-src 'self' data: https:",
+                "font-src 'self' data:",
+                "connect-src 'self'",
+                "frame-ancestors 'none'",
+                "base-uri 'self'",
+                "form-action 'self'",
+            ]
+            response['Content-Security-Policy'] = '; '.join(csp)
+
+            # Permissions-Policy: désactiver capteurs non utilisés
+            response['Permissions-Policy'] = (
+                "geolocation=(), microphone=(), camera=(), usb=(), payment=(), fullscreen=(self)"
+            )
+
+            # Cross-Origin policies pour isolation
+            response['Cross-Origin-Opener-Policy'] = 'same-origin'
+            response['Cross-Origin-Embedder-Policy'] = 'require-corp'
+
+            # X-XSS-Protection est obsolète mais inoffensif sur anciens navigateurs
+            response['X-XSS-Protection'] = '1; mode=block'
+
+            return response
+        except Exception:
+            return response

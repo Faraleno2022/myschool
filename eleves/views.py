@@ -14,6 +14,8 @@ from .models import Eleve, Responsable, Classe, Ecole, HistoriqueEleve
 from .forms import EleveForm, ResponsableForm, RechercheEleveForm, ClasseForm
 from utilisateurs.models import JournalActivite
 from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_cookie
 
 # ReportLab pour génération PDF
 from reportlab.lib.pagesizes import A4, landscape
@@ -407,6 +409,8 @@ def _get_classe_or_403(request, classe_id):
     return get_object_or_404(qs, id=classe_id)
 
 @login_required
+@vary_on_cookie
+@cache_page(60 * 10)
 def export_eleves_classe_pdf(request, classe_id):
     """Exporte la liste des élèves d'une classe en PDF."""
     classe = _get_classe_or_403(request, classe_id)
@@ -584,6 +588,8 @@ def export_eleves_classe_excel(request, classe_id):
         return HttpResponse(f"Erreur lors de la génération du fichier Excel: {str(e)}", status=500)
 
 @login_required
+@vary_on_cookie
+@cache_page(60 * 10)
 def export_tous_eleves_pdf(request):
     """Exporte la liste de tous les élèves en PDF."""
     # Filtrer selon les permissions

@@ -53,8 +53,8 @@ class Paiement(models.Model):
         max_digits=10, decimal_places=0,
         verbose_name="Montant (GNF)"
     )
-    date_paiement = models.DateField(verbose_name="Date de paiement")
-    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='EN_ATTENTE', verbose_name="Statut")
+    date_paiement = models.DateField(verbose_name="Date de paiement", db_index=True)
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='EN_ATTENTE', verbose_name="Statut", db_index=True)
     
     # Informations complémentaires
     reference_externe = models.CharField(
@@ -81,6 +81,11 @@ class Paiement(models.Model):
         verbose_name = "Paiement"
         verbose_name_plural = "Paiements"
         ordering = ['-date_paiement', '-date_creation']
+        indexes = [
+            models.Index(fields=['eleve', 'date_paiement']),
+            models.Index(fields=['eleve', 'statut']),
+            models.Index(fields=['statut', 'date_paiement']),
+        ]
     
     def __str__(self):
         return f"{self.numero_recu} - {self.eleve.nom_complet} - {self.montant:,.0f} GNF"
@@ -312,6 +317,10 @@ class Relance(models.Model):
         verbose_name = "Relance"
         verbose_name_plural = "Relances"
         ordering = ['-date_creation']
+        indexes = [
+            models.Index(fields=['eleve', 'statut']),
+            models.Index(fields=['-date_creation']),
+        ]
 
     def __str__(self):
         return f"Relance {self.eleve.nom_complet} - {self.canal} - {self.statut}"

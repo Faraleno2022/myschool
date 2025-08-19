@@ -20,8 +20,8 @@ class AbonnementBus(models.Model):
     montant = models.DecimalField(max_digits=10, decimal_places=0)
     periodicite = models.CharField(max_length=10, choices=Periodicite.choices, default=Periodicite.MENSUEL)
     date_debut = models.DateField(default=timezone.localdate)
-    date_expiration = models.DateField()
-    statut = models.CharField(max_length=10, choices=Statut.choices, default=Statut.ACTIF)
+    date_expiration = models.DateField(db_index=True)
+    statut = models.CharField(max_length=10, choices=Statut.choices, default=Statut.ACTIF, db_index=True)
 
     # Alertes / relances
     alerte_avant_jours = models.PositiveIntegerField(default=7)
@@ -44,6 +44,11 @@ class AbonnementBus(models.Model):
         ordering = ['-updated_at']
         verbose_name = 'Abonnement bus'
         verbose_name_plural = 'Abonnements bus'
+        indexes = [
+            models.Index(fields=['eleve', 'statut']),
+            models.Index(fields=['eleve', 'date_expiration']),
+            models.Index(fields=['statut', 'date_expiration']),
+        ]
 
     def __str__(self):
         return f"Bus: {self.eleve} ({self.get_periodicite_display()})"

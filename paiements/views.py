@@ -1,5 +1,7 @@
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_cookie
 from django.contrib import messages
 from django.http import JsonResponse, HttpResponse
 from django.core.paginator import Paginator
@@ -1400,6 +1402,8 @@ def valider_paiement(request, paiement_id):
     return redirect('paiements:detail_paiement', paiement_id=paiement_id)
 
 @login_required
+@vary_on_cookie
+@cache_page(60 * 10)
 def generer_recu_pdf(request, paiement_id):
     """Générer un reçu PDF pour un paiement"""
     qs = Paiement.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole', 'type_paiement', 'mode_paiement')

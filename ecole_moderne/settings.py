@@ -118,6 +118,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'django.middleware.gzip.GZipMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -132,6 +133,8 @@ if not DEBUG:
     MIDDLEWARE.insert(1, 'ecole_moderne.security_middleware.SecurityMiddleware')
     MIDDLEWARE.insert(3, 'ecole_moderne.security_middleware.SessionSecurityMiddleware')
     MIDDLEWARE.insert(5, 'ecole_moderne.security_middleware.CSRFSecurityMiddleware')
+    # CSP/headers de sécurité (en fin de chaîne pour setter les en-têtes)
+    MIDDLEWARE.append('ecole_moderne.security_middleware.CSPMiddleware')
 
 ROOT_URLCONF = 'ecole_moderne.urls'
 

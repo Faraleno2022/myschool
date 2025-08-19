@@ -54,6 +54,10 @@ class Classe(models.Model):
         verbose_name = "Classe"
         verbose_name_plural = "Classes"
         unique_together = ['ecole', 'nom', 'annee_scolaire']
+        indexes = [
+            models.Index(fields=['ecole', 'niveau']),
+            models.Index(fields=['ecole', 'annee_scolaire']),
+        ]
     
     def __str__(self):
         return f"{self.nom} - {self.get_niveau_display()} ({self.annee_scolaire})"
@@ -176,7 +180,7 @@ class Eleve(models.Model):
     # Scolarité
     classe = models.ForeignKey(Classe, on_delete=models.CASCADE, related_name='eleves')
     date_inscription = models.DateField(verbose_name="Date d'inscription")
-    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ACTIF', verbose_name="Statut")
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='ACTIF', verbose_name="Statut", db_index=True)
     
     # Responsables
     responsable_principal = models.ForeignKey(
@@ -198,6 +202,11 @@ class Eleve(models.Model):
         verbose_name = "Élève"
         verbose_name_plural = "Élèves"
         ordering = ['nom', 'prenom']
+        indexes = [
+            models.Index(fields=['classe', 'statut']),
+            models.Index(fields=['nom', 'prenom']),
+            models.Index(fields=['date_inscription']),
+        ]
     
     def __str__(self):
         return f"{self.matricule} - {self.prenom} {self.nom}"

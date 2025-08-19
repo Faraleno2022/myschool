@@ -1,5 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.cache import cache_page
+from django.views.decorators.vary import vary_on_cookie
 from django.contrib import messages
 from django.http import HttpResponse
 from django.db.models import Q
@@ -145,6 +147,8 @@ def export_relances_excel(request):
 
 
 @login_required
+@vary_on_cookie
+@cache_page(60 * 10)
 def generer_recu_abonnement_pdf(request, abo_id):
     """Génère un reçu simple pour un abonnement bus"""
     abo = get_object_or_404(AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole'), id=abo_id)
