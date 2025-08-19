@@ -23,6 +23,9 @@ from reportlab.lib.units import cm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 
+# Utilitaire PDF partagé (filigrane)
+from ecole_moderne.pdf_utils import draw_logo_watermark
+
 # Excel
 try:
     from openpyxl import Workbook
@@ -451,43 +454,8 @@ def export_eleves_classe_pdf(request, classe_id):
         # Utiliser les polices par défaut de ReportLab
         pass
 
-    # Ajouter le logo en filigrane (même style que fiche d'inscription)
-    def add_watermark():
-        c.saveState()
-        try:
-            logo_path = os.path.join('static', 'logos', 'logo.png')
-            if os.path.exists(logo_path):
-                # Taille ~150% de la largeur de page (comme dans fiche_inscription_pdf)
-                wm_width = width * 1.5
-                wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
-                wm_x = (width - wm_width) / 2
-                wm_y = (height - wm_height) / 2
-                
-                # Opacité faible
-                try:
-                    c.setFillAlpha(0.08)
-                except Exception:
-                    pass
-                
-                # Légère rotation pour l'effet filigrane
-                c.translate(width / 2.0, height / 2.0)
-                c.rotate(30)
-                c.translate(-width / 2.0, -height / 2.0)
-                
-                c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
-            else:
-                # Fallback vers texte si logo non trouvé
-                c.setFillAlpha(0.04)
-                c.setFont(font_bold, 60)
-                c.rotate(45)
-                c.drawString(200, -100, classe.ecole.nom.upper())
-                c.rotate(-45)
-        except Exception:
-            pass  # Continuer sans logo si erreur
-        finally:
-            c.restoreState()
-
-    add_watermark()
+    # Filigrane standardisé
+    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
 
     margin = 2*cm
     y = height - margin
@@ -523,7 +491,8 @@ def export_eleves_classe_pdf(request, classe_id):
         # Saut de page si nécessaire
         if y < margin + 40:
             c.showPage()
-            add_watermark()  # Ajouter le filigrane sur la nouvelle page
+            # Filigrane sur chaque nouvelle page
+            draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
             y = height - margin
             c.setFont(font_bold, 11)
             x = margin
@@ -661,44 +630,8 @@ def export_tous_eleves_pdf(request):
         except Exception:
             pass
 
-        # Ajouter le logo en filigrane sur chaque page (même style que fiche d'inscription)
-        def add_watermark():
-            c.saveState()
-            try:
-                from django.conf import settings
-                logo_path = os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
-                if os.path.exists(logo_path):
-                    # Taille ~150% de la largeur de page (comme dans fiche_inscription_pdf)
-                    wm_width = width * 1.5
-                    wm_height = wm_width  # carré approximatif, preserveAspectRatio activera le ratio réel
-                    wm_x = (width - wm_width) / 2
-                    wm_y = (height - wm_height) / 2
-                    
-                    # Opacité faible
-                    try:
-                        c.setFillAlpha(0.08)
-                    except Exception:
-                        pass
-                    
-                    # Légère rotation pour l'effet filigrane
-                    c.translate(width / 2.0, height / 2.0)
-                    c.rotate(30)
-                    c.translate(-width / 2.0, -height / 2.0)
-                    
-                    c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
-                else:
-                    # Fallback vers texte si logo non trouvé
-                    c.setFillAlpha(0.04)
-                    c.setFont(font_bold, 60)
-                    c.rotate(45)
-                    c.drawString(200, -100, "GS HADJA KANFING DIANÉ")
-                    c.rotate(-45)
-            except Exception:
-                pass  # Continuer sans logo si erreur
-            finally:
-                c.restoreState()
-
-        add_watermark()
+        # Filigrane standardisé (logo centré, rotation, opacité faible)
+        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
 
         margin = 2*cm
         y = height - margin
@@ -729,7 +662,8 @@ def export_tous_eleves_pdf(request):
             if current_ecole != eleve.classe.ecole.nom:
                 if y < margin + 80:
                     c.showPage()
-                    add_watermark()  # Ajouter le filigrane sur la nouvelle page
+                    # Filigrane sur chaque nouvelle page
+                    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
                     y = height - margin
                 
                 current_ecole = eleve.classe.ecole.nom
@@ -755,7 +689,8 @@ def export_tous_eleves_pdf(request):
             # Vérifier l'espace pour une nouvelle ligne
             if y < margin + 40:
                 c.showPage()
-                add_watermark()  # Ajouter le filigrane sur la nouvelle page
+                # Filigrane sur chaque nouvelle page
+                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
                 y = height - margin
                 
                 # Répéter le titre de l'école et les en-têtes

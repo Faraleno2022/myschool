@@ -21,6 +21,9 @@ from django.views.decorators.http import require_http_methods
 import re
 import unicodedata
 
+# Filigrane PDF partagé
+from ecole_moderne.pdf_utils import draw_logo_watermark
+
 # --- Configuration des tolérances (ajustables) ---
 # Tolérance absolue pour la détection "Inscription + 1ère tranche"
 TOLERANCE_INSCRIPTION_T1 = Decimal('50000')  # 50 000 GNF
@@ -1461,47 +1464,23 @@ def generer_recu_pdf(request, paiement_id):
     margin_y = 20 * mm
 
     # Filigrane avec logo de l'école (même style que fiche d'inscription)
-    c.saveState()
+    # Standardisation filigrane: logo centré, rotation 30°, opacité 4%
+    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
+
+    # Résolution du chemin du logo pour l'en-tête
+    logo_path = None
     try:
-        # Chemin vers le logo
-        logo_path = None
+        logo_path = finders.find('logos/logo.png')
+    except Exception:
+        pass
+    if not logo_path:
         try:
-            logo_path = finders.find('logos/logo.png')
+            from django.conf import settings
+            candidate = os.path.join(getattr(settings, 'BASE_DIR', ''), 'static', 'logos', 'logo.png')
+            if candidate and os.path.exists(candidate):
+                logo_path = candidate
         except Exception:
             pass
-        # Fallback: chemin absolu vers static/logos/logo.png si non trouvé par les finders
-        if not logo_path:
-            try:
-                from django.conf import settings
-                candidate = os.path.join(getattr(settings, 'BASE_DIR', ''), 'static', 'logos', 'logo.png')
-                if candidate and os.path.exists(candidate):
-                    logo_path = candidate
-            except Exception:
-                pass
-        
-        if logo_path:
-            # Taille réduite pour ne pas interférer avec la netteté du texte
-            wm_width = width * 0.8
-            wm_height = wm_width  # approximatif, le ratio sera préservé
-            wm_x = (width - wm_width) / 2
-            wm_y = (height - wm_height) / 2
-
-            # Opacité très faible pour un texte parfaitement lisible
-            try:
-                c.setFillAlpha(0.03)
-            except Exception:
-                pass
-
-            # Pas de rotation pour éviter tout flou dû à l'anti-aliasing
-            c.drawImage(logo_path, wm_x, wm_y, width=wm_width, height=wm_height, preserveAspectRatio=True, mask='auto')
-
-            # Réinitialiser explicitement l'opacité
-            try:
-                c.setFillAlpha(1)
-            except Exception:
-                pass
-    finally:
-        c.restoreState()
 
     # En-tête avec logo + titre (ajusté pour éviter chevauchement avec photo élève)
     c.saveState()

@@ -11,6 +11,7 @@ from eleves.models import Eleve
 from .models import AbonnementBus
 from .forms import AbonnementBusForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school
+from ecole_moderne.pdf_utils import draw_logo_watermark
 
 
 @login_required
@@ -160,18 +161,8 @@ def generer_recu_abonnement_pdf(request, abo_id):
     buffer = io.BytesIO(); c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
-    # Filigrane léger
-    try:
-        logo_path = finders.find('logos/logo.png')
-    except Exception:
-        logo_path = None
-    if logo_path:
-        try:
-            c.saveState(); c.setFillAlpha(0.03)
-            wm_w = width * 0.8; wm_h = wm_w
-            c.drawImage(logo_path, (width-wm_w)/2, (height-wm_h)/2, width=wm_w, height=wm_h, preserveAspectRatio=True, mask='auto')
-        finally:
-            c.restoreState()
+    # Filigrane standardisé (logo centré, rotation légère, opacité 4%)
+    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
 
     # Titre
     c.setFont('Helvetica-Bold', 16)
