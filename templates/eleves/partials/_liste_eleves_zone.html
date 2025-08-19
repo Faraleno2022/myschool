@@ -8,11 +8,11 @@
   <div class="card-body">
     <div class="row g-3">
       <div class="col-md-6">
-        <label for="export-classe-select" class="form-label">Sélectionner une classe</label>
+        <label for="export-classe-select" class="form-label">Filtrer / Exporter par classe</label>
         <select id="export-classe-select" class="form-select">
-          <option value="">Toutes les classes</option>
+          <option value="" {% if not selected_classe_id %}selected{% endif %}>Toutes les classes</option>
           {% for c in classes %}
-            <option value="{{ c.id }}">{{ c.ecole.nom }} - {{ c.nom }}</option>
+            <option value="{{ c.id }}" {% if selected_classe_id and selected_classe_id == c.id|stringformat:'s' %}selected{% endif %}>{{ c.ecole.nom }} - {{ c.nom }}</option>
           {% endfor %}
         </select>
       </div>

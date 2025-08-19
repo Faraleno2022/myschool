@@ -138,6 +138,10 @@
             url.searchParams.set('partial', '1');
             const q = (input.value || '').trim();
             if (q) url.searchParams.set('recherche', q); else url.searchParams.delete('recherche');
+            // Ajouter le filtre classe si sélectionné
+            const selectInZone = zone.querySelector('#export-classe-select');
+            const classeId = selectInZone ? (selectInZone.value || '') : '';
+            if (classeId) url.searchParams.set('classe_id', classeId); else url.searchParams.delete('classe_id');
             return url.toString();
         }
 
@@ -148,6 +152,8 @@
             zone.innerHTML = html;
             // Ré-initialiser la barre d'export après injection
             if (window.initElevesExportToolbar) window.initElevesExportToolbar();
+            // Re-lier le changement de classe après injection du partial
+            if (typeof bindClasseChange === 'function') bindClasseChange();
         }
 
         const onInput = debounce(() => fetchResults(), 300);
@@ -172,11 +178,32 @@
             const link = e.target.closest('a.page-link');
             if (!link) return;
             e.preventDefault();
-            fetchResults(link.href);
+            // Conserver recherche et classe lors de la pagination
+            fetchResults(buildUrl(link.href));
         });
 
         // Initialiser la barre d'export
         if (window.initElevesExportToolbar) window.initElevesExportToolbar();
+
+        // Réagir au changement de classe (filtre)
+        function bindClasseChange() {
+            const select = zone.querySelector('#export-classe-select');
+            if (!select) return;
+            // Éviter les doublons
+            const newSelect = select.cloneNode(true);
+            select.parentNode.replaceChild(newSelect, select);
+            newSelect.addEventListener('change', function() {
+                // Mettre à jour les résultats avec le filtre classe
+                fetchResults();
+                // Mettre à jour l'URL visible (sans partial)
+                const fullUrl = new URL(window.location.href);
+                if (this.value) fullUrl.searchParams.set('classe_id', this.value); else fullUrl.searchParams.delete('classe_id');
+                const q = (input.value || '').trim();
+                if (q) fullUrl.searchParams.set('recherche', q); else fullUrl.searchParams.delete('recherche');
+                history.replaceState({}, '', fullUrl.toString());
+            });
+        }
+        bindClasseChange();
     })();
     </script>
 {% endblock %}

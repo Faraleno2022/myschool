@@ -60,6 +60,16 @@ def liste_eleves(request):
                 Q(responsable_secondaire__prenom__icontains=recherche)
             )
     
+    # Filtre par classe via paramètre GET (classe_id)
+    classe_id = request.GET.get('classe_id')
+    if classe_id:
+        try:
+            # Sécuriser la conversion en entier; si invalide, ignorer
+            int(classe_id)
+            eleves = eleves.filter(classe_id=classe_id)
+        except (TypeError, ValueError):
+            classe_id = None
+    
     # Sécurisation anti-doublons (au cas de jointures inattendues)
     eleves = eleves.distinct()
     
@@ -97,6 +107,8 @@ def liste_eleves(request):
         'stats': stats,
         'titre_page': 'Gestion des Élèves',
         'classes': classes,
+        # Conserver la sélection actuelle de classe dans l'UI
+        'selected_classe_id': str(classe_id) if classe_id else '',
     }
 
     # Rendu partiel pour la recherche dynamique
