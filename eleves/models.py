@@ -47,6 +47,13 @@ class Classe(models.Model):
     ecole = models.ForeignKey(Ecole, on_delete=models.CASCADE, related_name='classes')
     nom = models.CharField(max_length=100, verbose_name="Nom de la classe")
     niveau = models.CharField(max_length=20, choices=NIVEAUX_CHOICES, verbose_name="Niveau")
+    code_matricule = models.CharField(
+        max_length=12,
+        blank=True,
+        null=True,
+        verbose_name="Code matricule",
+        help_text="Préfixe utilisé pour les matricules (ex: PN3, CN7, L11SL)."
+    )
     annee_scolaire = models.CharField(max_length=9, verbose_name="Année scolaire", help_text="Format: 2024-2025")
     capacite_max = models.PositiveIntegerField(default=30, verbose_name="Capacité maximale")
     
@@ -57,6 +64,7 @@ class Classe(models.Model):
         indexes = [
             models.Index(fields=['ecole', 'niveau']),
             models.Index(fields=['ecole', 'annee_scolaire']),
+            models.Index(fields=['ecole', 'code_matricule']),
         ]
     
     def __str__(self):
@@ -65,6 +73,67 @@ class Classe(models.Model):
     @property
     def nombre_eleves(self):
         return self.eleves.count()
+
+# --- Helper: Resolve class code for matricule generation ---
+def _code_classe_from_nom_ou_niveau(classe: "Classe") -> str:
+    """Retourne le code matricule à partir du nom (prioritaire) ou du niveau de la classe.
+    Mapping fourni par l'utilisateur. Si aucun mapping trouvé, retourne une chaîne vide.
+    """
+    # 1) Si le champ dédié est renseigné, on l'utilise en priorité
+    code_direct = getattr(classe, 'code_matricule', None)
+    if code_direct:
+        return code_direct.strip()
+    # Mapping par nom exact (insensible à la casse/espaces superflus)
+    mapping_nom = {
+        "garderie": "GA",
+        "petite section": "MPS",
+        "moyen section": "MMS",
+        "grande section": "MGS",
+        "1ère année": "PN1",
+        "2ème année": "PN2",
+        "3ème année": "PN3",
+        "4ème année": "PN4",
+        "5ème année": "PN5",
+        "6ème année": "PN6",
+        "7ème année": "CN7",
+        "8ème année": "CN8",
+        "9ème année": "CN9",
+        "10ème année": "CN10",
+        "11ème série littéraire": "L11SL",
+        "11ème série scientifique i": "L11SSI",
+        "11ème série scientifique ii": "L11SSII",
+        "12ème ss": "L12SS",
+        "12ème sm": "L12SM",
+        "12ème se": "L12SE",
+        "terminale ss": "TSS",
+        "terminale se": "TSE",
+        "terminale sm": "TSM",
+    }
+
+    try:
+        nom_norm = (classe.nom or "").strip().lower()
+    except Exception:
+        nom_norm = ""
+    code = mapping_nom.get(nom_norm, "")
+    if code:
+        return code
+
+    # Fallback basique sur niveau si le nom ne correspond pas
+    niveau = getattr(classe, "niveau", "")
+    fallback_niveau = {
+        "GARDERIE": "GA",
+        "PRIMAIRE_1": "PN1",
+        "PRIMAIRE_2": "PN2",
+        "PRIMAIRE_3": "PN3",
+        "PRIMAIRE_4": "PN4",
+        "PRIMAIRE_5": "PN5",
+        "PRIMAIRE_6": "PN6",
+        "COLLEGE_7": "CN7",
+        "COLLEGE_8": "CN8",
+        "COLLEGE_9": "CN9",
+        "COLLEGE_10": "CN10",
+    }
+    return fallback_niveau.get(niveau, "")
 
 class Responsable(models.Model):
     """Modèle pour représenter un responsable d'élève"""
@@ -220,6 +289,41 @@ class Eleve(models.Model):
         from datetime import date
         today = date.today()
         return today.year - self.date_naissance.year - ((today.month, today.day) < (self.date_naissance.month, self.date_naissance.day))
+
+    def save(self, *args, **kwargs):
+        """Génère automatiquement le matricule au format CODE-### si absent.
+        - CODE déterminé par la classe via `_code_classe_from_nom_ou_niveau`
+        - ### est une séquence à 3 chiffres, incrémentée par classe
+        """
+        if not self.matricule and getattr(self, 'classe_id', None):
+            code = _code_classe_from_nom_ou_niveau(self.classe)
+            if code:
+                import re
+                base_prefix = f"{code}-"
+                # Récupérer le dernier numéro pour ce préfixe
+                derniers = (
+                    Eleve.objects
+                    .filter(matricule__startswith=base_prefix)
+                    .order_by('-matricule')
+                )
+                next_num = 1
+                if derniers.exists():
+                    dernier = derniers.first().matricule
+                    m = re.search(r"^(?:" + re.escape(code) + r")-(\d+)$", dernier)
+                    if m:
+                        try:
+                            next_num = int(m.group(1)) + 1
+                        except Exception:
+                            next_num = 1
+                # Essayer quelques fois pour éviter collision rare
+                for _ in range(5):
+                    candidat = f"{code}-{next_num:03d}"
+                    if not Eleve.objects.filter(matricule=candidat).exists():
+                        self.matricule = candidat
+                        break
+                    next_num += 1
+
+        super().save(*args, **kwargs)
 
 class HistoriqueEleve(models.Model):
     """Modèle pour l'historique des modifications d'un élève"""

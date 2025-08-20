@@ -113,8 +113,8 @@ class EleveForm(forms.ModelForm):
         widgets = {
             'matricule': forms.TextInput(attrs={
                 'class': 'form-control',
-                'placeholder': 'Matricule unique',
-                'required': True
+                'placeholder': 'Généré automatiquement (ex: PN3-001)',
+                'readonly': 'readonly'
             }),
             'prenom': forms.TextInput(attrs={
                 'class': 'form-control',
@@ -183,7 +183,16 @@ class EleveForm(forms.ModelForm):
         
         # Filtrer les classes par école si nécessaire
         self.fields['classe'].queryset = Classe.objects.all().order_by('ecole__nom', 'niveau', 'nom')
-        
+
+        # Matricule: non requis et lecture seule (généré automatiquement au save())
+        if 'matricule' in self.fields:
+            self.fields['matricule'].required = False
+            try:
+                self.fields['matricule'].widget.attrs['readonly'] = 'readonly'
+                self.fields['matricule'].widget.attrs['placeholder'] = 'Généré automatiquement (ex: PN3-001)'
+            except Exception:
+                pass
+
         # Rendre responsable_principal optionnel si on crée un nouveau responsable
         # La validation sera gérée dans la vue
         self.fields['responsable_principal'].required = False
@@ -203,7 +212,8 @@ class EleveForm(forms.ModelForm):
                 qs = qs.exclude(pk=self.instance.pk)
             if qs.exists():
                 raise forms.ValidationError("Ce matricule existe déjà.")
-        return matricule
+        # Autoriser vide: le modèle le générera au save()
+        return matricule or ''
     
     def clean_date_naissance(self):
         date_naissance = self.cleaned_data.get('date_naissance')
