@@ -26,6 +26,7 @@ urlpatterns = [
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
     path('export/tranches-par-classe/excel/', export_tranches_par_classe_excel, name='export_tranches_par_classe_excel'),
     path('export/liste/excel/', views.export_liste_paiements_excel, name='export_liste_paiements_excel'),
+    path('rapport/remises/', views.rapport_remises, name='rapport_remises'),
     
     # AJAX endpoints
     path('ajax/statistiques/', views.ajax_statistiques_paiements, name='ajax_statistiques_paiements'),

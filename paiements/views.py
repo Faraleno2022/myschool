@@ -3,11 +3,15 @@ from django.contrib.auth.decorators import login_required
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 from django.contrib import messages
-from django.http import JsonResponse, HttpResponse
-from django.core.paginator import Paginator
+from django.db import transaction
+from django.db.models import Sum, Count
+from django.http import JsonResponse, HttpResponse, Http404
+from django.shortcuts import get_object_or_404, render, redirect
+from django.utils import timezone
 from django.db.models import Q, Sum, Count
 from django.db import transaction, IntegrityError
 from django.utils import timezone
+from django.core.paginator import Paginator
 from decimal import Decimal
 from datetime import date, datetime
 import os
@@ -17,8 +21,8 @@ from eleves.models import Eleve, GrilleTarifaire, Classe
 from .forms import PaiementForm, EcheancierForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
-from utilisateurs.permissions import can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments
-from rapports.utils import _draw_header_and_watermark
+from utilisateurs.permissions import can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports
+# Removed incorrect imports from rapports.utils (format_currency, ensure_current_academic_year not present)
 from django.views.decorators.http import require_http_methods
 import re
 import unicodedata
@@ -773,6 +777,11 @@ def relancer_eleve(request, eleve_id):
 @login_required
 def liste_relances(request):
     """Historique des relances avec filtres simples et pagination."""
+    # Autorisation: admin ou droit de validation paiements (comptable)
+    if not (user_is_admin(request.user) or can_validate_payments(request.user)):
+        messages.error(request, "Vous n'avez pas l'autorisation pour consulter les relances.")
+        return redirect('paiements:tableau_bord')
+
     relances = Relance.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole', 'cree_par')
     # Filtrer par école pour non-admin
     if not user_is_admin(request.user):
@@ -1154,7 +1163,24 @@ def ajouter_paiement(request, eleve_id=None):
 
             paiement = form.save(commit=False)
             paiement.cree_par = request.user
-            
+
+            # Appliquer une remise si saisie par le comptable (réduction directe du montant)
+            remise_pct = form.cleaned_data.get('remise_pourcentage') or Decimal('0')
+            montant_original = paiement.montant or Decimal('0')
+            montant_remise = Decimal('0')
+            if remise_pct and remise_pct > 0 and montant_original > 0:
+                try:
+                    # Calculer la remise
+                    montant_remise = (montant_original * Decimal(remise_pct)) / Decimal('100')
+                    # Cap au montant original
+                    if montant_remise > montant_original:
+                        montant_remise = montant_original
+                    # Déduire du montant du paiement
+                    paiement.montant = max(Decimal('0'), montant_original - montant_remise)
+                except Exception:
+                    # En cas d'erreur de conversion/calcul, ignorer la remise
+                    montant_remise = Decimal('0')
+
             # Le numéro de reçu est maintenant généré automatiquement par le modèle
             try:
                 paiement.save()
@@ -1167,6 +1193,43 @@ def ajouter_paiement(request, eleve_id=None):
                     'action': 'Ajouter'
                 }
                 return render(request, 'paiements/form_paiement.html', context)
+
+            # Enregistrer la ligne de remise appliquée (si applicable)
+            try:
+                if montant_remise and montant_remise > 0:
+                    # Chercher/créer une RemiseReduction générique "Remise manuelle"
+                    from django.utils.timezone import now
+                    today = now().date()
+                    remise_obj, _ = RemiseReduction.objects.get_or_create(
+                        nom='Remise manuelle',
+                        type_remise='POURCENTAGE',
+                        valeur=Decimal(remise_pct or 0),
+                        motif='AUTRE',
+                        defaults={
+                            'description': 'Remise saisie manuellement lors de la création du paiement',
+                            'date_debut': today,
+                            'date_fin': today,
+                            'actif': True,
+                            'cree_par': request.user if request.user.is_authenticated else None,
+                        }
+                    )
+                    # Si la remise existe mais hors validité aujourd'hui, on force une validité du jour
+                    if not (remise_obj.date_debut <= today <= remise_obj.date_fin):
+                        remise_obj.date_debut = today
+                        remise_obj.date_fin = today
+                        remise_obj.actif = True
+                        remise_obj.save(update_fields=['date_debut', 'date_fin', 'actif'])
+
+                    PaiementRemise.objects.update_or_create(
+                        paiement=paiement,
+                        remise=remise_obj,
+                        defaults={'montant_remise': montant_remise}
+                    )
+                    # Info utilisateur
+                    messages.info(request, f"Remise appliquée: {int(montant_remise):,} GNF (\u2212{remise_pct}% )".replace(',', ' '))
+            except Exception as _e:
+                # Ne pas bloquer le flux si la ligne de remise échoue
+                messages.warning(request, "La remise n'a pas pu être enregistrée en détail, mais le paiement a bien été créé.")
 
             # Ne pas impacter l'échéancier tant que le paiement n'est pas validé
             try:
@@ -2101,8 +2164,9 @@ def appliquer_remise_paiement(request, paiement_id):
                             montant_remise=detail['montant']
                         )
                     
-                    # Mettre à jour le montant du paiement
-                    nouveau_montant = montant_original - total_remise
+                    # Mettre à jour le montant du paiement (ne jamais aller sous 0)
+                    from decimal import Decimal
+                    nouveau_montant = max(Decimal('0'), montant_original - total_remise)
                     paiement.montant = nouveau_montant
                     paiement.save()
                     
@@ -2242,3 +2306,81 @@ def _calculate_payment_with_remises(paiement, remises_ids=None):
     montant_final = max(Decimal('0'), montant_original - total_remise)
     
     return montant_final, remises_appliquees
+
+
+@can_view_reports
+def rapport_remises(request):
+    """Rapport: élèves ayant des remises appliquées avec total des remises.
+    Filtres optionnels: date_debut, date_fin (sur date_paiement)"""
+    # Récup filtres
+    date_debut_str = request.GET.get('date_debut')
+    date_fin_str = request.GET.get('date_fin')
+    date_debut = None
+    date_fin = None
+    try:
+        if date_debut_str:
+            date_debut = datetime.strptime(date_debut_str, '%Y-%m-%d').date()
+        if date_fin_str:
+            date_fin = datetime.strptime(date_fin_str, '%Y-%m-%d').date()
+    except Exception:
+        date_debut = None
+        date_fin = None
+
+    qs = PaiementRemise.objects.select_related(
+        'paiement', 'paiement__eleve', 'paiement__eleve__classe', 'paiement__eleve__classe__ecole'
+    ).filter(
+        paiement__statut='VALIDE'
+    )
+
+    # Scope école
+    try:
+        ecole = user_school(request.user)
+        if ecole:
+            qs = qs.filter(paiement__eleve__classe__ecole=ecole)
+    except Exception:
+        pass
+
+    if date_debut:
+        qs = qs.filter(paiement__date_paiement__gte=date_debut)
+    if date_fin:
+        qs = qs.filter(paiement__date_paiement__lte=date_fin)
+
+    # Filtre texte unique (q) : nom/prénom élève, matricule, classe
+    q = (request.GET.get('q') or '').strip()
+    if q:
+        qs = qs.filter(
+            Q(paiement__eleve__prenom__icontains=q) |
+            Q(paiement__eleve__nom__icontains=q) |
+            Q(paiement__eleve__matricule__icontains=q) |
+            Q(paiement__eleve__classe__nom__icontains=q)
+        )
+
+    # Agrégations par élève
+    aggs = (
+        qs.values(
+            'paiement__eleve',
+            'paiement__eleve__prenom',
+            'paiement__eleve__nom',
+            'paiement__eleve__matricule',
+            'paiement__eleve__classe__nom',
+        )
+        .annotate(total_remise=Sum('montant_remise'), nb_remises=Count('id'))
+    )
+
+    # Pas de filtres supplémentaires sur agrégats pour le mode "recherche unique"
+
+    aggs = aggs.order_by('-total_remise')
+
+    total_global = qs.aggregate(total=Sum('montant_remise'))['total'] or Decimal('0')
+
+    context = {
+        'rows': aggs,
+        'total_global': total_global,
+        'date_debut': date_debut_str or '',
+        'date_fin': date_fin_str or '',
+        'titre_page': 'Rapport des remises appliquées',
+        # Préserver valeur du champ de recherche unique
+        'q': q,
+    }
+
+    return render(request, 'paiements/rapport_remises.html', context)

@@ -9,6 +9,21 @@ from eleves.models import Eleve, Ecole
 class PaiementForm(forms.ModelForm):
     """Formulaire pour créer/modifier un paiement"""
     
+    # Pourcentage de remise saisi par le comptable (optionnel)
+    remise_pourcentage = forms.DecimalField(
+        required=False,
+        min_value=0,
+        max_value=100,
+        widget=forms.NumberInput(attrs={
+            'class': 'form-control',
+            'placeholder': '0',
+            'step': '0.01',
+            'min': '0',
+            'max': '100'
+        }),
+        label="Remise (%)"
+    )
+
     class Meta:
         model = Paiement
         fields = [
@@ -67,6 +82,18 @@ class PaiementForm(forms.ModelForm):
         if montant and montant <= 0:
             raise forms.ValidationError("Le montant doit être supérieur à zéro.")
         return montant
+
+    def clean(self):
+        cleaned = super().clean()
+        # Validation supplémentaire de la remise (déjà gérée par min/max, mais on force numérique)
+        rp = cleaned.get('remise_pourcentage')
+        if rp is not None:
+            try:
+                # DecimalField assure déjà, mais double sécurité
+                Decimal(rp)
+            except Exception:
+                self.add_error('remise_pourcentage', "Valeur de remise invalide.")
+        return cleaned
 
 class EcheancierForm(forms.ModelForm):
     """Formulaire pour créer/modifier un échéancier"""

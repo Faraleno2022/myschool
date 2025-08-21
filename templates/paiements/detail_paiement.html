@@ -232,6 +232,14 @@
                         <i class="fas fa-plus me-1"></i>Nouveau paiement pour cet élève
                     </a>
 
+                    {% if paiement.statut == 'EN_ATTENTE' %}
+                        {% if is_admin or user_permissions.can_validate_payments %}
+                            <a href="{% url 'paiements:appliquer_remise' paiement.id %}" class="btn btn-warning btn-sm w-100 mt-2">
+                                <i class="fas fa-percentage me-1"></i>Appliquer remises
+                            </a>
+                        {% endif %}
+                    {% endif %}
+
                     <!-- Bouton relance rapide (confirmation directe) -->
                     <form method="post" action="{% url 'paiements:relancer_eleve' paiement.eleve.id %}" class="mt-2">
                         {% csrf_token %}

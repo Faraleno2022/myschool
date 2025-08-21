@@ -35,9 +35,13 @@
         border-left: 4px solid #007bff;
     }
     .montant-display {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #28a745;
+        font-size: 1.25rem; /* reduced from 2rem */
+        font-weight: 600;   /* reduced from 800 */
+        color: #155724;
+        background: #eaf7ee; /* softer */
+        border: 1px solid #d8efe0;
+        border-radius: 6px;
+        padding: 6px 10px;   /* slightly smaller */
     }
 </style>
 {% endblock %}
@@ -227,7 +231,7 @@
                             {% if form.montant.errors %}
                                 <div class="text-danger small">{{ form.montant.errors.0 }}</div>
                             {% endif %}
-                            <div id="montantDisplay" class="montant-display mt-2" style="display: none;"></div>
+                            <div id="montantDisplay" class="montant-display mt-2">0 GNF</div>
                         </div>
                         
                         <div class="col-md-6 mb-3">
@@ -238,6 +242,34 @@
                             {% if form.date_paiement.errors %}
                                 <div class="text-danger small">{{ form.date_paiement.errors.0 }}</div>
                             {% endif %}
+                        </div>
+                    </div>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="id_remise_pourcentage" class="form-label">
+                                Remise (%)
+                            </label>
+                            <div class="input-group">
+                                {{ form.remise_pourcentage }}
+                                <span class="input-group-text">%</span>
+                            </div>
+                            {% if form.remise_pourcentage.errors %}
+                                <div class="text-danger small">{{ form.remise_pourcentage.errors.0 }}</div>
+                            {% endif %}
+                            <small class="form-text text-muted">Saisir un pourcentage (0 à 100). La remise sera déduite du montant saisi.</small>
+                            <div class="mt-2">
+                                <a href="{% url 'paiements:calculateur_remise' %}{% if eleve %}?eleve_id={{ eleve.id }}{% endif %}"
+                                   class="btn btn-sm btn-outline-secondary" target="_blank">
+                                    <i class="fas fa-calculator me-1"></i>Calculer/Appliquer remises
+                                </a>
+                                <small class="text-muted ms-2">Ouvre le calculateur pour simuler des remises détaillées.</small>
+                            </div>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">Montant après remise</label>
+                            <div class="form-control-plaintext montant-display" id="finalAmountDisplay">—</div>
+                            <small class="text-muted" id="remiseInfo" style="display:none;"></small>
                         </div>
                     </div>
                     
@@ -395,6 +427,15 @@ document.addEventListener('DOMContentLoaded', function() {
     const badge = document.getElementById('montantSuggestionBadge');
     const badgeValue = document.getElementById('montantSuggestionValue');
     console.log('montantDisplay found:', !!montantDisplay);
+    // Initialiser l'affichage du montant au chargement
+    if (montantDisplay) {
+        try {
+            const initVal = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+            montantDisplay.textContent = (isNaN(initVal) ? 0 : initVal).toLocaleString('fr-FR') + ' GNF';
+        } catch(_) {
+            montantDisplay.textContent = '0 GNF';
+        }
+    }
     
     const submitBtn = document.getElementById('submitBtn');
     const form = document.getElementById('paiementForm');
@@ -632,21 +673,61 @@ document.addEventListener('DOMContentLoaded', function() {
     // Déclencher aussi après un délai
     setTimeout(() => tryUpdateMontant(), 100);
 
-    // Formatage du montant en temps réel et maj badge
+    // Helpers format
+    function formatGNF(v) {
+        try { return Number(v||0).toLocaleString('fr-FR') + ' GNF'; } catch(_) { return String(v||0) + ' GNF'; }
+    }
+
+    function updateFinalAmount() {
+        const v = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+        const remiseEl = document.getElementById('id_remise_pourcentage');
+        const pct = parseFloat(remiseEl && remiseEl.value ? remiseEl.value : 0) || 0;
+        const remise = Math.max(0, Math.min(100, pct));
+        const remiseAmount = Math.max(0, v * remise / 100.0);
+        const final = Math.max(0, v - remiseAmount);
+        const fad = document.getElementById('finalAmountDisplay');
+        const rinfo = document.getElementById('remiseInfo');
+        if (fad) {
+            fad.textContent = formatGNF(Math.floor(final));
+        }
+        if (rinfo) {
+            if (remise > 0 && v > 0) {
+                rinfo.style.display = 'block';
+                rinfo.textContent = `Remise déduite: ${formatGNF(Math.floor(remiseAmount))} (−${remise.toFixed(2)}%)`;
+            } else {
+                rinfo.style.display = 'none';
+                rinfo.textContent = '';
+            }
+        }
+    }
+
+    // Formatage du montant en temps réel et maj badge (toujours visible)
     montantInput.addEventListener('input', function() {
         const value = parseFloat(this.value);
-        if (!isNaN(value) && value > 0) {
-            montantDisplay.textContent = value.toLocaleString('fr-FR') + ' GNF';
-            montantDisplay.style.display = 'block';
-        } else {
-            montantDisplay.style.display = 'none';
+        const v = isNaN(value) ? 0 : Math.max(0, value);
+        try {
+            montantDisplay.textContent = v.toLocaleString('fr-FR') + ' GNF';
+        } catch(_) {
+            montantDisplay.textContent = String(v) + ' GNF';
         }
         if (badge && badgeValue) {
-            const v = isNaN(value) ? 0 : Math.max(0, Math.floor(value));
-            badgeValue.textContent = v.toLocaleString('fr-FR');
+            const vb = isNaN(value) ? 0 : Math.max(0, Math.floor(value));
+            try { badgeValue.textContent = vb.toLocaleString('fr-FR'); }
+            catch(_) { badgeValue.textContent = String(vb); }
             badge.style.display = 'inline-flex';
         }
+        updateFinalAmount();
     })
+
+    // Mise à jour quand la remise change
+    const remisePctEl = document.getElementById('id_remise_pourcentage');
+    if (remisePctEl) {
+        remisePctEl.addEventListener('input', updateFinalAmount);
+        remisePctEl.addEventListener('change', updateFinalAmount);
+    }
+
+    // Init
+    updateFinalAmount();
     
     // Validation du formulaire
     form.addEventListener('submit', function(e) {

@@ -51,6 +51,23 @@
                 </div>
                 
                 <div class="card-body">
+                    {% if form.errors %}
+                    <div class="alert alert-danger">
+                        <strong>Erreurs dans le formulaire :</strong>
+                        <ul class="mb-0">
+                            {% for field, errors in form.errors.items %}
+                                {% for error in errors %}
+                                    <li>
+                                        {% if field != '__all__' %}<strong>{{ field }}:</strong> {% endif %}{{ error }}
+                                    </li>
+                                {% endfor %}
+                            {% endfor %}
+                            {% for error in form.non_field_errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    {% endif %}
                     <!-- Informations du paiement -->
                     <div class="row mb-4">
                         <div class="col-md-6">
@@ -202,6 +219,10 @@ document.addEventListener('DOMContentLoaded', function() {
     const checkboxes = document.querySelectorAll('.remise-checkbox');
     const montantOriginal = parseFloat('{{ paiement.montant }}');
     const btnAppliquer = document.getElementById('btnAppliquer');
+    // Si des remises sont disponibles, activer le bouton par défaut (l'envoi est de toute façon validé côté JS)
+    if (checkboxes.length > 0) {
+        btnAppliquer.disabled = false;
+    }
     
     function updatePreview() {
         let totalRemises = 0;
@@ -257,6 +278,8 @@ document.addEventListener('DOMContentLoaded', function() {
     checkboxes.forEach(checkbox => {
         checkbox.addEventListener('change', updatePreview);
     });
+    // Initialiser l'aperçu au chargement
+    updatePreview();
     
     // Confirmation avant soumission
     document.getElementById('remiseForm').addEventListener('submit', function(e) {
