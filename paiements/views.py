@@ -1325,7 +1325,7 @@ def ajouter_paiement(request, eleve_id=None):
                     return render(request, 'paiements/form_paiement.html', context)
                 # Empêcher un paiement supérieur au solde restant
                 montant_saisi = form.cleaned_data.get('montant') or Decimal('0')
-                if montant_saisi > solde:
+                if montant_saisi > 0 and montant_saisi > solde:
                     form.add_error('montant', f"Le montant saisi dépasse le reste à payer ({int(solde):,} GNF).".replace(',', ' '))
                     messages.warning(request, f"Montant supérieur au reste à payer. Reste: {int(solde):,} GNF.".replace(',', ' '))
                     context = {
