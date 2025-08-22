@@ -16,6 +16,9 @@
         <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-outline-info">
             <i class="fas fa-list me-1"></i>Tous les Paiements
         </a>
+        <a href="{% url 'paiements:liste_eleves_soldes' %}" class="btn btn-outline-success">
+            <i class="fas fa-check-circle me-1"></i>Élèves soldés
+        </a>
         <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
             <i class="fas fa-bell me-1"></i>Relances
         </a>
@@ -243,6 +246,9 @@
                         </a>
                         <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
                             <i class="fas fa-bell me-2"></i>Voir les relances
+                        </a>
+                        <a href="{% url 'paiements:liste_eleves_soldes' %}" class="btn btn-outline-success">
+                            <i class="fas fa-check-circle me-2"></i>Élèves soldés
                         </a>
                         <a href="{% url 'eleves:liste_eleves' %}" class="btn btn-info">
                             <i class="fas fa-users me-2"></i>Gérer les Élèves

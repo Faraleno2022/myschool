@@ -130,7 +130,8 @@
                                                                    id="remise_{{ remise.id }}"
                                                                    data-remise-id="{{ remise.id }}"
                                                                    data-remise-type="{{ remise.type_remise }}"
-                                                                   data-remise-valeur="{{ remise.valeur }}">
+                                                                   data-remise-valeur="{{ remise.valeur }}"
+                                                                   {% if remises_existantes %}{% for r in remises_existantes %}{% if r.remise.id == remise.id %}checked{% endif %}{% endfor %}{% endif %}>
                                                             <label class="form-check-label" for="remise_{{ remise.id }}">
                                                                 <strong>{{ remise.nom }}</strong>
                                                             </label>

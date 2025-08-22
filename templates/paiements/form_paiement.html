@@ -43,6 +43,32 @@
         border-radius: 6px;
         padding: 6px 10px;   /* slightly smaller */
     }
+    /* Barre récap collée en bas */
+    .sticky-summary {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 1030; /* au-dessus du contenu */
+        background: rgba(255,255,255,0.98);
+        border-top: 1px solid #e9ecef;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+        padding: 8px 0;
+    }
+    .sticky-summary .label {
+        font-size: 0.9rem;
+        color: #6c757d;
+        margin-right: 6px;
+    }
+    .sticky-summary .value {
+        font-weight: 700;
+    }
+    .sticky-summary .value.final {
+        color: #155724;
+    }
+    .sticky-summary .value.raw {
+        color: #0d6efd;
+    }
 </style>
 {% endblock %}
 
@@ -410,6 +436,24 @@
             {% endif %}
         </div>
     </div>
+    <!-- Barre récap collée en bas -->
+    <div class="sticky-summary">
+        <div class="container">
+            <div class="d-flex flex-column flex-md-row align-items-md-center justify-content-md-between gap-2">
+                <div>
+                    <span class="label">Montant saisi:</span>
+                    <span id="stickyMontant" class="value raw">0 GNF</span>
+                </div>
+                <div>
+                    <span class="label">Montant après remise:</span>
+                    <span id="stickyFinal" class="value final">—</span>
+                </div>
+                <div class="text-muted small d-none d-md-block">
+                    <i class="fas fa-info-circle me-1"></i>Vérifiez avant d'enregistrer
+                </div>
+            </div>
+        </div>
+    </div>
 {% endblock %}
 
 {% block extra_js %}
@@ -699,6 +743,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 rinfo.textContent = '';
             }
         }
+        // maj barre sticky
+        const stickyFinal = document.getElementById('stickyFinal');
+        if (stickyFinal) {
+            stickyFinal.textContent = formatGNF(Math.floor(final));
+        }
     }
 
     // Formatage du montant en temps réel et maj badge (toujours visible)
@@ -716,6 +765,12 @@ document.addEventListener('DOMContentLoaded', function() {
             catch(_) { badgeValue.textContent = String(vb); }
             badge.style.display = 'inline-flex';
         }
+        // maj barre sticky (montant brut)
+        const stickyMontant = document.getElementById('stickyMontant');
+        if (stickyMontant) {
+            try { stickyMontant.textContent = v.toLocaleString('fr-FR') + ' GNF'; }
+            catch(_) { stickyMontant.textContent = String(v) + ' GNF'; }
+        }
         updateFinalAmount();
     })
 
@@ -728,6 +783,22 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Init
     updateFinalAmount();
+    // Init sticky avec les valeurs actuelles
+    (function initSticky() {
+        const initVal = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+        const stickyMontant = document.getElementById('stickyMontant');
+        const stickyFinal = document.getElementById('stickyFinal');
+        if (stickyMontant) {
+            try { stickyMontant.textContent = initVal.toLocaleString('fr-FR') + ' GNF'; }
+            catch(_) { stickyMontant.textContent = String(initVal) + ' GNF'; }
+        }
+        if (stickyFinal) {
+            const fad = document.getElementById('finalAmountDisplay');
+            if (fad && fad.textContent) {
+                stickyFinal.textContent = fad.textContent;
+            }
+        }
+    })();
     
     // Validation du formulaire
     form.addEventListener('submit', function(e) {

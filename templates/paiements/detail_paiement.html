@@ -198,10 +198,15 @@
             <!-- Remises appliquées -->
             {% if paiement.remises.exists %}
             <div class="card mt-3">
-                <div class="card-header">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="card-title mb-0">
                         <i class="fas fa-percentage me-2"></i>Remises appliquées
                     </h6>
+                    {% if paiement.statut == 'EN_ATTENTE' and is_admin or paiement.statut == 'EN_ATTENTE' and user_permissions.can_validate_payments %}
+                        <a href="{% url 'paiements:appliquer_remise' paiement.id %}" class="btn btn-sm btn-outline-warning">
+                            <i class="fas fa-edit me-1"></i>Modifier remises
+                        </a>
+                    {% endif %}
                 </div>
                 <div class="card-body">
                     {% for paiement_remise in paiement.remises.all %}

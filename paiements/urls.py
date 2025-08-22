@@ -28,12 +28,17 @@ urlpatterns = [
     path('export/liste/excel/', views.export_liste_paiements_excel, name='export_liste_paiements_excel'),
     path('rapport/remises/', views.rapport_remises, name='rapport_remises'),
     
+    # Élèves soldés (année scolaire réglée)
+    path('eleves-soldes/', views.liste_eleves_soldes, name='liste_eleves_soldes'),
+    
     # AJAX endpoints
     path('ajax/statistiques/', views.ajax_statistiques_paiements, name='ajax_statistiques_paiements'),
     path('ajax/eleve-info/', views.ajax_eleve_info, name='ajax_eleve_info'),
     path('ajax/calculer-remise/', views.ajax_calculer_remise, name='ajax_calculer_remise'),
+    path('ajax/classes/', views.ajax_classes_par_ecole, name='ajax_classes_par_ecole'),
     
     # Remises
     path('remise/<int:paiement_id>/', views.appliquer_remise_paiement, name='appliquer_remise'),
     path('calculateur-remise/', views.calculateur_remise, name='calculateur_remise'),
 ]
+

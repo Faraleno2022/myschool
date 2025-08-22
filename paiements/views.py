@@ -370,6 +370,140 @@ def _allocate_payment_to_echeancier(echeancier: EcheancierPaiement, montant: Dec
     return {'warnings': warnings, 'info': infos}
 
 
+@login_required
+def liste_eleves_soldes(request):
+    """Liste des élèves ayant soldé l'année scolaire (solde <= 0), en tenant compte des remises.
+
+    Filtres GET pris en charge:
+    - annee: ex "2024-2025" (par défaut: année courante inférée)
+    - ecole_id: id de l'école
+    - classe_id: id de la classe
+    - q: recherche (nom/matricule)
+    """
+    # Permissions: admins ou comptables (validation)
+    if not (user_is_admin(request.user) or can_validate_payments(request.user)):
+        messages.error(request, "Accès refusé: droits insuffisants.")
+        return redirect('paiements:tableau_bord')
+
+    from django.db.models import F
+
+    annee = (request.GET.get('annee') or '').strip()
+    q = (request.GET.get('q') or '').strip()
+    ecole_id = request.GET.get('ecole_id')
+    classe_id = request.GET.get('classe_id')
+
+    # Déterminer l'année scolaire par défaut si vide
+    if not annee:
+        # Demande: par défaut utiliser 2025-2026
+        annee = "2025-2026"
+
+    # Fenêtre temporelle pour l'année scolaire (1er Sep -> 31 Août)
+    def _borne_dates_annee(annee_scolaire: str):
+        try:
+            deb, fin = _annee_vers_dates(annee_scolaire)
+            from datetime import date as _d
+            date_debut = _d(deb, 9, 1)
+            date_fin = _d(fin, 8, 31)
+            return date_debut, date_fin
+        except Exception:
+            from datetime import date as _d
+            y = date.today().year
+            if date.today().month >= 9:
+                return _d(y, 9, 1), _d(y+1, 8, 31)
+            return _d(y-1, 9, 1), _d(y, 8, 31)
+
+    periode_debut, periode_fin = _borne_dates_annee(annee)
+
+    # Base queryset: échéanciers de l'année
+    echeanciers = EcheancierPaiement.objects.filter(annee_scolaire=annee)
+
+    # Filtre par école pour non-admins
+    if not user_is_admin(request.user):
+        echeanciers = filter_by_user_school(echeanciers, request.user, 'eleve__classe__ecole')
+
+    # Filtres facultatifs
+    if ecole_id:
+        echeanciers = echeanciers.filter(eleve__classe__ecole_id=ecole_id)
+    if classe_id:
+        echeanciers = echeanciers.filter(eleve__classe_id=classe_id)
+    if q:
+        echeanciers = echeanciers.filter(
+            Q(eleve__prenom__icontains=q) | Q(eleve__nom__icontains=q) | Q(eleve__matricule__icontains=q)
+        )
+
+    # Annoter solde et filtrer soldés (éviter collision avec @property total_du/total_paye)
+    echeanciers = echeanciers.annotate(
+        total_du_calc=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
+        total_paye_calc=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
+        solde_calcule=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due') - (
+            F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+        )
+    ).filter(Q(solde_calcule__lte=0) | Q(statut='PAYE_COMPLET'))
+
+    # Tri: par classe puis prénom/nom
+    echeanciers = echeanciers.select_related('eleve__classe__ecole').order_by('eleve__classe__nom', 'eleve__prenom', 'eleve__nom')
+
+    # Pagination
+    paginator = Paginator(echeanciers, 50)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+
+    # Calcul des remises par élève sur la période
+    remises_map = {}
+    paiements_ids_map = {}
+    for ech in page_obj:
+        # Paiements de l'élève sur l'année (statut != ANNULE)
+        paiements_eleves = Paiement.objects.filter(
+            eleve=ech.eleve,
+            date_paiement__range=(periode_debut, periode_fin)
+        ).exclude(statut='ANNULE')
+        paiements_ids = list(paiements_eleves.values_list('id', flat=True))
+        paiements_ids_map[ech.id] = paiements_ids
+        if paiements_ids:
+            total_remises = PaiementRemise.objects.filter(paiement_id__in=paiements_ids).aggregate(s=Sum('montant_remise'))['s'] or 0
+        else:
+            total_remises = 0
+        remises_map[ech.id] = total_remises
+
+    # Options d'années scolaires pour le select (ex: 2023-2024 à 2028-2029)
+    try:
+        deb, fin = _annee_vers_dates(annee)
+    except Exception:
+        deb = date.today().year
+        fin = deb + 1
+    annees_options = []
+    for start in range(deb - 2, deb + 3):
+        annees_options.append(f"{start}-{start+1}")
+
+    # Listes déroulantes: écoles et classes
+    from eleves.models import Ecole, Classe as MClasse
+    if user_is_admin(request.user):
+        ecoles_qs = Ecole.objects.all().order_by('nom')
+    else:
+        us = user_school(request.user)
+        ecoles_qs = Ecole.objects.filter(id=getattr(us, 'id', None)).order_by('nom') if us else Ecole.objects.none()
+
+    classes_qs = MClasse.objects.filter(annee_scolaire=annee)
+    if ecole_id:
+        classes_qs = classes_qs.filter(ecole_id=ecole_id)
+    classes_qs = classes_qs.order_by('ecole__nom', 'nom')
+
+    context = {
+        'annee': annee,
+        'periode_debut': periode_debut,
+        'periode_fin': periode_fin,
+        'page_obj': page_obj,
+        'remises_map': remises_map,
+        'ecole_id': ecole_id,
+        'classe_id': classe_id,
+        'q': q,
+        'annees_options': annees_options,
+        'ecoles': ecoles_qs,
+        'classes': classes_qs,
+    }
+
+    return render(request, 'paiements/eleves_soldes.html', context)
+
 def _allocate_combined_payment(paiement, echeancier):
     """
     Allocation intelligente des paiements combinés selon le type de paiement.
@@ -674,11 +808,15 @@ def tableau_bord_paiements(request):
     # Échéanciers en retard (calculer le solde restant avec annotations)
     from django.db.models import F
     
-    # Calculer le solde restant = total_du - total_paye
+    # Calculer le solde restant = total_du - total_paye (éviter collision avec @property)
     echeanciers_avec_solde = echeanciers_qs.annotate(
-        total_du=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
-        total_paye=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
-        solde_calcule=F('total_du') - F('total_paye')
+        total_du_calc=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
+        total_paye_calc=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
+        solde_calcule=(
+            F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due') - (
+                F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+            )
+        )
     )
     
     # Élèves en retard (solde > 0)
@@ -845,11 +983,15 @@ def ajax_statistiques_paiements(request):
         # Échéanciers en retard (calculer le solde restant avec annotations)
         from django.db.models import F
         
-        # Calculer le solde restant = total_du - total_paye
+        # Calculer le solde restant avec aliases *_calc pour éviter collision avec @property
         echeanciers_avec_solde = echeanciers_qs.annotate(
-            total_du=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
-            total_paye=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
-            solde_calcule=F('total_du') - F('total_paye')
+            total_du_calc=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
+            total_paye_calc=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
+            solde_calcule=(
+                F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due') - (
+                    F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+                )
+            )
         )
         
         # Élèves en retard (solde > 0)
@@ -963,9 +1105,13 @@ def liste_paiements(request):
     if not user_is_admin(request.user):
         echeanciers_qs = filter_by_user_school(echeanciers_qs, request.user, 'eleve__classe__ecole')
     echeanciers_avec_solde = echeanciers_qs.annotate(
-        total_du=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
-        total_paye=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
-        solde_calcule=F('total_du') - F('total_paye')
+        total_du_calc=F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due'),
+        total_paye_calc=F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'),
+        solde_calcule=(
+            F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due') - (
+                F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+            )
+        )
     )
     eleves_retard = echeanciers_avec_solde.filter(solde_calcule__gt=0).count()
     if eleves_retard == 0:
@@ -989,6 +1135,39 @@ def liste_paiements(request):
         return render(request, 'paiements/_paiements_resultats.html', context)
 
     return render(request, 'paiements/liste_paiements.html', context)
+
+@login_required
+def ajax_classes_par_ecole(request):
+    """Retourne en JSON la liste des classes filtrées par école et année scolaire.
+    Respecte les permissions: un non-admin ne voit que les classes de son/ses école(s).
+    Params (GET): ecole_id (optionnel), annee (optionnel)
+    """
+    try:
+        ecole_id = (request.GET.get('ecole_id') or '').strip()
+        annee = (request.GET.get('annee') or '').strip()
+
+        classes = Classe.objects.select_related('ecole').all()
+        # Restriction par école pour non-admin
+        if not user_is_admin(request.user):
+            classes = filter_by_user_school(classes, request.user, 'ecole')
+
+        if ecole_id:
+            classes = classes.filter(ecole_id=ecole_id)
+        if annee:
+            classes = classes.filter(annee_scolaire=annee)
+
+        classes = classes.order_by('nom')
+        data = [
+            {
+                'id': c.id,
+                'nom': c.nom,
+                'ecole_nom': c.ecole.nom,
+            }
+            for c in classes[:500]
+        ]
+        return JsonResponse({'success': True, 'classes': data})
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)})
 
 @login_required
 def export_liste_paiements_excel(request):
@@ -2132,6 +2311,11 @@ def ajax_eleve_info(request):
 @login_required
 def appliquer_remise_paiement(request, paiement_id):
     """Vue pour appliquer des remises à un paiement existant"""
+    # Autorisation: admin ou droit de validation paiements (comptable)
+    if not (user_is_admin(request.user) or can_validate_payments(request.user)):
+        messages.error(request, "Vous n'avez pas l'autorisation pour appliquer des remises.")
+        return redirect('paiements:detail_paiement', paiement_id=paiement_id)
+
     qs = Paiement.objects.select_related('eleve', 'type_paiement')
     if not user_is_admin(request.user):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
