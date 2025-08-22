@@ -824,7 +824,6 @@ def tableau_bord_paiements(request):
         solde_calcule__gt=0
     ).count()
     
-    # Si pas d'échéanciers avec solde > 0, utiliser le statut EN_RETARD
     if eleves_retard == 0:
         eleves_retard = echeanciers_qs.filter(
             statut='EN_RETARD'
@@ -1851,6 +1850,50 @@ def generer_recu_pdf(request, paiement_id):
     line("Statut", paiement.get_statut_display())
     if paiement.reference_externe:
         line("Référence", paiement.reference_externe)
+
+    # Remises appliquées (affichage PDF)
+    try:
+        remises_qs = list(paiement.remises.select_related('remise').all())
+    except Exception:
+        remises_qs = []
+    if remises_qs:
+        y -= 6
+        try:
+            c.setFont("MainFont-Bold", 14)
+        except:
+            c.setFont("Helvetica-Bold", 14)
+        c.drawString(margin_x, y, "Remises appliquées :")
+        y -= 16
+        try:
+            c.setFont("MainFont", 13)
+        except:
+            c.setFont("Helvetica", 13)
+        total_remise = Decimal('0')
+        for pr in remises_qs:
+            montant = pr.montant_remise or Decimal('0')
+            total_remise += montant
+            # Nom de la remise
+            c.drawString(margin_x, y, f"- {getattr(pr.remise, 'nom', 'Remise')}")
+            # Montant (en vert, négatif)
+            try:
+                c.setFont("MainFont", 13)
+            except:
+                c.setFont("Helvetica", 13)
+            c.setFillColor(colors.HexColor('#198754'))  # vert type "success"
+            montant_txt = f"-{int(montant):,}".replace(',', ' ') + " GNF"
+            c.drawString(margin_x + 320, y, montant_txt)
+            c.setFillColor(colors.black)
+            y -= 16
+        # Note explicative courte
+        y -= 4
+        try:
+            c.setFont("MainFont", 11)
+        except:
+            c.setFont("Helvetica", 11)
+        c.setFillColor(colors.grey)
+        c.drawString(margin_x, y, "Les remises correspondent aux réductions accordées sur ce paiement.")
+        c.setFillColor(colors.black)
+        y -= 14
 
     # Observations
     if paiement.observations:

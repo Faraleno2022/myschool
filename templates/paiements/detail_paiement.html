@@ -209,6 +209,7 @@
                     {% endif %}
                 </div>
                 <div class="card-body">
+                    <p class="text-muted small mb-2">Les remises correspondent aux réductions accordées sur ce paiement.</p>
                     {% for paiement_remise in paiement.remises.all %}
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <span>{{ paiement_remise.remise.nom }}</span>

@@ -2,6 +2,29 @@
 
 Application Django pour la gestion scolaire (élèves, paiements, salaires, rapports) avec séparation par école (Sonfonia/Somayah), contrôles d'accès, et exports (PDF/CSV).
 
+## ✨ Nouvelles fonctionnalités (Août 2025)
+
+### 🧾 Système de remises sur reçus PDF
+- **Affichage des remises** appliquées directement sur les reçus de paiement PDF
+- **Note explicative** claire pour les parents/élèves
+- **Intégration complète** dans la vue détail paiement HTML
+
+### 🎓 Système de matricules robuste
+- **Codification officielle** : GA, MPS/MMS/MGS, PN1-6, CN7-10, L11SL/SSI/SSII, L12SS/SM/SE, TSS/TSM/TSE
+- **Génération automatique** format CODE-### (ex: PN3-042, L11SL-007)
+- **Support des variantes** d'écriture (1ère/1ere/première, etc.)
+- **Scripts de maintenance** pour nettoyer les matricules existants
+
+### 📊 Rapports financiers enrichis
+- **Montant original** (avant remises)
+- **Total des remises accordées**
+- **Montant net encaissé**
+- **Intégré** dans tous les rapports (journalier, hebdomadaire, mensuel, annuel)
+
+### 🛠️ Scripts utilitaires
+- `scripts/fix_matricules_duplicates.py` : Nettoyage matricules vides/dupliqués
+- `scripts/test_matricule_generation.py` : Tests de validation (67 cas de test)
+
 ## Prérequis
 - Python 3.10+
 - Pip

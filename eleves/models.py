@@ -132,6 +132,9 @@ def _code_classe_from_nom_ou_niveau(classe: "Classe") -> str:
         "COLLEGE_8": "CN8",
         "COLLEGE_9": "CN9",
         "COLLEGE_10": "CN10",
+        "LYCEE_11": "L11",
+        "LYCEE_12": "L12",
+        "TERMINALE": "T",
     }
     return fallback_niveau.get(niveau, "")
 
@@ -297,6 +300,13 @@ class Eleve(models.Model):
         """
         if not self.matricule and getattr(self, 'classe_id', None):
             code = _code_classe_from_nom_ou_niveau(self.classe)
+            # Fallback de sécurité pour éviter un matricule vide si le code n'est pas résolu
+            if not code:
+                try:
+                    cls_id = getattr(self.classe, 'id', None) or 'X'
+                except Exception:
+                    cls_id = 'X'
+                code = f"CL{cls_id}"
             if code:
                 import re
                 base_prefix = f"{code}-"
@@ -350,4 +360,3 @@ class HistoriqueEleve(models.Model):
     
     def __str__(self):
         return f"{self.eleve.nom_complet} - {self.get_action_display()} ({self.date_action.strftime('%d/%m/%Y')})"
-
