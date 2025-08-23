@@ -1462,23 +1462,9 @@ def ajouter_paiement(request, eleve_id=None):
 
             paiement = form.save(commit=False)
             paiement.cree_par = request.user
-
-            # Appliquer une remise si saisie par le comptable (réduction directe du montant)
-            remise_pct = form.cleaned_data.get('remise_pourcentage') or Decimal('0')
-            montant_original = paiement.montant or Decimal('0')
-            montant_remise = Decimal('0')
-            if remise_pct and remise_pct > 0 and montant_original > 0:
-                try:
-                    # Calculer la remise
-                    montant_remise = (montant_original * Decimal(remise_pct)) / Decimal('100')
-                    # Cap au montant original
-                    if montant_remise > montant_original:
-                        montant_remise = montant_original
-                    # Déduire du montant du paiement
-                    paiement.montant = max(Decimal('0'), montant_original - montant_remise)
-                except Exception:
-                    # En cas d'erreur de conversion/calcul, ignorer la remise
-                    montant_remise = Decimal('0')
+            
+            # Remises désactivées lors de la création du paiement.
+            # Elles ne peuvent être appliquées qu'après validation de l'échéancier.
 
             # Le numéro de reçu est maintenant généré automatiquement par le modèle
             try:
@@ -1493,42 +1479,7 @@ def ajouter_paiement(request, eleve_id=None):
                 }
                 return render(request, 'paiements/form_paiement.html', context)
 
-            # Enregistrer la ligne de remise appliquée (si applicable)
-            try:
-                if montant_remise and montant_remise > 0:
-                    # Chercher/créer une RemiseReduction générique "Remise manuelle"
-                    from django.utils.timezone import now
-                    today = now().date()
-                    remise_obj, _ = RemiseReduction.objects.get_or_create(
-                        nom='Remise manuelle',
-                        type_remise='POURCENTAGE',
-                        valeur=Decimal(remise_pct or 0),
-                        motif='AUTRE',
-                        defaults={
-                            'description': 'Remise saisie manuellement lors de la création du paiement',
-                            'date_debut': today,
-                            'date_fin': today,
-                            'actif': True,
-                            'cree_par': request.user if request.user.is_authenticated else None,
-                        }
-                    )
-                    # Si la remise existe mais hors validité aujourd'hui, on force une validité du jour
-                    if not (remise_obj.date_debut <= today <= remise_obj.date_fin):
-                        remise_obj.date_debut = today
-                        remise_obj.date_fin = today
-                        remise_obj.actif = True
-                        remise_obj.save(update_fields=['date_debut', 'date_fin', 'actif'])
-
-                    PaiementRemise.objects.update_or_create(
-                        paiement=paiement,
-                        remise=remise_obj,
-                        defaults={'montant_remise': montant_remise}
-                    )
-                    # Info utilisateur
-                    messages.info(request, f"Remise appliquée: {int(montant_remise):,} GNF (\u2212{remise_pct}% )".replace(',', ' '))
-            except Exception as _e:
-                # Ne pas bloquer le flux si la ligne de remise échoue
-                messages.warning(request, "La remise n'a pas pu être enregistrée en détail, mais le paiement a bien été créé.")
+            # Aucune écriture de remise à ce stade.
 
             # Ne pas impacter l'échéancier tant que le paiement n'est pas validé
             try:
@@ -2603,50 +2554,76 @@ def appliquer_remise_paiement(request, paiement_id):
                     # Supprimer les anciennes remises
                     PaiementRemise.objects.filter(paiement=paiement).delete()
                     
-                    # Calculer et appliquer les nouvelles remises
-                    # Base de calcul = DÛ GLOBAL SCOLARITÉ (T1+T2+T3) RESTANT, hors frais d'inscription
-                    # Si l'échéancier n'est pas disponible, fallback au montant du paiement
+                    # Calculer et appliquer la remise selon la règle métier:
+                    # Remise = (Tranche 1 due + Tranche 2 due + Tranche 3 due) * 3%
+                    # Inscription exclue.
                     base_remise = paiement.montant
                     try:
-                        ech = EcheancierPaiement.objects.filter(eleve=paiement.eleve, annee_scolaire=paiement.eleve.classe.annee_scolaire).first()
+                        ech = EcheancierPaiement.objects.filter(
+                            eleve=paiement.eleve,
+                            annee_scolaire=paiement.eleve.classe.annee_scolaire
+                        ).first()
                         if ech:
-                            t1_rest = max(Decimal('0'), (ech.tranche_1_due or 0) - (ech.tranche_1_payee or 0))
-                            t2_rest = max(Decimal('0'), (ech.tranche_2_due or 0) - (ech.tranche_2_payee or 0))
-                            t3_rest = max(Decimal('0'), (ech.tranche_3_due or 0) - (ech.tranche_3_payee or 0))
-                            base_remise = t1_rest + t2_rest + t3_rest
-                            # Sécurité: si base <= 0, on retombe sur le montant du paiement
+                            t1_due = Decimal(ech.tranche_1_due or 0)
+                            t2_due = Decimal(ech.tranche_2_due or 0)
+                            t3_due = Decimal(ech.tranche_3_due or 0)
+                            base_remise = t1_due + t2_due + t3_due
                             if base_remise <= 0:
                                 base_remise = paiement.montant
                     except Exception:
                         base_remise = paiement.montant
 
-                    total_remise = form.calculate_total_remise(base_remise)
-                    remises_details = form.get_remises_details(base_remise)
-                    
-                    # Créer les nouvelles associations remise-paiement
-                    for detail in remises_details:
-                        PaiementRemise.objects.create(
-                            paiement=paiement,
-                            remise=detail['remise'],
-                            montant_remise=detail['montant']
-                        )
-                    
-                    # Mettre à jour le montant du paiement (ne jamais aller sous 0)
-                    from decimal import Decimal
-                    # On applique la remise calculée sur la base globale au paiement courant, capped à son montant
+                    # 3% de la base
+                    total_remise = (Decimal(base_remise) * Decimal('0.03'))
+                    # Pas de valeurs décimales en GNF
+                    total_remise = total_remise.quantize(Decimal('1'))
+
+                    # Cap: ne jamais dépasser le montant du paiement
                     montant_original = paiement.montant
+                    if total_remise > montant_original:
+                        total_remise = montant_original
+
+                    # Créer/Obtenir une RemiseReduction représentant la règle 3%
+                    from django.utils.timezone import now
+                    today = now().date()
+                    remise_obj, _ = RemiseReduction.objects.get_or_create(
+                        nom='Remise 3% scolarité (T1+T2+T3)',
+                        type_remise='POURCENTAGE',
+                        valeur=Decimal('3'),
+                        motif='AUTRE',
+                        defaults={
+                            'description': "3% du montant global des tranches de scolarité (hors inscription)",
+                            'date_debut': today,
+                            'date_fin': today,
+                            'actif': True,
+                            'cree_par': request.user if request.user.is_authenticated else None,
+                        }
+                    )
+                    # Forcer validité sur aujourd'hui
+                    if not (remise_obj.date_debut <= today <= remise_obj.date_fin):
+                        remise_obj.date_debut = today
+                        remise_obj.date_fin = today
+                        remise_obj.actif = True
+                        remise_obj.save(update_fields=['date_debut', 'date_fin', 'actif'])
+
+                    # Enregistrer l'association
+                    PaiementRemise.objects.create(
+                        paiement=paiement,
+                        remise=remise_obj,
+                        montant_remise=total_remise
+                    )
+
+                    # Mettre à jour le montant du paiement (ne jamais aller sous 0)
                     nouveau_montant = max(Decimal('0'), montant_original - total_remise)
                     paiement.montant = nouveau_montant
                     paiement.save()
-                    
+
                     # Messages informatifs
-                    messages.success(request, f"Remises appliquées avec succès !")
+                    messages.success(request, "Remise 3% appliquée avec succès !")
+                    messages.info(request, f"Base de calcul (T1+T2+T3): {base_remise:,.0f} GNF".replace(',', ' '))
                     messages.info(request, f"Montant original: {montant_original:,.0f} GNF".replace(',', ' '))
-                    messages.info(request, f"Total des remises: {total_remise:,.0f} GNF".replace(',', ' '))
+                    messages.info(request, f"Total remise (3%): {total_remise:,.0f} GNF".replace(',', ' '))
                     messages.info(request, f"Nouveau montant: {nouveau_montant:,.0f} GNF".replace(',', ' '))
-                    
-                    for detail in remises_details:
-                        messages.info(request, f"• {detail['description']}")
                     
                     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
                     

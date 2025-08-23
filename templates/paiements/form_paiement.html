@@ -56,15 +56,16 @@
         z-index: 1030;
         box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
         padding: 12px 0; /* plus d'espace vertical */
+        text-align: center;
     }
     .sticky-summary .label {
-        font-size: 1rem; /* un peu plus grand */
+        font-size: 1.05rem; /* un peu plus grand */
         color: #6c757d;
         margin-right: 8px;
     }
     .sticky-summary .value {
-        font-weight: 800; /* plus gras */
-        font-size: 1.15rem; /* plus grand */
+        font-weight: 900; /* plus gras */
+        font-size: 1.4rem; /* plus grand */
         line-height: 1.4; /* espacement vertical amélioré */
     }
     .sticky-summary .value.final {
@@ -75,7 +76,7 @@
     }
     /* Augmenter l'espacement entre les éléments de la barre */
     .sticky-summary .container > .d-flex {
-        gap: 12px 24px; /* row-gap, column-gap */
+        gap: 14px 28px; /* row-gap, column-gap */
     }
 </style>
 {% endblock %}
@@ -281,47 +282,6 @@
                             {% endif %}
                         </div>
                     </div>
-
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label for="id_remise_pourcentage" class="form-label">
-                                Remise (%)
-                            </label>
-                            <div class="input-group">
-                                {{ form.remise_pourcentage }}
-                                <span class="input-group-text">%</span>
-                            </div>
-                            {% if form.remise_pourcentage.errors %}
-                                <div class="text-danger small">{{ form.remise_pourcentage.errors.0 }}</div>
-                            {% endif %}
-                            <small class="form-text text-muted">Saisir un pourcentage (0 à 100). La remise sera déduite du montant saisi.</small>
-                            <!-- Calculateur rapide de remise (%) -->
-                            <div class="mt-2" id="remiseQuickTools">
-                                <div class="small text-muted mb-1">
-                                    Astuce: <span id="onePercentHint">3% = 0 GNF (sur montant - 30 000)</span>
-                                </div>
-                                <div class="btn-group btn-group-sm" role="group" aria-label="Remise rapide">
-                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="1">1%</button>
-                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="2">2%</button>
-                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="3">3%</button>
-                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="5">5%</button>
-                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="10">10%</button>
-                                </div>
-                            </div>
-                            <div class="mt-2">
-                                <a href="{% url 'paiements:calculateur_remise' %}{% if eleve %}?eleve_id={{ eleve.id }}{% endif %}"
-                                   class="btn btn-sm btn-outline-secondary" target="_blank">
-                                    <i class="fas fa-calculator me-1"></i>Calculer/Appliquer remises
-                                </a>
-                                <small class="text-muted ms-2">Ouvre le calculateur pour simuler des remises détaillées.</small>
-                            </div>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label">Montant après remise</label>
-                            <div class="form-control-plaintext montant-display" id="finalAmountDisplay">—</div>
-                            <small class="text-muted" id="remiseInfo" style="display:none;"></small>
-                        </div>
-                    </div>
                     
                     <div class="row">
                         <div class="col-md-6 mb-3">
@@ -468,10 +428,6 @@
                     <span class="label">Montant saisi:</span>
                     <span id="stickyMontant" class="value raw">0 GNF</span>
                 </div>
-                <div>
-                    <span class="label">Montant après remise:</span>
-                    <span id="stickyFinal" class="value final">—</span>
-                </div>
                 <div class="text-muted small d-none d-md-block">
                     <i class="fas fa-info-circle me-1"></i>Vérifiez avant d'enregistrer
                 </div>
@@ -491,87 +447,34 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('montantInput found:', !!montantInput, montantInput);
     
     const montantDisplay = document.getElementById('montantDisplay');
-    // Badge de montant suggéré
-    const badge = document.getElementById('montantSuggestionBadge');
-    const badgeValue = document.getElementById('montantSuggestionValue');
+    const stickyMontant = document.getElementById('stickyMontant');
     console.log('montantDisplay found:', !!montantDisplay);
     // Initialiser l'affichage du montant au chargement
     if (montantDisplay) {
         try {
             const initVal = parseFloat(montantInput && montantInput.value ? montantInput.value : 0) || 0;
-            montantDisplay.textContent = (isNaN(initVal) ? 0 : initVal).toLocaleString('fr-FR') + ' GNF';
+            const init = (isNaN(initVal) ? 0 : initVal).toLocaleString('fr-FR') + ' GNF';
+            montantDisplay.textContent = init;
+            if (stickyMontant) stickyMontant.textContent = init;
         } catch(_) {
             montantDisplay.textContent = '0 GNF';
+            if (stickyMontant) stickyMontant.textContent = '0 GNF';
         }
     }
-    // Calculateur rapide de remise (%)
-    function roundNearest1000(n) {
-        n = Number(n) || 0;
-        return Math.round(n / 1000) * 1000;
-    }
-    function fmtGNF(n) {
-        return (Number(n)||0).toLocaleString('fr-FR') + ' GNF';
-    }
-    function getTuitionBase() {
-        const ech = getEcheancier();
-        if (!ech) return null;
-        const due = (Number(ech.t1_du)||0) + (Number(ech.t2_du)||0) + (Number(ech.t3_du)||0);
-        const paid = (Number(ech.t1_paye)||0) + (Number(ech.t2_paye)||0) + (Number(ech.t3_paye)||0);
-        const rest = Math.max(0, due - paid);
-        return { due, paid, rest };
-    }
-    function updateOnePercentHint() {
-        try {
-            const entered = Number(montantInput && montantInput.value ? montantInput.value : 0) || 0;
-            // Règle demandée: retirer 30 000 GNF (inscription) avant de calculer 3%
-            const base = Math.max(0, entered - 30000);
-            const threePct = Math.round(base * 0.03);
-            const el = document.getElementById('onePercentHint');
-            if (el) el.textContent = '3% = ' + threePct.toLocaleString('fr-FR') + ' GNF (sur ' + base.toLocaleString('fr-FR') + ' GNF)';
-            console.debug('[threePercentHint]', { entered, base, threePct });
-        } catch(_) {}
-    }
-    updateOnePercentHint();
+    
+    // Mettre à jour l'affichage du montant lors de la saisie
     if (montantInput) {
         montantInput.addEventListener('input', function(){
-            // MAJ affichage montant saisi
             try {
                 const v = parseFloat(montantInput.value || 0) || 0;
-                if (montantDisplay) montantDisplay.textContent = v.toLocaleString('fr-FR') + ' GNF';
+                const txt = v.toLocaleString('fr-FR') + ' GNF';
+                if (montantDisplay) montantDisplay.textContent = txt;
+                if (stickyMontant) stickyMontant.textContent = txt;
             } catch(_) {}
-            updateOnePercentHint();
-            if (typeof updateFinalAmount === 'function') updateFinalAmount();
         });
-        montantInput.addEventListener('change', function(){
-            updateOnePercentHint();
-            if (typeof updateFinalAmount === 'function') updateFinalAmount();
-        });
+        montantInput.addEventListener('change', function(){});
     }
-    // Recalculer l'aperçu quand le pourcentage de remise change
-    const remiseInput = document.getElementById('id_remise_pourcentage');
-    if (remiseInput) {
-        remiseInput.addEventListener('input', function(){
-            updateOnePercentHint();
-            if (typeof updateFinalAmount === 'function') updateFinalAmount();
-        });
-        remiseInput.addEventListener('change', function(){
-            updateOnePercentHint();
-            if (typeof updateFinalAmount === 'function') updateFinalAmount();
-        });
-    }
-    // Boutons rapides de remise (%): 1,2,3,5,10
-    document.querySelectorAll('.remise-quick').forEach(function(btn){
-        btn.addEventListener('click', function(){
-            const pct = Number(btn.getAttribute('data-pct')) || 0;
-            const remiseEl = document.getElementById('id_remise_pourcentage');
-            if (remiseEl) {
-                remiseEl.value = pct;
-                remiseEl.dispatchEvent(new Event('input'));
-                remiseEl.dispatchEvent(new Event('change'));
-            }
-            if (typeof updateFinalAmount === 'function') updateFinalAmount();
-        });
-    });
+    // Remise désactivée: aucun écouteur ni calcul de remise
     
     const submitBtn = document.getElementById('submitBtn');
     const form = document.getElementById('paiementForm');
