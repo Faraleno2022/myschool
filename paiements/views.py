@@ -2091,6 +2091,30 @@ def generer_recu_pdf(request, paiement_id):
         rest_t2 = max(Decimal('0'), due_t2 - (paye_t2 or Decimal('0')))
         rest_t3 = max(Decimal('0'), due_t3 - (paye_t3 or Decimal('0')))
 
+        # Ajustement d'affichage: appliquer les remises (si présentes) sur la scolarité uniquement (T1+T2+T3)
+        # Objectif: si une remise couvre les reliquats de scolarité, afficher 0 de reste par tranche.
+        try:
+            total_remises_sco = Decimal('0')
+            # Utiliser les remises du paiement courant si disponibles
+            if 'remises_qs' in locals() and remises_qs:
+                for _pr in remises_qs:
+                    total_remises_sco += (_pr.montant_remise or Decimal('0'))
+            # Répartir séquentiellement sur T1 -> T2 -> T3 (affichage uniquement)
+            if total_remises_sco > 0:
+                r = total_remises_sco
+                take = min(rest_t1, r); rest_t1 -= take; r -= take
+                if r > 0:
+                    take = min(rest_t2, r); rest_t2 -= take; r -= take
+                if r > 0:
+                    take = min(rest_t3, r); rest_t3 -= take; r -= take
+                # Sécurité: pas de négatif
+                rest_t1 = max(Decimal('0'), rest_t1)
+                rest_t2 = max(Decimal('0'), rest_t2)
+                rest_t3 = max(Decimal('0'), rest_t3)
+        except Exception:
+            # En cas de problème, on n'impacte pas l'affichage de base
+            pass
+
         def _round_down_1000(x: Decimal) -> Decimal:
             try:
                 return (x // Decimal('1000')) * Decimal('1000')
@@ -2553,10 +2577,8 @@ def appliquer_remise_paiement(request, paiement_id):
                 with transaction.atomic():
                     # Supprimer les anciennes remises
                     PaiementRemise.objects.filter(paiement=paiement).delete()
-                    
-                    # Calculer et appliquer la remise selon la règle métier:
-                    # Remise = (Tranche 1 due + Tranche 2 due + Tranche 3 due) * 3%
-                    # Inscription exclue.
+
+                    # Calculer la base scolarité T1+T2+T3 (hors inscription)
                     base_remise = paiement.montant
                     try:
                         ech = EcheancierPaiement.objects.filter(
@@ -2573,45 +2595,69 @@ def appliquer_remise_paiement(request, paiement_id):
                     except Exception:
                         base_remise = paiement.montant
 
-                    # 3% de la base
-                    total_remise = (Decimal(base_remise) * Decimal('0.03'))
-                    # Pas de valeurs décimales en GNF
-                    total_remise = total_remise.quantize(Decimal('1'))
-
-                    # Cap: ne jamais dépasser le montant du paiement
                     montant_original = paiement.montant
+                    total_remise = Decimal('0')
+
+                    # 1) Appliquer la remise scolarité au pourcentage choisi (1–10%) si fourni
+                    pct_choice = form.cleaned_data.get('pourcentage_scolarite')
+                    pct_decimal = None
+                    if pct_choice:
+                        try:
+                            pct_decimal = Decimal(pct_choice)
+                        except Exception:
+                            pct_decimal = None
+                    if pct_decimal and Decimal('1') <= pct_decimal <= Decimal('10'):
+                        from django.utils.timezone import now
+                        today = now().date()
+                        total_pct = (Decimal(base_remise) * (pct_decimal / Decimal('100'))).quantize(Decimal('1'))
+                        if total_pct > montant_original:
+                            total_pct = montant_original
+
+                        nom_remise = f"Remise {pct_decimal:.0f}% scolarité (T1+T2+T3)"
+                        remise_obj, _ = RemiseReduction.objects.get_or_create(
+                            nom=nom_remise,
+                            type_remise='POURCENTAGE',
+                            valeur=pct_decimal,
+                            motif='AUTRE',
+                            defaults={
+                                'description': f"{pct_decimal:.0f}% du montant global des tranches de scolarité (hors inscription)",
+                                'date_debut': today,
+                                'date_fin': today,
+                                'actif': True,
+                                'cree_par': request.user if request.user.is_authenticated else None,
+                            }
+                        )
+                        if not (remise_obj.date_debut <= today <= remise_obj.date_fin):
+                            remise_obj.date_debut = today
+                            remise_obj.date_fin = today
+                            remise_obj.actif = True
+                            remise_obj.save(update_fields=['date_debut', 'date_fin', 'actif'])
+
+                        PaiementRemise.objects.create(
+                            paiement=paiement,
+                            remise=remise_obj,
+                            montant_remise=total_pct
+                        )
+                        total_remise += total_pct
+
+                    # 2) Appliquer aussi les remises standards sélectionnées dans la liste (le cas échéant)
+                    selected_remises = form.cleaned_data.get('remises') or []
+                    for r in selected_remises:
+                        montant_r = r.calculer_remise(montant_original)
+                        # Empêcher dépassement cumulatif
+                        restant_cap = max(Decimal('0'), montant_original - total_remise)
+                        montant_r = min(montant_r, restant_cap)
+                        if montant_r > 0:
+                            PaiementRemise.objects.create(
+                                paiement=paiement,
+                                remise=r,
+                                montant_remise=montant_r
+                            )
+                            total_remise += montant_r
+
+                    # Cap global
                     if total_remise > montant_original:
                         total_remise = montant_original
-
-                    # Créer/Obtenir une RemiseReduction représentant la règle 3%
-                    from django.utils.timezone import now
-                    today = now().date()
-                    remise_obj, _ = RemiseReduction.objects.get_or_create(
-                        nom='Remise 3% scolarité (T1+T2+T3)',
-                        type_remise='POURCENTAGE',
-                        valeur=Decimal('3'),
-                        motif='AUTRE',
-                        defaults={
-                            'description': "3% du montant global des tranches de scolarité (hors inscription)",
-                            'date_debut': today,
-                            'date_fin': today,
-                            'actif': True,
-                            'cree_par': request.user if request.user.is_authenticated else None,
-                        }
-                    )
-                    # Forcer validité sur aujourd'hui
-                    if not (remise_obj.date_debut <= today <= remise_obj.date_fin):
-                        remise_obj.date_debut = today
-                        remise_obj.date_fin = today
-                        remise_obj.actif = True
-                        remise_obj.save(update_fields=['date_debut', 'date_fin', 'actif'])
-
-                    # Enregistrer l'association
-                    PaiementRemise.objects.create(
-                        paiement=paiement,
-                        remise=remise_obj,
-                        montant_remise=total_remise
-                    )
 
                     # Mettre à jour le montant du paiement (ne jamais aller sous 0)
                     nouveau_montant = max(Decimal('0'), montant_original - total_remise)
@@ -2619,10 +2665,13 @@ def appliquer_remise_paiement(request, paiement_id):
                     paiement.save()
 
                     # Messages informatifs
-                    messages.success(request, "Remise 3% appliquée avec succès !")
+                    if pct_decimal:
+                        messages.success(request, f"Remise {pct_decimal:.0f}% scolarité appliquée avec succès !")
+                    if selected_remises:
+                        messages.info(request, f"Remises supplémentaires appliquées: {len(selected_remises)}")
                     messages.info(request, f"Base de calcul (T1+T2+T3): {base_remise:,.0f} GNF".replace(',', ' '))
                     messages.info(request, f"Montant original: {montant_original:,.0f} GNF".replace(',', ' '))
-                    messages.info(request, f"Total remise (3%): {total_remise:,.0f} GNF".replace(',', ' '))
+                    messages.info(request, f"Total remise: {total_remise:,.0f} GNF".replace(',', ' '))
                     messages.info(request, f"Nouveau montant: {nouveau_montant:,.0f} GNF".replace(',', ' '))
                     
                     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
@@ -2804,10 +2853,13 @@ def rapport_remises(request):
         date_fin = None
 
     qs = PaiementRemise.objects.select_related(
-        'paiement', 'paiement__eleve', 'paiement__eleve__classe', 'paiement__eleve__classe__ecole'
+        'paiement', 'paiement__eleve', 'paiement__eleve__classe', 'paiement__eleve__classe__ecole', 'remise'
     ).filter(
         paiement__statut='VALIDE'
     )
+
+    # Limiter aux remises scolarité 3% (hors inscription) pour respecter le principe métier
+    qs = qs.filter(remise__nom__iexact='Remise 3% scolarité (T1+T2+T3)')
 
     # Scope école
     try:

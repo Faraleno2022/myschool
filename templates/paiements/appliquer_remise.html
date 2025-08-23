@@ -116,6 +116,16 @@
                                     </div>
                                     <div class="card-body">
                                         {{ form.montant_original.as_hidden }}
+                                        <!-- Sélecteur de remise scolarité (%) 1-10 -->
+                                        <div class="mb-3">
+                                            <label class="form-label" for="id_pourcentage_scolarite">
+                                                <i class="fas fa-percent me-1"></i>Remise scolarité (%)
+                                            </label>
+                                            {{ form.pourcentage_scolarite }}
+                                            <small class="text-muted d-block mt-1">
+                                                Le pourcentage choisi s'appliquera sur la base scolarité (T1+T2+T3). L'aperçu ci-dessous utilise le montant de ce paiement à titre indicatif.
+                                            </small>
+                                        </div>
                                         
                                         {% if form.remises.field.queryset %}
                                             <div class="row">
@@ -220,6 +230,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const checkboxes = document.querySelectorAll('.remise-checkbox');
     const montantOriginal = parseFloat('{{ paiement.montant }}');
     const btnAppliquer = document.getElementById('btnAppliquer');
+    const selectPct = document.getElementById('id_pourcentage_scolarite');
     // Si des remises sont disponibles, activer le bouton par défaut (l'envoi est de toute façon validé côté JS)
     if (checkboxes.length > 0) {
         btnAppliquer.disabled = false;
@@ -252,6 +263,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
         });
+
+        // Appliquer le pourcentage scolarité si choisi (aperçu basé sur montantOriginal)
+        if (selectPct && selectPct.value) {
+            const pct = parseFloat(selectPct.value);
+            if (!isNaN(pct) && pct > 0) {
+                hasSelection = true;
+                const montantPct = (montantOriginal * pct) / 100;
+                totalRemises += montantPct;
+                remisesDetails.push({
+                    nom: `Remise scolarité ${pct}%`,
+                    montant: montantPct
+                });
+            }
+        }
         
         const montantFinal = Math.max(0, montantOriginal - totalRemises);
         
@@ -279,15 +304,19 @@ document.addEventListener('DOMContentLoaded', function() {
     checkboxes.forEach(checkbox => {
         checkbox.addEventListener('change', updatePreview);
     });
+    if (selectPct) {
+        selectPct.addEventListener('change', updatePreview);
+    }
     // Initialiser l'aperçu au chargement
     updatePreview();
     
     // Confirmation avant soumission
     document.getElementById('remiseForm').addEventListener('submit', function(e) {
         const selectedRemises = document.querySelectorAll('.remise-checkbox:checked');
-        if (selectedRemises.length === 0) {
+        const pctValue = selectPct ? selectPct.value : '';
+        if (selectedRemises.length === 0 && !pctValue) {
             e.preventDefault();
-            alert('Veuillez sélectionner au moins une remise.');
+            alert('Veuillez sélectionner au moins une remise ou choisir un pourcentage.');
             return;
         }
         

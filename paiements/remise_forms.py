@@ -22,6 +22,15 @@ class PaiementRemiseForm(forms.Form):
         }),
         label="Montant original"
     )
+
+    # Nouveau: pourcentage scolarité sélectionnable par l'utilisateur (1 à 10%)
+    POURCENT_CHOICES = [("", "— Choisir —")] + [(str(i), f"{i}%") for i in range(1, 11)]
+    pourcentage_scolarite = forms.ChoiceField(
+        choices=POURCENT_CHOICES,
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-select'}),
+        label="Remise scolarité (%)"
+    )
     
     def __init__(self, *args, **kwargs):
         paiement = kwargs.pop('paiement', None)
