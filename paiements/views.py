@@ -83,6 +83,86 @@ def _dates_echeances_par_ecole(nom_ecole, annee_scolaire, date_inscription=None)
     # Échéance d'inscription: même jour que d1
     return d1, d2, d3
 
+def _tuition_annual_by_cycle(eleve: Eleve) -> Decimal:
+    """Retourne le montant annuel de scolarité selon l'école et le cycle/classe de l'élève.
+    Sources fournies (Sonfonia: montants annuels + 3%, Somayah: totaux par tranches):
+    - Sonfonia:
+      Garderie=2_800_000; Maternelle=2_000_000; Primaire 1-4=1_700_000; Primaire 5-6=2_000_000;
+      Collège 7-8=2_100_000; Collège 9-10=2_300_000; Lycée 11=2_200_000; Lycée 12=2_400_000; Terminales=2_800_000
+    - Somayah:
+      Maternelle=1_500_000; Primaire (1-5)=1_350_000; Primaire (6)=1_800_000; Collège (7-9)=1_620_000;
+      Collège (10)=1_800_000; Lycée (11-12)=1_710_000
+    """
+    try:
+        from decimal import Decimal as _D
+        ecole_nom = (getattr(getattr(eleve.classe, 'ecole', None), 'nom', '') or '').strip().lower()
+        classe_nom = (getattr(eleve.classe, 'nom', '') or '').strip().lower()
+
+        def has_any(s, arr):
+            s = s or ''
+            return any(x in s for x in arr)
+
+        is_somayah = 'somayah' in ecole_nom
+
+        # Normalisations simples
+        is_garderie = has_any(classe_nom, ['garderie'])
+        is_maternelle = has_any(classe_nom, ['maternelle']) and not is_garderie
+        is_primaire = has_any(classe_nom, ['primaire', 'pn', 'cn', 'classe primaire'])
+        is_college = has_any(classe_nom, ['collège', 'college', 'cn7', 'cn8', 'cn9', 'cn10', '7', '8', '9', '10']) and not is_primaire and not is_maternelle
+        is_lycee = has_any(classe_nom, ['lycée', 'lycee', 'l11', 'l12', 'terminal']) and not is_college
+
+        # Détecter niveau numérique s'il est présent dans le nom
+        niveau_num = None
+        import re as _re
+        m = _re.search(r"(\b|\D)([0-9]{1,2})(\b|\D)", classe_nom)
+        if m:
+            try:
+                niveau_num = int(m.group(2))
+            except Exception:
+                niveau_num = None
+
+        if is_somayah:
+            # Barèmes Somayah
+            if is_maternelle:
+                return _D('1500000')
+            if is_primaire:
+                if niveau_num == 6:
+                    return _D('1800000')
+                return _D('1350000')  # 1-5
+            if is_college:
+                if niveau_num == 10:
+                    return _D('1800000')
+                return _D('1620000')  # 7-9
+            if is_lycee:
+                return _D('1710000')  # 11-12
+            # Fallback générique Somayah
+            return _D('1500000') if is_maternelle else _D('1350000')
+        else:
+            # Barèmes Sonfonia (Groupe Hadja Kanfing Diané)
+            if is_garderie:
+                return _D('2800000')
+            if is_maternelle:
+                return _D('2000000')
+            if is_primaire:
+                if niveau_num in (5, 6):
+                    return _D('2000000')  # 5e-6e
+                return _D('1700000')  # 1-4
+            if is_college:
+                if niveau_num in (9, 10):
+                    return _D('2300000')
+                return _D('2100000')  # 7-8
+            if is_lycee:
+                if niveau_num == 11:
+                    return _D('2200000')
+                if niveau_num == 12:
+                    return _D('2400000')
+                # Terminales (autres)
+                return _D('2800000')
+            # Fallback Sonfonia
+            return _D('2000000')
+    except Exception:
+        return Decimal('0')
+
 def _map_type_to_tranche(type_paiement_nom: str):
     """Retourne l'identifiant de tranche pour un nom de type ('Inscription', 'Tranche 1', 'Tranche 2', 'Tranche 3')."""
     nom = (type_paiement_nom or '').strip().lower()
@@ -443,6 +523,37 @@ def liste_eleves_soldes(request):
     # Tri: par classe puis prénom/nom
     echeanciers = echeanciers.select_related('eleve__classe__ecole').order_by('eleve__classe__nom', 'eleve__prenom', 'eleve__nom')
 
+    # Totaux généraux pour l'ensemble du résultat filtré (non paginé)
+    qs_all = echeanciers
+    from django.db.models import Sum
+    agg = qs_all.aggregate(
+        total_du_sum=Sum(
+            F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due')
+        ),
+        total_paye_sum=Sum(
+            F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+        ),
+        solde_sum=Sum(
+            F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due') - (
+                F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+            )
+        )
+    )
+    total_du_sum = agg.get('total_du_sum') or 0
+    total_paye_sum = agg.get('total_paye_sum') or 0
+    solde_sum = agg.get('solde_sum') or 0
+
+    # Total remises globales sur la période pour ces élèves
+    eleves_ids_all = list(qs_all.values_list('eleve_id', flat=True))
+    total_remises_sum = 0
+    if eleves_ids_all:
+        pay_ids_all = list(Paiement.objects.filter(
+            eleve_id__in=eleves_ids_all,
+            date_paiement__range=(periode_debut, periode_fin)
+        ).exclude(statut='ANNULE').values_list('id', flat=True))
+        if pay_ids_all:
+            total_remises_sum = PaiementRemise.objects.filter(paiement_id__in=pay_ids_all).aggregate(s=Sum('montant_remise'))['s'] or 0
+
     # Pagination
     paginator = Paginator(echeanciers, 50)
     page_number = request.GET.get('page')
@@ -464,6 +575,11 @@ def liste_eleves_soldes(request):
         else:
             total_remises = 0
         remises_map[ech.id] = total_remises
+        # Attacher la valeur directement à l'objet pour simplifier le template
+        try:
+            setattr(ech, 'total_remises_calc', total_remises)
+        except Exception:
+            pass
 
     # Options d'années scolaires pour le select (ex: 2023-2024 à 2028-2029)
     try:
@@ -494,6 +610,12 @@ def liste_eleves_soldes(request):
         'periode_fin': periode_fin,
         'page_obj': page_obj,
         'remises_map': remises_map,
+        'totaux': {
+            'du': total_du_sum,
+            'paye': total_paye_sum,
+            'solde': solde_sum,
+            'remises': total_remises_sum,
+        },
         'ecole_id': ecole_id,
         'classe_id': classe_id,
         'q': q,
@@ -1325,9 +1447,8 @@ def ajouter_paiement(request, eleve_id=None):
                     return render(request, 'paiements/form_paiement.html', context)
                 # Empêcher un paiement supérieur au solde restant
                 montant_saisi = form.cleaned_data.get('montant') or Decimal('0')
-                if montant_saisi > 0 and montant_saisi > solde:
+                if (montant_saisi is not None) and (montant_saisi > 0) and (montant_saisi > solde):
                     form.add_error('montant', f"Le montant saisi dépasse le reste à payer ({int(solde):,} GNF).".replace(',', ' '))
-                    messages.warning(request, f"Montant supérieur au reste à payer. Reste: {int(solde):,} GNF.".replace(',', ' '))
                     context = {
                         'form': form,
                         'eleve': eleve_cible if eleve is None else eleve,
@@ -1832,7 +1953,14 @@ def generer_recu_pdf(request, paiement_id):
         y -= 20
 
     # Formatage
-    montant_fmt = f"{int(paiement.montant):,}".replace(',', ' ')
+    # Arrondi pour l'affichage du montant au millier le plus proche
+    try:
+        from decimal import Decimal as _Dec
+        _mdec = _Dec(paiement.montant or 0)
+        _mdisp = ((_mdec + _Dec('500')) // _Dec('1000')) * _Dec('1000')
+        montant_fmt = f"{int(_mdisp):,}".replace(',', ' ')
+    except Exception:
+        montant_fmt = f"{int(paiement.montant):,}".replace(',', ' ')
     date_pay = localtime(paiement.date_validation).strftime('%d/%m/%Y %H:%M') if paiement.date_validation else paiement.date_paiement.strftime('%d/%m/%Y')
 
     line("Élève", f"{paiement.eleve.prenom} {paiement.eleve.nom} (Mat: {paiement.eleve.matricule})")
@@ -1846,6 +1974,9 @@ def generer_recu_pdf(request, paiement_id):
     line("Date de paiement", date_pay)
     line("Type de paiement", paiement.type_paiement.nom)
     line("Mode de paiement", paiement.mode_paiement.nom)
+    
+    # (Supprimé) Ligne d'échéance sur le reçu PDF pour éviter de masquer la photo
+    # Ancien affichage de l'échéance retiré volontairement.
     line("Montant", f"{montant_fmt} GNF")
     line("Statut", paiement.get_statut_display())
     if paiement.reference_externe:
@@ -1871,6 +2002,11 @@ def generer_recu_pdf(request, paiement_id):
         total_remise = Decimal('0')
         for pr in remises_qs:
             montant = pr.montant_remise or Decimal('0')
+            # Arrondi d'affichage au millier inférieur (visuel uniquement)
+            try:
+                montant_disp = (montant // Decimal('1000')) * Decimal('1000')
+            except Exception:
+                montant_disp = montant
             total_remise += montant
             # Nom de la remise
             c.drawString(margin_x, y, f"- {getattr(pr.remise, 'nom', 'Remise')}")
@@ -1880,7 +2016,7 @@ def generer_recu_pdf(request, paiement_id):
             except:
                 c.setFont("Helvetica", 13)
             c.setFillColor(colors.HexColor('#198754'))  # vert type "success"
-            montant_txt = f"-{int(montant):,}".replace(',', ' ') + " GNF"
+            montant_txt = f"-{int(montant_disp):,}".replace(',', ' ') + " GNF"
             c.drawString(margin_x + 320, y, montant_txt)
             c.setFillColor(colors.black)
             y -= 16
@@ -1993,8 +2129,72 @@ def generer_recu_pdf(request, paiement_id):
         total_paye = paye_insc + paye_t1 + paye_t2 + paye_t3
         reste = max(Decimal('0'), total_a_payer - total_paye)
 
+        # Ajustements d'affichage: arrondir les restes de tranches au millier inférieur
+        due_insc = echeancier.frais_inscription_du or Decimal('0')
+        due_t1 = echeancier.tranche_1_due or Decimal('0')
+        due_t2 = echeancier.tranche_2_due or Decimal('0')
+        due_t3 = echeancier.tranche_3_due or Decimal('0')
+
+        rest_insc = max(Decimal('0'), due_insc - (paye_insc or Decimal('0')))
+        rest_t1 = max(Decimal('0'), due_t1 - (paye_t1 or Decimal('0')))
+        rest_t2 = max(Decimal('0'), due_t2 - (paye_t2 or Decimal('0')))
+        rest_t3 = max(Decimal('0'), due_t3 - (paye_t3 or Decimal('0')))
+
+        def _round_down_1000(x: Decimal) -> Decimal:
+            try:
+                return (x // Decimal('1000')) * Decimal('1000')
+            except Exception:
+                return x
+
+        rest_insc_disp = _round_down_1000(rest_insc)
+        rest_t1_disp = _round_down_1000(rest_t1)
+        rest_t2_disp = _round_down_1000(rest_t2)
+        rest_t3_disp = _round_down_1000(rest_t3)
+
+        # Reste à payer affiché = somme des restes arrondis par tranche
+        reste_affiche = rest_insc_disp + rest_t1_disp + rest_t2_disp + rest_t3_disp
+        # Si tout est réglé (aucun reste réel), forcer l'affichage à 0
+        if (rest_insc + rest_t1 + rest_t2 + rest_t3) == 0:
+            reste_affiche = Decimal('0')
+        
+        # Cas soldé via statut/solde (inclut remises): si echeancier indique PAYE_COMPLET ou solde <= 0
+        try:
+            statut_ech = getattr(echeancier, 'statut', '') or ''
+            solde_ech = getattr(echeancier, 'solde_restant', Decimal('0'))
+        except Exception:
+            statut_ech = ''
+            solde_ech = Decimal('0')
+
+        # Si le reste global est 0 OU statut/solde indique un soldé (y compris via remises),
+        # afficher 0 pour chaque tranche pour éviter des reliquats visuels
+        if (reste_affiche == 0 or reste == 0) or (str(statut_ech) == 'PAYE_COMPLET' or (solde_ech is not None and solde_ech <= 0)):
+            rest_insc_disp = rest_t1_disp = rest_t2_disp = rest_t3_disp = Decimal('0')
+            reste_affiche = Decimal('0')
+
+        # Ajuster l'affichage du "Déjà payé" pour absorber les écarts d'arrondi
+        # Objectif: Total à payer - Reste à payer (affiché) == Déjà payé (affiché)
+        total_paye_affiche = total_paye
+        try:
+            calc_from_reste = total_a_payer - reste_affiche
+            ecart = calc_from_reste - total_paye
+            # Si l'écart est un petit reliquat (par ex. < 1000 GNF), on ajuste
+            if abs(int(ecart)) < 1000:
+                total_paye_affiche = calc_from_reste
+        except Exception:
+            total_paye_affiche = total_paye
+
+        def _round_nearest_1000(x):
+            try:
+                x = _Dec(x)
+                return ((x + _Dec('500')) // _Dec('1000')) * _Dec('1000')
+            except Exception:
+                return x
+
         def fmt_money(d):
-            return f"{int(d):,}".replace(',', ' ') + " GNF"
+            try:
+                return f"{int(_round_nearest_1000(_Dec(d))):,}".replace(',', ' ') + " GNF"
+            except Exception:
+                return f"{int(d):,}".replace(',', ' ') + " GNF"
 
         y -= 10
         try:
@@ -2007,9 +2207,36 @@ def generer_recu_pdf(request, paiement_id):
             c.setFont("MainFont", 14)
         except:
             c.setFont("Helvetica", 14)
-        line("Total à payer", fmt_money(total_a_payer))
-        line("Déjà payé", fmt_money(total_paye))
-        line("Reste à payer", fmt_money(reste))
+        # Helper: aligner les montants à droite pour éviter le chevauchement avec les libellés longs
+        def line_right(label, value_str):
+            nonlocal y
+            # Libellé à gauche
+            try:
+                c.setFont("MainFont-Bold", 14)
+                font_label = "MainFont-Bold"
+            except:
+                c.setFont("Helvetica-Bold", 14)
+                font_label = "Helvetica-Bold"
+            c.drawString(margin_x, y, f"{label} :")
+            # Valeur à droite
+            try:
+                c.setFont("MainFont", 14)
+                font_val = "MainFont"
+            except:
+                c.setFont("Helvetica", 14)
+                font_val = "Helvetica"
+            val = str(value_str)
+            val_w = c.stringWidth(val, font_val, 14)
+            x_val = max(margin_x + 150, (c._pagesize[0] - margin_x - val_w))
+            c.drawString(x_val, y, val)
+            y -= 20
+
+        line_right("Total à payer", fmt_money(total_a_payer))
+        line_right("Déjà payé", fmt_money(total_paye_affiche))
+        line_right("Reste à payer", fmt_money(reste_affiche))
+        # Affichage explicite de la scolarité annuelle (hors inscription)
+        scolarite_annuelle_due = (due_t1 + due_t2 + due_t3)
+        line_right("Scolarité annuelle (hors inscription)", fmt_money(scolarite_annuelle_due))
 
         # Détail par tranche
         y -= 4
@@ -2024,14 +2251,13 @@ def generer_recu_pdf(request, paiement_id):
         except:
             c.setFont("Helvetica", 13)
         detail = [
-            ("Inscription", echeancier.frais_inscription_du or Decimal('0'), paye_insc),
-            ("Tranche 1", echeancier.tranche_1_due or Decimal('0'), paye_t1),
-            ("Tranche 2", echeancier.tranche_2_due or Decimal('0'), paye_t2),
-            ("Tranche 3", echeancier.tranche_3_due or Decimal('0'), paye_t3),
+            ("Inscription", due_insc, paye_insc, rest_insc_disp),
+            ("Tranche 1", due_t1, paye_t1, rest_t1_disp),
+            ("Tranche 2", due_t2, paye_t2, rest_t2_disp),
+            ("Tranche 3", due_t3, paye_t3, rest_t3_disp),
         ]
-        for label, due, paid in detail:
-            rest = max(Decimal('0'), due - paid)
-            c.drawString(margin_x, y, f"{label} : dû {fmt_money(due)} | payé {fmt_money(paid)} | reste {fmt_money(rest)}")
+        for label, due, paid, rest_disp in detail:
+            c.drawString(margin_x, y, f"{label} : dû {fmt_money(due)} | payé {fmt_money(paid)} | reste {fmt_money(rest_disp)}")
             y -= 16
     except EcheancierPaiement.DoesNotExist:
         y -= 10
@@ -2350,7 +2576,6 @@ def ajax_eleve_info(request):
             'error': f'Erreur lors de la recherche: {str(e)}'
         })
 
-
 @login_required
 def appliquer_remise_paiement(request, paiement_id):
     """Vue pour appliquer des remises à un paiement existant"""
@@ -2379,9 +2604,24 @@ def appliquer_remise_paiement(request, paiement_id):
                     PaiementRemise.objects.filter(paiement=paiement).delete()
                     
                     # Calculer et appliquer les nouvelles remises
-                    montant_original = paiement.montant
-                    total_remise = form.calculate_total_remise(montant_original)
-                    remises_details = form.get_remises_details(montant_original)
+                    # Base de calcul = DÛ GLOBAL SCOLARITÉ (T1+T2+T3) RESTANT, hors frais d'inscription
+                    # Si l'échéancier n'est pas disponible, fallback au montant du paiement
+                    base_remise = paiement.montant
+                    try:
+                        ech = EcheancierPaiement.objects.filter(eleve=paiement.eleve, annee_scolaire=paiement.eleve.classe.annee_scolaire).first()
+                        if ech:
+                            t1_rest = max(Decimal('0'), (ech.tranche_1_due or 0) - (ech.tranche_1_payee or 0))
+                            t2_rest = max(Decimal('0'), (ech.tranche_2_due or 0) - (ech.tranche_2_payee or 0))
+                            t3_rest = max(Decimal('0'), (ech.tranche_3_due or 0) - (ech.tranche_3_payee or 0))
+                            base_remise = t1_rest + t2_rest + t3_rest
+                            # Sécurité: si base <= 0, on retombe sur le montant du paiement
+                            if base_remise <= 0:
+                                base_remise = paiement.montant
+                    except Exception:
+                        base_remise = paiement.montant
+
+                    total_remise = form.calculate_total_remise(base_remise)
+                    remises_details = form.get_remises_details(base_remise)
                     
                     # Créer les nouvelles associations remise-paiement
                     for detail in remises_details:
@@ -2393,6 +2633,8 @@ def appliquer_remise_paiement(request, paiement_id):
                     
                     # Mettre à jour le montant du paiement (ne jamais aller sous 0)
                     from decimal import Decimal
+                    # On applique la remise calculée sur la base globale au paiement courant, capped à son montant
+                    montant_original = paiement.montant
                     nouveau_montant = max(Decimal('0'), montant_original - total_remise)
                     paiement.montant = nouveau_montant
                     paiement.save()
@@ -2420,7 +2662,6 @@ def appliquer_remise_paiement(request, paiement_id):
     }
     
     return render(request, 'paiements/appliquer_remise.html', context)
-
 
 @login_required
 @require_http_methods(["GET"])
@@ -2509,7 +2750,25 @@ def _calculate_payment_with_remises(paiement, remises_ids=None):
     if not remises_ids:
         return paiement.montant, []
     
-    montant_original = paiement.montant
+    # Base de remise: dû global de scolarité restant (T1+T2+T3), hors inscription
+    # Fallback: montant du paiement si l'échéancier est indisponible
+    try:
+        ech = EcheancierPaiement.objects.filter(
+            eleve=paiement.eleve,
+            annee_scolaire=paiement.eleve.classe.annee_scolaire
+        ).first()
+    except Exception:
+        ech = None
+
+    if ech:
+        t1_rest = max(Decimal('0'), (ech.tranche_1_due or 0) - (ech.tranche_1_payee or 0))
+        t2_rest = max(Decimal('0'), (ech.tranche_2_due or 0) - (ech.tranche_2_payee or 0))
+        t3_rest = max(Decimal('0'), (ech.tranche_3_due or 0) - (ech.tranche_3_payee or 0))
+        base_restant = t1_rest + t2_rest + t3_rest
+        montant_original = base_restant if base_restant > 0 else paiement.montant
+    else:
+        montant_original = paiement.montant
+
     total_remise = Decimal('0')
     remises_appliquees = []
     
@@ -2520,7 +2779,21 @@ def _calculate_payment_with_remises(paiement, remises_ids=None):
             # Vérifier la validité de la remise
             today = paiement.date_paiement
             if remise.date_debut <= today <= remise.date_fin:
-                montant_remise = remise.calculer_remise(montant_original)
+                # Base par défaut = base restante
+                base_calcul = montant_original
+                # Cas spécifique: remises à 3% doivent s'appliquer sur le montant annuel par cycle
+                try:
+                    if remise.type_remise == 'POURCENTAGE' and Decimal(remise.valeur) == Decimal('3'):
+                        annuel = _tuition_annual_by_cycle(paiement.eleve)
+                        if annuel and annuel > 0:
+                            # arrondi au millier avant calcul pour propreté
+                            from math import floor
+                            annuel_arrondi = (annuel // Decimal('1000')) * Decimal('1000')
+                            base_calcul = annuel_arrondi
+                except Exception:
+                    pass
+
+                montant_remise = remise.calculer_remise(base_calcul)
                 total_remise += montant_remise
                 remises_appliquees.append({
                     'remise': remise,
@@ -2530,7 +2803,7 @@ def _calculate_payment_with_remises(paiement, remises_ids=None):
             continue
     
     # Le montant final ne peut pas être négatif
-    montant_final = max(Decimal('0'), montant_original - total_remise)
+    montant_final = max(Decimal('0'), paiement.montant - total_remise)
     
     return montant_final, remises_appliquees
 

@@ -51,6 +51,41 @@
     Période: du {{ periode_debut|date:'d/m/Y' }} au {{ periode_fin|date:'d/m/Y' }}
   </div>
 
+  <div class="row g-3 mb-3">
+    <div class="col-sm-3">
+      <div class="card text-bg-light">
+        <div class="card-body py-2">
+          <div class="small text-muted">Total dû</div>
+          <div class="fs-5 fw-bold">{{ totaux.du|default:0|floatformat:0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="card text-bg-light">
+        <div class="card-body py-2">
+          <div class="small text-muted">Total payé</div>
+          <div class="fs-5 fw-bold">{{ totaux.paye|default:0|floatformat:0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="card text-bg-light">
+        <div class="card-body py-2">
+          <div class="small text-muted">Solde</div>
+          <div class="fs-5 fw-bold">{{ totaux.solde|default:0|floatformat:0 }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="card text-bg-light">
+        <div class="card-body py-2">
+          <div class="small text-muted">Total remises</div>
+          <div class="fs-5 fw-bold">{{ totaux.remises|default:0|floatformat:0 }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="card">
     <div class="card-body p-0">
       <div class="table-responsive">
@@ -85,7 +120,7 @@
                     {{ ech.solde_calcule|floatformat:0 }}
                   {% endif %}
                 </td>
-                <td>{{ remises_map|get_item:ech.id|default:0|floatformat:0 }}</td>
+                <td>{{ ech.total_remises_calc|default:0|floatformat:0 }}</td>
               </tr>
             {% empty %}
               <tr>

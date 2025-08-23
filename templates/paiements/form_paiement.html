@@ -35,13 +35,15 @@
         border-left: 4px solid #007bff;
     }
     .montant-display {
-        font-size: 1.25rem; /* reduced from 2rem */
-        font-weight: 600;   /* reduced from 800 */
+        font-size: 1.1rem; /* reduced from 1.5rem */
+        font-weight: 500;   /* reduced from 600 */
         color: #155724;
-        background: #eaf7ee; /* softer */
+        background: #eaf7ee;
         border: 1px solid #d8efe0;
         border-radius: 6px;
-        padding: 6px 10px;   /* slightly smaller */
+        padding: 6px 10px; /* reduced padding */
+        text-align: center;
+        margin-top: 6px;
     }
     /* Barre récap collée en bas */
     .sticky-summary {
@@ -49,25 +51,31 @@
         left: 0;
         right: 0;
         bottom: 0;
-        z-index: 1030; /* au-dessus du contenu */
-        background: rgba(255,255,255,0.98);
+        background: #fff;
         border-top: 1px solid #e9ecef;
+        z-index: 1030;
         box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
-        padding: 8px 0;
+        padding: 12px 0; /* plus d'espace vertical */
     }
     .sticky-summary .label {
-        font-size: 0.9rem;
+        font-size: 1rem; /* un peu plus grand */
         color: #6c757d;
-        margin-right: 6px;
+        margin-right: 8px;
     }
     .sticky-summary .value {
-        font-weight: 700;
+        font-weight: 800; /* plus gras */
+        font-size: 1.15rem; /* plus grand */
+        line-height: 1.4; /* espacement vertical amélioré */
     }
     .sticky-summary .value.final {
         color: #155724;
     }
     .sticky-summary .value.raw {
         color: #0d6efd;
+    }
+    /* Augmenter l'espacement entre les éléments de la barre */
+    .sticky-summary .container > .d-flex {
+        gap: 12px 24px; /* row-gap, column-gap */
     }
 </style>
 {% endblock %}
@@ -158,6 +166,9 @@
                                             <div class="bg-secondary rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 60px; height: 60px;">
                                                 <i class="fas fa-user text-white fa-2x"></i>
                                             </div>
+                                        </div>
+                                        <div class="mt-2">
+                                            <small class="text-muted">Scolarité annuelle (hors inscription) : <strong id="scolariteAnnuelleTxt">—</strong></small>
                                         </div>
                                     </div>
                                 </div>
@@ -284,6 +295,19 @@
                                 <div class="text-danger small">{{ form.remise_pourcentage.errors.0 }}</div>
                             {% endif %}
                             <small class="form-text text-muted">Saisir un pourcentage (0 à 100). La remise sera déduite du montant saisi.</small>
+                            <!-- Calculateur rapide de remise (%) -->
+                            <div class="mt-2" id="remiseQuickTools">
+                                <div class="small text-muted mb-1">
+                                    Astuce: <span id="onePercentHint">3% = 0 GNF (sur montant - 30 000)</span>
+                                </div>
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Remise rapide">
+                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="1">1%</button>
+                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="2">2%</button>
+                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="3">3%</button>
+                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="5">5%</button>
+                                    <button type="button" class="btn btn-outline-secondary remise-quick" data-pct="10">10%</button>
+                                </div>
+                            </div>
                             <div class="mt-2">
                                 <a href="{% url 'paiements:calculateur_remise' %}{% if eleve %}?eleve_id={{ eleve.id }}{% endif %}"
                                    class="btn btn-sm btn-outline-secondary" target="_blank">
@@ -480,6 +504,74 @@ document.addEventListener('DOMContentLoaded', function() {
             montantDisplay.textContent = '0 GNF';
         }
     }
+    // Calculateur rapide de remise (%)
+    function roundNearest1000(n) {
+        n = Number(n) || 0;
+        return Math.round(n / 1000) * 1000;
+    }
+    function fmtGNF(n) {
+        return (Number(n)||0).toLocaleString('fr-FR') + ' GNF';
+    }
+    function getTuitionBase() {
+        const ech = getEcheancier();
+        if (!ech) return null;
+        const due = (Number(ech.t1_du)||0) + (Number(ech.t2_du)||0) + (Number(ech.t3_du)||0);
+        const paid = (Number(ech.t1_paye)||0) + (Number(ech.t2_paye)||0) + (Number(ech.t3_paye)||0);
+        const rest = Math.max(0, due - paid);
+        return { due, paid, rest };
+    }
+    function updateOnePercentHint() {
+        try {
+            const entered = Number(montantInput && montantInput.value ? montantInput.value : 0) || 0;
+            // Règle demandée: retirer 30 000 GNF (inscription) avant de calculer 3%
+            const base = Math.max(0, entered - 30000);
+            const threePct = Math.round(base * 0.03);
+            const el = document.getElementById('onePercentHint');
+            if (el) el.textContent = '3% = ' + threePct.toLocaleString('fr-FR') + ' GNF (sur ' + base.toLocaleString('fr-FR') + ' GNF)';
+            console.debug('[threePercentHint]', { entered, base, threePct });
+        } catch(_) {}
+    }
+    updateOnePercentHint();
+    if (montantInput) {
+        montantInput.addEventListener('input', function(){
+            // MAJ affichage montant saisi
+            try {
+                const v = parseFloat(montantInput.value || 0) || 0;
+                if (montantDisplay) montantDisplay.textContent = v.toLocaleString('fr-FR') + ' GNF';
+            } catch(_) {}
+            updateOnePercentHint();
+            if (typeof updateFinalAmount === 'function') updateFinalAmount();
+        });
+        montantInput.addEventListener('change', function(){
+            updateOnePercentHint();
+            if (typeof updateFinalAmount === 'function') updateFinalAmount();
+        });
+    }
+    // Recalculer l'aperçu quand le pourcentage de remise change
+    const remiseInput = document.getElementById('id_remise_pourcentage');
+    if (remiseInput) {
+        remiseInput.addEventListener('input', function(){
+            updateOnePercentHint();
+            if (typeof updateFinalAmount === 'function') updateFinalAmount();
+        });
+        remiseInput.addEventListener('change', function(){
+            updateOnePercentHint();
+            if (typeof updateFinalAmount === 'function') updateFinalAmount();
+        });
+    }
+    // Boutons rapides de remise (%): 1,2,3,5,10
+    document.querySelectorAll('.remise-quick').forEach(function(btn){
+        btn.addEventListener('click', function(){
+            const pct = Number(btn.getAttribute('data-pct')) || 0;
+            const remiseEl = document.getElementById('id_remise_pourcentage');
+            if (remiseEl) {
+                remiseEl.value = pct;
+                remiseEl.dispatchEvent(new Event('input'));
+                remiseEl.dispatchEvent(new Event('change'));
+            }
+            if (typeof updateFinalAmount === 'function') updateFinalAmount();
+        });
+    });
     
     const submitBtn = document.getElementById('submitBtn');
     const form = document.getElementById('paiementForm');
@@ -511,7 +603,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 t3_paye: {{ eleve.echeancier.tranche_3_payee|default:0 }},
                 total_du: {{ eleve.echeancier.total_du|default:0 }},
                 total_paye: {{ eleve.echeancier.total_paye|default:0 }},
-                reste: {{ eleve.echeancier.solde_restant|default:0 }}
+                reste: Math.max(0, ({{ eleve.echeancier.total_du|default:0 }}-( {{ eleve.echeancier.total_paye|default:0 }})))
             };
             console.log('Server echeancier loaded:', serverEcheancier);
             {% else %}
@@ -530,8 +622,13 @@ document.addEventListener('DOMContentLoaded', function() {
     // Récupérer l'échéancier courant (AJAX ou serveur)
     function getEcheancier() {
         try {
-            if (typeof currentEleveData !== 'undefined' && currentEleveData && currentEleveData.echeancier) {
-                const e = currentEleveData.echeancier;
+            // Supporte la variable locale (dans le bloc {% templatetag openblock %} if not eleve {% templatetag closeblock %})
+            // et la variable globale window.currentEleveData (utilisée par ensureEcheancierLoaded)
+            const src = (typeof currentEleveData !== 'undefined' && currentEleveData)
+                        ? currentEleveData
+                        : (window.currentEleveData || null);
+            if (src && src.echeancier) {
+                const e = src.echeancier;
                 return {
                     inscription_du: e.inscription_du || 0,
                     inscription_paye: e.inscription_paye || 0,
@@ -543,7 +640,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     t3_paye: e.tranche_3_paye || 0,
                     total_du: e.total_du || 0,
                     total_paye: e.total_paye || 0,
-                    reste: (e.reste_a_payer != null ? e.reste_a_payer : Math.max(0, (e.total_du||0)-(e.total_paye||0)))
+                    reste: Math.max(0, (e.total_du||0)-(e.total_paye||0))
                 };
             }
         } catch(_) {}
@@ -579,7 +676,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await resp.json();
             console.log('AJAX response:', data);
             if (data && data.success) {
+                // Enregistrer globalement pour les cas où la variable locale n'existe pas
                 window.currentEleveData = data;
+                // Si la variable locale existe (cas {% templatetag openblock %} if not eleve {% templatetag closeblock %}), la mettre aussi à jour
+                try { currentEleveData = data; } catch(_) {}
                 console.log('AJAX echeancier loaded successfully');
                 return true;
             }
@@ -603,15 +703,24 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         console.log('Echeancier data:', ech);
+        // Afficher la scolarité annuelle (hors inscription)
+        try {
+            const elTxt = document.getElementById('scolariteAnnuelleTxt');
+            const tuition = getTuitionBase();
+            if (elTxt && tuition) elTxt.textContent = fmtGNF(roundNearest1000(tuition.due));
+        } catch(_) {}
 
         // Restes par poste
         const remIns = Math.max(0, (ech.inscription_du||0) - (ech.inscription_paye||0));
         const rem1 = Math.max(0, (ech.t1_du||0) - (ech.t1_paye||0));
         const rem2 = Math.max(0, (ech.t2_du||0) - (ech.t2_paye||0));
         const rem3 = Math.max(0, (ech.t3_du||0) - (ech.t3_paye||0));
-        const reste = (ech.reste != null) ? ech.reste : Math.max(0, (ech.total_du||0)-(ech.total_paye||0));
+        const reste = Math.max(0, (ech.total_du||0)-(ech.total_paye||0));
 
         console.log('Remaining amounts - Ins:', remIns, 'T1:', rem1, 'T2:', rem2, 'T3:', rem3, 'Total:', reste);
+        // Rafraîchir l'aperçu après MAJ des données
+        updateOnePercentHint();
+        if (typeof updateFinalAmount === 'function') updateFinalAmount();
 
         // Normaliser le libellé du type
         let selectedText = '';
@@ -660,18 +769,26 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Toujours renseigner le champ
         var suggested = Math.floor(amount);
-        montantInput.value = suggested;
-        // Mettre à jour le badge
-        if (badge && badgeValue) {
-            try {
-                badgeValue.textContent = Number(suggested || 0).toLocaleString('fr-FR');
-                badge.style.display = 'inline-flex';
-            } catch(_) {
-                badgeValue.textContent = String(suggested || 0);
-                badge.style.display = 'inline-flex';
+        if (suggested > 0) {
+            // Ne pas forcer 0 dans le champ, seulement une suggestion positive
+            montantInput.value = suggested;
+            // Mettre à jour le badge
+            if (badge && badgeValue) {
+                try {
+                    badgeValue.textContent = Number(suggested).toLocaleString('fr-FR');
+                    badge.style.display = 'inline-flex';
+                } catch(_) {
+                    badgeValue.textContent = String(suggested);
+                    badge.style.display = 'inline-flex';
+                }
+            }
+        } else {
+            // Pas de suggestion positive: ne rien écraser et masquer le badge
+            if (badge) {
+                badge.style.display = 'none';
             }
         }
-        montantInput.dispatchEvent(new Event('input', { bubbles: true }));
+         montantInput.dispatchEvent(new Event('input', { bubbles: true }));
         
         console.log('Montant field updated to:', montantInput.value);
     }
@@ -1023,6 +1140,34 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     {% endif %}
+    
+    // Calcul du montant final après remise (aperçu)
+    function updateFinalAmount() {
+        try {
+            const montant = Number((montantInput && montantInput.value) ? montantInput.value : 0) || 0;
+            const remiseEl = document.getElementById('id_remise_pourcentage');
+            const pct = Number(remiseEl && remiseEl.value ? remiseEl.value : 0) || 0;
+            const tuition = getTuitionBase();
+            let base_remise = tuition ? tuition.rest : montant;
+            if (base_remise < 0) base_remise = 0;
+            const remise_montant = Math.max(0, (base_remise * pct) / 100.0);
+            const final_montant = Math.max(0, montant - remise_montant);
+            const final_disp = roundNearest1000(final_montant);
+            const info = document.getElementById('remiseInfo');
+            if (info) {
+                info.style.display = 'inline';
+                info.textContent = 'Base remise: ' + fmtGNF(roundNearest1000(base_remise)) + ' • Remise: ' + fmtGNF(roundNearest1000(remise_montant));
+            }
+            const finalDisplay = document.getElementById('finalAmountDisplay');
+            if (finalDisplay) finalDisplay.textContent = fmtGNF(final_disp);
+            const stickyFinal = document.getElementById('stickyFinal');
+            if (stickyFinal) stickyFinal.textContent = fmtGNF(final_disp);
+        } catch(e) { console.error('erreur updateFinalAmount', e); }
+    }
+
+    // Initial UI sync
+    updateFinalAmount();
 });
 </script>
+
 {% endblock %}

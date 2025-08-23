@@ -2,6 +2,7 @@ from django import forms
 from django.core.validators import MinValueValidator
 from decimal import Decimal
 from datetime import date, datetime
+from django.utils import timezone
 
 from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
 from eleves.models import Eleve, Ecole
@@ -73,9 +74,10 @@ class PaiementForm(forms.ModelForm):
         self.fields['type_paiement'].queryset = TypePaiement.objects.filter(actif=True)
         self.fields['mode_paiement'].queryset = ModePaiement.objects.filter(actif=True)
         
-        # Définir la date du jour par défaut pour les nouveaux paiements
-        if not self.instance.pk:  # Seulement pour les nouveaux paiements
-            self.fields['date_paiement'].initial = date.today()
+        # Définir la date du jour par défaut si pas de valeur initiale
+        if not self.instance.pk and 'date_paiement' not in self.initial:
+            # Utiliser la date locale selon le fuseau horaire Django
+            self.fields['date_paiement'].initial = timezone.localdate()
 
     def clean_montant(self):
         montant = self.cleaned_data.get('montant')
