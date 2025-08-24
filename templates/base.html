@@ -276,6 +276,69 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
+    <!-- Global phone normalization (+224) -->
+    <script>
+    (function(){
+      const PREFIX = '+224';
+      function isPhoneInput(el){
+        if (!el || el.tagName !== 'INPUT') return false;
+        const name = (el.getAttribute('name') || '').toLowerCase();
+        const id = (el.getAttribute('id') || '').toLowerCase();
+        const type = (el.getAttribute('type') || '').toLowerCase();
+        const data = el.hasAttribute('data-gn-phone') || el.getAttribute('data-gn-prefix') === PREFIX;
+        const likely = type === 'tel'
+          || name.includes('phone') || name.includes('tel') || name.includes('téléphone') || name.includes('telephone') || name.includes('whatsapp')
+          || id.includes('phone') || id.includes('tel') || id.includes('téléphone') || id.includes('telephone') || id.includes('whatsapp');
+        return data || likely;
+      }
+      function digitsOnly(s){ return (s||'').replace(/\D+/g,''); }
+      function normalizeToGN(value){
+        if (!value) return '';
+        // Preserve a possible + at start for detection, then strip spaces/dashes
+        let v = String(value).trim();
+        // Already +224...
+        if (v.startsWith(PREFIX)) return v;
+        // Handle 224 without plus
+        if (v.startsWith('224')) return '+' + v;
+        // Remove non-digits to analyze local pattern
+        const d = digitsOnly(v);
+        if (!d) return '';
+        // If starts with 224 after removing symbols
+        if (d.startsWith('224')) return '+' + d;
+        // If starts with 0 local leading zero → drop 0
+        const dNoLeadZero = d.startsWith('0') ? d.replace(/^0+/, '') : d;
+        return PREFIX + dNoLeadZero;
+      }
+      function attach(el){
+        if (!el || el.__gnPhoneBound) return; el.__gnPhoneBound = true;
+        // Placeholder helper
+        if (!el.placeholder) el.placeholder = 'Numéro (sans +224)';
+        // Live gentle hint: do not force while typing, only format on blur/submit
+        el.addEventListener('blur', function(){
+          const n = normalizeToGN(el.value);
+          if (n) el.value = n;
+        });
+      }
+      function scan(){
+        document.querySelectorAll('input').forEach(function(el){ if (isPhoneInput(el)) attach(el); });
+      }
+      function bindFormSubmit(){
+        document.querySelectorAll('form').forEach(function(form){
+          if (form.__gnSubmitBound) return; form.__gnSubmitBound = true;
+          form.addEventListener('submit', function(){
+            const inputs = form.querySelectorAll('input');
+            inputs.forEach(function(el){ if (isPhoneInput(el)) { const n = normalizeToGN(el.value); if (n) el.value = n; } });
+          }, true);
+        });
+      }
+      document.addEventListener('DOMContentLoaded', function(){
+        try { scan(); bindFormSubmit(); } catch(e) { console && console.warn && console.warn('GN phone init error', e); }
+        // Support dynamic DOM changes (basic)
+        const obs = new MutationObserver(function(){ try { scan(); bindFormSubmit(); } catch(_){} });
+        obs.observe(document.body, { childList: true, subtree: true });
+      });
+    })();
+    </script>
     {% block extra_js %}{% endblock %}
 </body>
 </html>

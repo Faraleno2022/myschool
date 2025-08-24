@@ -325,3 +325,44 @@ class Relance(models.Model):
     def __str__(self):
         return f"Relance {self.eleve.nom_complet} - {self.canal} - {self.statut}"
 
+class TwilioInboundMessage(models.Model):
+    """Journalise les messages entrants Twilio (SMS/WhatsApp) et leurs statuts.
+    Utilisé pour audit et debugging.
+    """
+    CHANNEL_CHOICES = [
+        ("SMS", "SMS"),
+        ("WHATSAPP", "WhatsApp"),
+        ("UNKNOWN", "Inconnu"),
+    ]
+
+    channel = models.CharField(max_length=20, choices=CHANNEL_CHOICES, default="UNKNOWN", db_index=True)
+    from_number = models.CharField(max_length=50, db_index=True)
+    to_number = models.CharField(max_length=50, db_index=True)
+    body = models.TextField(blank=True, null=True)
+    message_sid = models.CharField(max_length=64, blank=True, null=True, unique=True)
+    wa_id = models.CharField(max_length=64, blank=True, null=True)
+    num_media = models.IntegerField(default=0)
+
+    # Dernier statut de livraison connu (via status callback)
+    delivery_status = models.CharField(max_length=32, blank=True, null=True, db_index=True)
+    error_code = models.CharField(max_length=32, blank=True, null=True)
+    error_message = models.CharField(max_length=255, blank=True, null=True)
+    status_updated_at = models.DateTimeField(blank=True, null=True)
+
+    # Données brutes complètes du webhook (pratique pour debug)
+    raw_data = models.JSONField(blank=True, null=True)
+
+    # Horodatage
+    received_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        verbose_name = "Message entrant Twilio"
+        verbose_name_plural = "Messages entrants Twilio"
+        ordering = ['-received_at']
+        indexes = [
+            models.Index(fields=['message_sid']),
+            models.Index(fields=['channel', 'received_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.channel} {self.from_number} -> {self.to_number}: {self.body[:30] if self.body else ''}"

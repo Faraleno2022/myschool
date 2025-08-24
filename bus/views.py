@@ -4,6 +4,7 @@ from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 from django.contrib import messages
 from django.http import HttpResponse
+from django.http import JsonResponse
 from django.db.models import Q
 from django.utils import timezone
 from openpyxl import Workbook
@@ -14,6 +15,7 @@ from .models import AbonnementBus
 from .forms import AbonnementBusForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school
 from ecole_moderne.pdf_utils import draw_logo_watermark
+from paiements.twilio_utils import send_message_async
 
 
 @login_required
@@ -199,3 +201,86 @@ def generer_recu_abonnement_pdf(request, abo_id):
     resp['Content-Disposition'] = f'inline; filename=recu_abonnement_{abo.id}.pdf'
     resp.write(pdf)
     return resp
+
+
+@login_required
+def envoyer_relances_bus(request):
+    if request.method != 'POST':
+        return JsonResponse({'success': False, 'error': 'Méthode non autorisée'}, status=405)
+
+    try:
+        ids = request.POST.getlist('abo_ids')
+        message_type = (request.POST.get('message_type') or 'sms').lower()
+        message_personnalise = (request.POST.get('message_personnalise') or '').strip()
+    except Exception:
+        return JsonResponse({'success': False, 'error': 'Requête invalide'}, status=400)
+
+    if not ids:
+        return JsonResponse({'success': False, 'error': 'Aucun abonnement sélectionné'}, status=400)
+
+    channel = 'whatsapp' if message_type == 'whatsapp' else 'sms'
+    envoyes = 0
+
+    abonnements = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole').filter(id__in=ids)
+
+    for abo in abonnements:
+        el = abo.eleve
+
+        # Préparer destinataires (principal + secondaire)
+        destinataires = []
+        rp = getattr(el, 'responsable_principal', None)
+        rs = getattr(el, 'responsable_secondaire', None)
+        if rp and getattr(rp, 'telephone', None):
+            destinataires.append((getattr(rp, 'nom', 'Responsable'), rp.telephone))
+        if rs and getattr(rs, 'telephone', None):
+            destinataires.append((getattr(rs, 'nom', 'Responsable'), rs.telephone))
+
+        if not destinataires:
+            continue
+
+        # Construire message
+        if not message_personnalise:
+            base_msg = (
+                "Bonjour {nom_responsable},\n\n"
+                "L'abonnement bus de {prenom_eleve} {nom_eleve} ({classe}) {etat} le {date_expiration}.\n"
+                "Montant: {montant} GNF. Zone: {zone}. Point d'arrêt: {arret}.\n\n"
+                "Merci de procéder au renouvellement.\n"
+                "École {nom_ecole}"
+            )
+        else:
+            base_msg = message_personnalise
+
+        etat = 'a expiré' if abo.est_expire else 'arrive à expiration'
+        date_exp = abo.date_expiration.strftime('%d/%m/%Y') if abo.date_expiration else ''
+        montant_txt = f"{int(abo.montant):,}".replace(',', ' ')
+        classe_nom = getattr(el.classe, 'nom', 'Non définie')
+        ecole_nom = getattr(getattr(el.classe, 'ecole', None), 'nom', 'École')
+
+        for nom_resp, numero in destinataires:
+            try:
+                msg = base_msg.format(
+                    nom_responsable=nom_resp or 'Responsable',
+                    prenom_eleve=getattr(el, 'prenom', ''),
+                    nom_eleve=getattr(el, 'nom', ''),
+                    classe=classe_nom,
+                    etat=etat,
+                    date_expiration=date_exp,
+                    montant=montant_txt,
+                    zone=abo.zone or '-',
+                    arret=abo.point_arret or '-',
+                    nom_ecole=ecole_nom,
+                )
+            except Exception:
+                msg = base_msg
+
+            # Envoi
+            try:
+                send_message_async(to_number=numero, body=msg, channel=channel)
+                envoyes += 1
+                abo.derniere_relance = timezone.now()
+                abo.save(update_fields=['derniere_relance'])
+            except Exception:
+                # Continuer autres destinataires
+                pass
+
+    return JsonResponse({'success': True, 'message': f'{envoyes} message(s) envoyé(s)'})

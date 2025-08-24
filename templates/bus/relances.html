@@ -12,10 +12,24 @@
 {% block content %}
 <div class="alert alert-info"><i class="fas fa-info-circle me-1"></i> Les abonnements expirés ou proches d'expiration sont listés ci-dessous.</div>
 
+<div class="d-flex justify-content-between align-items-center mb-2">
+  <div>
+    <button type="button" class="btn btn-primary" onclick="ouvrirModalBusRappel('sms')"><i class="fas fa-sms me-2"></i>Relancer par SMS</button>
+    <button type="button" class="btn btn-success ms-2" onclick="ouvrirModalBusRappel('whatsapp')"><i class="fab fa-whatsapp me-2"></i>Relancer via WhatsApp</button>
+  </div>
+  <div>
+    <small class="text-muted">
+      <input type="checkbox" id="selectAllAbo" onchange="toggleSelectAllAbo()"> Sélectionner tout
+    </small>
+    <div><small class="text-muted"><i class="fas fa-info-circle me-1"></i>Le responsable principal et le secondaire (s'il existe) seront contactés.</small></div>
+  </div>
+</div>
+
 <div class="table-container-scrollable">
 <table class="table table-striped table-hover align-middle">
   <thead>
     <tr>
+      <th style="width:36px"><input type="checkbox" id="selectAllAboTop" onchange="toggleSelectAllAbo()"></th>
       <th>Élève</th>
       <th>Classe</th>
       <th>École</th>
@@ -33,6 +47,7 @@
   <tbody>
     {% for a in abonnements %}
     <tr class="{% if a.est_expire %}table-danger{% elif a.est_proche_expiration %}table-warning{% endif %}">
+      <td><input type="checkbox" class="abo-checkbox" value="{{ a.id }}"></td>
       <td>{{ a.eleve.prenom }} {{ a.eleve.nom }} ({{ a.eleve.matricule }})</td>
       <td>{{ a.eleve.classe.nom }}</td>
       <td>{{ a.eleve.classe.ecole.nom }}</td>
@@ -50,9 +65,115 @@
       </td>
     </tr>
     {% empty %}
-    <tr><td colspan="12" class="text-center text-muted py-4">Aucune relance</td></tr>
+    <tr><td colspan="13" class="text-center text-muted py-4">Aucune relance</td></tr>
     {% endfor %}
   </tbody>
 </table>
 </div>
+
+<!-- Modal relance bus -->
+<div class="modal fade" id="modalBusRappel" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-bus me-2"></i>Relancer abonnements Bus</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formBusRappel">
+          {% csrf_token %}
+          <div class="row mb-3">
+            <div class="col-md-6">
+              <label class="form-label">Type de message</label>
+              <select class="form-select" id="busMessageType" name="message_type">
+                <option value="sms">SMS</option>
+                <option value="whatsapp">WhatsApp</option>
+              </select>
+            </div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Message personnalisé</label>
+            <textarea class="form-control" rows="6" id="busMsgPerso" name="message_personnalise" placeholder="Laissez vide pour le message par défaut">Bonjour {nom_responsable},
+
+L'abonnement bus de {prenom_eleve} {nom_eleve} ({classe}) {etat} le {date_expiration}.
+Montant: {montant} GNF. Zone: {zone}. Point d'arrêt: {arret}.
+
+Merci de procéder au renouvellement.
+École {nom_ecole}</textarea>
+            <small class="text-muted">Variables: {nom_responsable}, {prenom_eleve}, {nom_eleve}, {classe}, {etat}, {date_expiration}, {montant}, {zone}, {arret}, {nom_ecole}</small>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+        <button type="button" class="btn btn-primary" onclick="envoyerRelancesBus()"><i class="fas fa-paper-plane me-2"></i>Envoyer</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleSelectAllAbo() {
+  const all = document.querySelectorAll('.abo-checkbox');
+  const master = document.getElementById('selectAllAbo') || document.getElementById('selectAllAboTop');
+  const checked = (document.getElementById('selectAllAbo') && document.getElementById('selectAllAbo').checked) || (document.getElementById('selectAllAboTop') && document.getElementById('selectAllAboTop').checked);
+  all.forEach(cb => cb.checked = checked);
+}
+
+function ouvrirModalBusRappel(type) {
+  const selected = Array.from(document.querySelectorAll('.abo-checkbox:checked')).map(cb => cb.value);
+  if (selected.length === 0) {
+    alert('Aucun abonnement sélectionné.');
+    return;
+  }
+  const sel = document.getElementById('busMessageType');
+  if (type) sel.value = type;
+  const modalEl = document.getElementById('modalBusRappel');
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+}
+
+function getCsrfToken() {
+  const name = 'csrftoken=';
+  const cookies = document.cookie.split(';');
+  for (let c of cookies) {
+    c = c.trim();
+    if (c.startsWith(name)) return c.substring(name.length);
+  }
+  return '';
+}
+
+async function envoyerRelancesBus() {
+  const ids = Array.from(document.querySelectorAll('.abo-checkbox:checked')).map(cb => cb.value);
+  if (ids.length === 0) { alert('Aucun abonnement sélectionné.'); return; }
+
+  const canal = document.getElementById('busMessageType').value === 'whatsapp' ? 'WhatsApp' : 'SMS';
+  if (!confirm(`Confirmez l'envoi de relances ${canal} pour ${ids.length} abonnement(s).\nNote: si un responsable secondaire existe, il sera aussi contacté.`)) {
+    return;
+  }
+
+  const form = document.getElementById('formBusRappel');
+  const fd = new FormData(form);
+  ids.forEach(id => fd.append('abo_ids', id));
+
+  const btn = document.querySelector('#modalBusRappel .btn-primary');
+  const old = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Envoi...';
+  try {
+    const resp = await fetch('{% url "bus:envoyer_relances_bus" %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': getCsrfToken() },
+      body: fd,
+    });
+    const data = await resp.json();
+    alert(data.message || 'Envoi terminé');
+    bootstrap.Modal.getInstance(document.getElementById('modalBusRappel')).hide();
+  } catch (e) {
+    alert('Erreur pendant l\'envoi des relances.');
+  } finally {
+    btn.disabled = false; btn.innerHTML = old;
+  }
+}
+</script>
 {% endblock %}

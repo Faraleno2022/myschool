@@ -66,32 +66,43 @@ def send_message(
         logger.warning("Twilio client unavailable; check env and installation")
         return False, "TWILIO_CLIENT_UNAVAILABLE"
 
-    # Sender: prefer channel-specific env, then fallback to TWILIO_FROM
+    # Prefer Messaging Service SID if provided; else resolve sender number per channel
+    messaging_service_sid = os.getenv("TWILIO_MESSAGING_SERVICE_SID")
     from_number = None
-    if channel == "whatsapp":
-        from_number = os.getenv("TWILIO_FROM_WHATSAPP")
-    else:
-        from_number = os.getenv("TWILIO_FROM_SMS")
-    if not from_number:
-        from_number = os.getenv("TWILIO_FROM")
+    if not messaging_service_sid:
+        # Sender: prefer channel-specific env, then fallback to TWILIO_FROM
+        if channel == "whatsapp":
+            from_number = os.getenv("TWILIO_FROM_WHATSAPP")
+        else:
+            from_number = os.getenv("TWILIO_FROM_SMS")
+        if not from_number:
+            from_number = os.getenv("TWILIO_FROM")
 
-    if not from_number:
-        logger.warning("Twilio sender number missing (TWILIO_FROM[_WHATSAPP/_SMS])")
-        return False, "TWILIO_FROM_MISSING"
+        if not from_number:
+            logger.warning("Twilio sender missing (TWILIO_FROM[_WHATSAPP/_SMS]) and no Messaging Service SID")
+            return False, "TWILIO_FROM_MISSING"
 
     try:
         to_formatted = _format_recipient(to_number, channel)
-        from_formatted = _format_recipient(from_number, channel)
-        msg = client.messages.create(
-            to=to_formatted,
-            from_=from_formatted,
-            body=body,
-            status_callback=status_callback or os.getenv("TWILIO_STATUS_CALLBACK"),
-        )
+        # Build arguments depending on Messaging Service vs direct sender
+        create_kwargs = {
+            "to": to_formatted,
+            "body": body,
+            "status_callback": status_callback or os.getenv("TWILIO_STATUS_CALLBACK"),
+        }
+        if messaging_service_sid:
+            create_kwargs["messaging_service_sid"] = messaging_service_sid
+            from_logged = f"MSG:{mask_secret(messaging_service_sid, show=6)}"
+        else:
+            from_formatted = _format_recipient(from_number, channel)
+            create_kwargs["from_"] = from_formatted
+            from_logged = mask_secret(from_formatted)
+
+        msg = client.messages.create(**create_kwargs)
         logger.info(
             "Twilio message queued (to=%s, from=%s, sid=%s)",
             mask_secret(to_formatted),
-            mask_secret(from_formatted),
+            from_logged,
             mask_secret(getattr(msg, "sid", ""), show=6),
         )
         return True, getattr(msg, "sid", None) or "SENT"

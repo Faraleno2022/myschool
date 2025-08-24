@@ -16,6 +16,7 @@ urlpatterns = [
     path('valider/<int:paiement_id>/', views.valider_paiement, name='valider_paiement'),
     path('relancer/<int:eleve_id>/', views.relancer_eleve, name='relancer_eleve'),
     path('relances/', views.liste_relances, name='liste_relances'),
+    path('retards/envoyer/', views.envoyer_notifs_retards, name='envoyer_notifs_retards'),
     
     # Échéanciers
     path('echeancier/<int:eleve_id>/', views.echeancier_eleve, name='echeancier_eleve'),
@@ -38,11 +39,10 @@ urlpatterns = [
     path('ajax/classes/', views.ajax_classes_par_ecole, name='ajax_classes_par_ecole'),
     
     # Webhooks (Twilio)
+    path('twilio/inbound/', views.twilio_inbound, name='twilio_inbound'),
     path('twilio/status-callback/', views.twilio_status_callback, name='twilio_status_callback'),
     
     # Remises
     path('remise/<int:paiement_id>/', views.appliquer_remise_paiement, name='appliquer_remise'),
     path('calculateur-remise/', views.calculateur_remise, name='calculateur_remise'),
 ]
-
-

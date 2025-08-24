@@ -17,7 +17,7 @@ import json
 
 # Imports des modèles à réinitialiser
 from eleves.models import Eleve, Responsable, Classe, HistoriqueEleve, Ecole, GrilleTarifaire
-from paiements.models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise
+from paiements.models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise, Relance
 from depenses.models import Depense, CategorieDepense, Fournisseur
 from salaires.models import Enseignant, AffectationClasse, EtatSalaire, PeriodeSalaire, DetailHeuresClasse
 from utilisateurs.models import JournalActivite, Profil
@@ -637,76 +637,73 @@ def envoyer_rappel_paiement(request):
         if not eleve_ids:
             return JsonResponse({'success': False, 'error': 'Aucun élève sélectionné'})
         
-        # Récupérer les élèves et leurs informations de retard
-        eleves_data = []
-        for eleve_id in eleve_ids:
-            try:
-                eleve = Eleve.objects.get(id=eleve_id)
-                echeanciers_retard = EcheancierPaiement.objects.filter(
-                    eleve=eleve, solde_restant__gt=0
-                )
-                total_du = sum(e.solde_restant for e in echeanciers_retard)
-                
-                # Préparer les numéros de téléphone
-                telephones = []
-                if eleve.responsable_principal and eleve.responsable_principal.telephone:
-                    telephones.append({
-                        'numero': eleve.responsable_principal.telephone,
-                        'nom': eleve.responsable_principal.nom,
-                        'relation': 'Principal'
-                    })
-                if eleve.responsable_secondaire and eleve.responsable_secondaire.telephone:
-                    telephones.append({
-                        'numero': eleve.responsable_secondaire.telephone,
-                        'nom': eleve.responsable_secondaire.nom,
-                        'relation': 'Secondaire'
-                    })
-                
-                eleves_data.append({
-                    'eleve': eleve,
-                    'total_du': total_du,
-                    'telephones': telephones
-                })
-                
-            except Eleve.DoesNotExist:
-                continue
-        
         # Générer le message par défaut si pas de message personnalisé
         if not message_personnalise:
-            message_personnalise = """Bonjour {nom_responsable},
+            message_personnalise = (
+                "Bonjour {nom_responsable},\n\n"
+                "Nous vous informons que votre enfant {prenom_eleve} {nom_eleve} ({classe}) a un solde impayé de {montant_du} GNF.\n\n"
+                "Merci de régulariser cette situation dans les plus brefs délais.\n\n"
+                "École {nom_ecole}\nContact: {contact_ecole}"
+            )
 
-Nous vous informons que votre enfant {prenom_eleve} {nom_eleve} ({classe}) a un solde impayé de {montant_du} GNF.
+        # Préparer canal
+        canal = 'WHATSAPP' if message_type.lower() == 'whatsapp' else 'SMS'
 
-Merci de régulariser cette situation dans les plus brefs délais.
+        from paiements.notifications import send_relance_notification
 
-École {nom_ecole}
-Contact: {contact_ecole}"""
-        
-        # Simuler l'envoi (à remplacer par une vraie intégration SMS/WhatsApp)
-        messages_envoyes = 0
-        for eleve_data in eleves_data:
-            eleve = eleve_data['eleve']
-            for tel_info in eleve_data['telephones']:
-                # Personnaliser le message
+        envoyes = 0
+        for eleve_id in eleve_ids:
+            try:
+                eleve = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').get(id=eleve_id)
+            except Eleve.DoesNotExist:
+                continue
+
+            # total dû
+            echeanciers_retard = EcheancierPaiement.objects.filter(eleve=eleve, solde_restant__gt=0)
+            total_du = sum(e.solde_restant for e in echeanciers_retard)
+
+            # Préparer destinataires: principal et secondaire si disponibles
+            destinataires = []
+            if getattr(eleve, 'responsable_principal', None) and eleve.responsable_principal.telephone:
+                destinataires.append((eleve.responsable_principal.nom, eleve.responsable_principal.telephone))
+            if getattr(eleve, 'responsable_secondaire', None) and eleve.responsable_secondaire.telephone:
+                destinataires.append((eleve.responsable_secondaire.nom, eleve.responsable_secondaire.telephone))
+
+            if not destinataires:
+                logger.warning(f"Aucun numéro pour élève {eleve.id} — relance non envoyée")
+                continue
+
+            for nom_resp, numero in destinataires:
                 message_final = message_personnalise.format(
-                    nom_responsable=tel_info['nom'],
+                    nom_responsable=nom_resp or 'Responsable',
                     prenom_eleve=eleve.prenom,
                     nom_eleve=eleve.nom,
                     classe=eleve.classe.nom if eleve.classe else 'Non définie',
-                    montant_du=f"{eleve_data['total_du']:,.0f}",
+                    montant_du=f"{int(total_du):,}".replace(',', ' '),
                     nom_ecole=eleve.classe.ecole.nom if eleve.classe and eleve.classe.ecole else 'École',
-                    contact_ecole='Contactez l\'administration'
+                    contact_ecole="Contactez l'administration",
                 )
-                
-                # Log de l'envoi (remplacer par vraie logique d'envoi)
-                logger = logging.getLogger(__name__)
-                logger.info(f"Rappel {message_type} envoyé à {tel_info['numero']} pour {eleve.prenom} {eleve.nom}")
-                
-                messages_envoyes += 1
-        
-        return JsonResponse({
-            'success': True, 
-            'message': f'{messages_envoyes} rappel(s) envoyé(s) avec succès'
-        })
+
+                # Créer une Relance et envoyer via helper centralisé pour ce destinataire
+                relance = Relance(
+                    eleve=eleve,
+                    canal=canal,
+                    message=message_final,
+                    solde_estime=total_du,
+                    cree_par=request.user if request.user.is_authenticated else None,
+                    statut='ENREGISTREE',
+                )
+                relance.save()
+                try:
+                    send_relance_notification(relance, to_number=numero)
+                    relance.statut = 'ENVOYEE'
+                    relance.save(update_fields=['statut'])
+                    envoyes += 1
+                except Exception as e:
+                    relance.statut = 'ECHEC'
+                    relance.save(update_fields=['statut'])
+                    logger.error(f"Échec envoi relance pour élève {eleve.id} vers {numero}: {e}")
+
+        return JsonResponse({'success': True, 'message': f'{envoyes} relance(s) envoyée(s)'})
     
     return JsonResponse({'success': False, 'error': 'Méthode non autorisée'})
