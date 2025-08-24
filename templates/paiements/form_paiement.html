@@ -9,6 +9,60 @@
     <li class="breadcrumb-item active">{{ action }} Paiement</li>
 {% endblock %}
 
+{# Assure l'affichage des actions même si titre_page n'est pas fourni par la vue #}
+{% block page_header %}
+    {% if titre_page %}
+        {{ block.super }}
+    {% else %}
+        <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap" style="gap: .5rem 1rem;">
+            <h1 class="h3 mb-0">{{ action|default:"Paiement" }}</h1>
+            <div class="page-actions d-flex flex-wrap justify-content-end" style="gap: .5rem;">
+                <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <a href="{% url 'paiements:ajouter_paiement' %}" class="btn btn-primary">
+                        <i class="fas fa-plus me-1"></i>Nouveau Paiement
+                    </a>
+                    <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-outline-info">
+                        <i class="fas fa-list me-1"></i>Liste des paiements
+                    </a>
+                    <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
+                        <i class="fas fa-bell me-1"></i>Relances
+                    </a>
+                    {% if perms.utilisateurs.peut_consulter_rapports %}
+                    <a href="{% url 'paiements:rapport_remises' %}" class="btn btn-outline-success">
+                        <i class="fas fa-percent me-1"></i>Rapport des remises
+                    </a>
+                    {% endif %}
+                    <a href="{% url 'paiements:tableau_bord' %}" class="btn btn-secondary">
+                        <i class="fas fa-chart-line me-1"></i>Tableau de bord
+                    </a>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+{% endblock %}
+
+{% block page_actions %}
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+        <a href="{% url 'paiements:ajouter_paiement' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>Nouveau Paiement
+        </a>
+        <a href="{% url 'paiements:liste_paiements' %}" class="btn btn-outline-info">
+            <i class="fas fa-list me-1"></i>Liste des paiements
+        </a>
+        <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
+            <i class="fas fa-bell me-1"></i>Relances
+        </a>
+        {% if perms.utilisateurs.peut_consulter_rapports %}
+        <a href="{% url 'paiements:rapport_remises' %}" class="btn btn-outline-success">
+            <i class="fas fa-percent me-1"></i>Rapport des remises
+        </a>
+        {% endif %}
+        <a href="{% url 'paiements:tableau_bord' %}" class="btn btn-secondary">
+            <i class="fas fa-chart-line me-1"></i>Tableau de bord
+        </a>
+    </div>
+{% endblock %}
+
 {% block extra_css %}
 <style>
     .form-section {

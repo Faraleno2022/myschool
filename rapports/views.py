@@ -23,6 +23,9 @@ from bus.models import AbonnementBus
 from depenses.models import Depense
 from salaires.models import Enseignant, EtatSalaire
 from utilisateurs.utils import user_is_admin, user_school
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill, Border, Side, numbers
+from openpyxl.utils import get_column_letter
 
 # Décorateur d'accès admin uniquement
 admin_required = user_passes_test(user_is_admin)
@@ -77,6 +80,85 @@ def generer_rapport_journalier(request):
     )
     
     return HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+
+@login_required
+@admin_required
+def export_rapport_annuel_excel(request):
+    """Export Excel du rapport annuel."""
+    aujourd_hui = date.today()
+    debut_annee = date(aujourd_hui.year, 1, 1)
+    fin_annee = date(aujourd_hui.year, 12, 31)
+    if request.GET.get('annee'):
+        annee = int(request.GET.get('annee'))
+        debut_annee = date(annee, 1, 1)
+        fin_annee = date(annee, 12, 31)
+    debut_dt = django_timezone.make_aware(datetime.combine(debut_annee, datetime.min.time()))
+    fin_dt = django_timezone.make_aware(datetime.combine(fin_annee, datetime.max.time()))
+
+    donnees = collecter_donnees_periode(debut_dt, fin_dt, 'ANNUEL', user=request.user)
+    wb = _build_excel_from_donnees(donnees, titre=f"Rapport Annuel - {debut_annee.year}")
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="rapport_annuel_{debut_annee.year}.xlsx"'
+    wb.save(response)
+    return response
+
+@login_required
+@admin_required
+def export_rapport_mensuel_excel(request):
+    """Export Excel du rapport mensuel."""
+    aujourd_hui = date.today()
+    debut_mois = aujourd_hui.replace(day=1)
+    fin_mois = (debut_mois + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    if request.GET.get('mois') and request.GET.get('annee'):
+        mois = int(request.GET.get('mois'))
+        annee = int(request.GET.get('annee'))
+        debut_mois = date(annee, mois, 1)
+        fin_mois = (debut_mois + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+    debut_dt = django_timezone.make_aware(datetime.combine(debut_mois, datetime.min.time()))
+    fin_dt = django_timezone.make_aware(datetime.combine(fin_mois, datetime.max.time()))
+
+    donnees = collecter_donnees_periode(debut_dt, fin_dt, 'MENSUEL', user=request.user)
+    wb = _build_excel_from_donnees(donnees, titre=f"Rapport Mensuel - {debut_mois.strftime('%B %Y')}")
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="rapport_mensuel_{debut_mois.strftime("%Y%m")}.xlsx"'
+    wb.save(response)
+    return response
+
+@login_required
+@admin_required
+def export_rapport_hebdomadaire_excel(request):
+    """Export Excel du rapport hebdomadaire (lundi-dimanche)."""
+    aujourd_hui = date.today()
+    debut_semaine = aujourd_hui - timedelta(days=aujourd_hui.weekday())
+    fin_semaine = debut_semaine + timedelta(days=6)
+    if request.GET.get('debut'):
+        debut_semaine = datetime.strptime(request.GET.get('debut'), '%Y-%m-%d').date()
+        fin_semaine = debut_semaine + timedelta(days=6)
+    debut_dt = django_timezone.make_aware(datetime.combine(debut_semaine, datetime.min.time()))
+    fin_dt = django_timezone.make_aware(datetime.combine(fin_semaine, datetime.max.time()))
+
+    donnees = collecter_donnees_periode(debut_dt, fin_dt, 'HEBDOMADAIRE', user=request.user)
+    wb = _build_excel_from_donnees(donnees, titre=f"Rapport Hebdomadaire - {debut_semaine.strftime('%d/%m')} au {fin_semaine.strftime('%d/%m/%Y')}")
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="rapport_hebdomadaire_{debut_semaine.strftime("%Y%m%d")}.xlsx"'
+    wb.save(response)
+    return response
+
+@login_required
+@admin_required
+def export_rapport_journalier_excel(request):
+    """Export Excel du rapport journalier (mêmes données que le PDF)."""
+    date_rapport = date.today()
+    if request.GET.get('date'):
+        date_rapport = datetime.strptime(request.GET.get('date'), '%Y-%m-%d').date()
+
+    donnees = collecter_donnees_journalieres(date_rapport, user=request.user)
+    wb = _build_excel_from_donnees(donnees, titre=f"Rapport Journalier - {date_rapport.strftime('%d/%m/%Y')}")
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = f'attachment; filename="rapport_journalier_{date_rapport.strftime("%Y%m%d")}.xlsx"'
+    wb.save(response)
+    return response
 
 @login_required
 @admin_required
@@ -317,6 +399,106 @@ def get_or_create_type_rapport(nom):
     )
     return type_rapport
 
+def _build_excel_from_donnees(donnees, titre):
+    """Construit un classeur Excel à partir de la structure de données des rapports.
+    Feuille 1: Synthèse par école.
+    Feuille 2: Répartition par classe (toutes écoles).
+    """
+    wb = Workbook()
+    ws1 = wb.active
+    ws1.title = 'Synthèse'
+
+    header_fill = PatternFill(start_color='0D47A1', end_color='0D47A1', fill_type='solid')
+    header_font = Font(color='FFFFFF', bold=True)
+    thin = Side(style='thin', color='DDDDDD')
+    border_all = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # Titre
+    ws1.append([titre])
+    ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=8)
+    ws1['A1'].font = Font(bold=True, size=14)
+    ws1['A1'].alignment = Alignment(horizontal='center')
+
+    headers1 = [
+        'École', 'Nouveaux élèves', 'Nb paiements', 'Scolarité normale', "Scolarité payée",
+        "Frais d'inscription", 'Reste à payer', 'Montant original', 'Remises', 'Net encaissé',
+        'Nb dépenses', 'Total dépenses', 'États salaires', 'Total salaires'
+    ]
+    ws1.append(headers1)
+    for col in range(1, len(headers1) + 1):
+        c = ws1.cell(row=2, column=col)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal='center')
+        c.border = border_all
+
+    row = 3
+    for _, e in donnees.get('ecoles', {}).items():
+        vals = [
+            e.get('nom', ''),
+            e.get('nouveaux_eleves', 0),
+            e['paiements'].get('nombre', 0),
+            float(e['paiements'].get('total_du_concernes', 0) or 0),
+            float(e['paiements'].get('scolarite', 0) or 0),
+            float(e['paiements'].get('frais_inscription', 0) or 0),
+            float(e['paiements'].get('reste_a_payer', 0) or 0),
+            float(e['paiements'].get('montant_original', 0) or 0),
+            float(e['paiements'].get('total_remises', 0) or 0),
+            float(e['paiements'].get('montant_total', 0) or 0),
+            e['depenses'].get('nombre', 0),
+            float(donnees.get('depenses_globales', {}).get('montant_total', 0) or 0) if False else float(e['depenses'].get('montant_total', 0) or 0),
+            e['salaires'].get('etats_valides', 0),
+            float(e['salaires'].get('montant_total', 0) or 0),
+        ]
+        ws1.append(vals)
+        for col in range(1, len(headers1) + 1):
+            cell = ws1.cell(row=row, column=col)
+            cell.border = border_all
+            if col >= 4 and col != 11 and col != 13:  # colonnes montants
+                cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
+        row += 1
+
+    # Largeurs
+    widths = [26, 16, 14, 18, 18, 18, 16, 18, 16, 16, 14, 16, 14, 16]
+    for i, w in enumerate(widths, start=1):
+        ws1.column_dimensions[get_column_letter(i)].width = w
+
+    # Feuille 2: par classe
+    ws2 = wb.create_sheet('Par classe')
+    headers2 = ['École', 'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Reste à payer']
+    ws2.append(headers2)
+    for col in range(1, len(headers2) + 1):
+        c = ws2.cell(row=1, column=col)
+        c.fill = header_fill
+        c.font = header_font
+        c.alignment = Alignment(horizontal='center')
+        c.border = border_all
+
+    r = 2
+    for _, e in donnees.get('ecoles', {}).items():
+        ecole_nom = e.get('nom', '')
+        for c in e.get('classes', []) or []:
+            ws2.append([
+                ecole_nom,
+                c.get('classe', ''),
+                c.get('effectif', 0),
+                float(c.get('total_du', 0) or 0),
+                float(c.get('total_paye', 0) or 0),
+                float(c.get('remises', 0) or 0),
+                float(c.get('reste', 0) or 0),
+            ])
+            for col in range(1, len(headers2) + 1):
+                cell = ws2.cell(row=r, column=col)
+                cell.border = border_all
+                if col >= 4:
+                    cell.number_format = numbers.FORMAT_NUMBER_COMMA_SEPARATED1
+            r += 1
+
+    for i, w in enumerate([22, 18, 12, 16, 16, 16, 16], start=1):
+        ws2.column_dimensions[get_column_letter(i)].width = w
+
+    return wb
+
 def collecter_donnees_journalieres(date_rapport, user=None):
     """Collecte toutes les données importantes pour le rapport journalier"""
     donnees = {
@@ -486,6 +668,20 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         else:
             annee_scolaire = f"{date_rapport.year - 1}-{date_rapport.year}"
 
+        # Répartition des remises par classe (sur les paiements de la période du jour)
+        remises_par_classe_map = {}
+        try:
+            remises_group = PaiementRemise.objects.filter(
+                paiement__in=paiements_jour
+            ).values(
+                'paiement__eleve__classe_id'
+            ).annotate(
+                total=Sum('montant_remise')
+            )
+            remises_par_classe_map = {row['paiement__eleve__classe_id']: (row['total'] or Decimal('0')) for row in remises_group}
+        except Exception:
+            remises_par_classe_map = {}
+
         reste_a_payer = Decimal('0')
         total_du_concernes = Decimal('0')
         if eleves_concernes_ids:
@@ -525,6 +721,7 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                         'total_du': Decimal('0'),
                         'total_paye': Decimal('0'),
                         'reste': Decimal('0'),
+                        'remises': Decimal('0'),
                     }
                 pc = par_classe[classe_id]
                 pc['effectif'] += 1
@@ -532,6 +729,11 @@ def collecter_donnees_journalieres(date_rapport, user=None):
                 pc['total_paye'] += paye
                 if solde > 0:
                     pc['reste'] += solde
+                # Ajouter remises pour cette classe (agrégées sur les paiements du jour)
+                try:
+                    pc['remises'] = remises_par_classe_map.get(classe_id, pc['remises'])
+                except Exception:
+                    pass
 
             # Ranger la liste ordonnée par nom de classe
             donnees_ecole['classes'] = sorted(par_classe.values(), key=lambda x: x['classe'])
@@ -624,7 +826,7 @@ def generer_pdf_journalier(donnees, date_rapport):
             story.append(Paragraph("Répartition par classe", styles['Heading3']))
             story.append(Spacer(1, 6))
             class_data = [[
-                'Classe', 'Effectif', 'Total dû', 'Total payé', 'Reste à payer'
+                'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Reste à payer'
             ]]
             for c in donnees_ecole['classes']:
                 class_data.append([
@@ -632,10 +834,11 @@ def generer_pdf_journalier(donnees, date_rapport):
                     str(c['effectif']),
                     f"{c['total_du']:,} GNF".replace(',', ' '),
                     f"{c['total_paye']:,} GNF".replace(',', ' '),
+                    f"{c.get('remises', 0):,} GNF".replace(',', ' '),
                     f"{c['reste']:,} GNF".replace(',', ' '),
                 ])
 
-            class_table = Table(class_data, colWidths=[120, 60, 100, 100, 100])
+            class_table = Table(class_data, colWidths=[120, 60, 90, 90, 90, 90])
             class_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                 ('TEXTCOLOR', (0,0), (-1,0), colors.black),

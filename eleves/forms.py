@@ -47,9 +47,10 @@ class ResponsableForm(forms.ModelForm):
                 'class': 'form-control',
                 'type': 'tel',
                 'inputmode': 'numeric',
-                'placeholder': 'XXXXXXXXX',
-                'pattern': r'^\d{8,9}$',
-                'title': 'Entrez uniquement le numéro local (8 à 9 chiffres), sans +224.'
+                'placeholder': '8–9 chiffres ou +224XXXXXXXXX',
+                # Autoriser soit un numéro local (8-9 chiffres), soit un numéro avec indicatif 224 (avec ou sans +)
+                'pattern': r'^(?:\+?224)?\d{8,9}$',
+                'title': 'Entrez 8 à 9 chiffres (local) ou un numéro avec indicatif (+224XXXXXXXXX).'
             }),
             'email': forms.EmailInput(attrs={
                 'class': 'form-control',

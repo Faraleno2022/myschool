@@ -259,6 +259,19 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         total_du_concernes = Decimal('0')
         reste_a_payer = Decimal('0')
         classes_map = {}
+        # Pré-calcul des remises par classe sur la période (basé sur les paiements de la période)
+        remises_par_classe_map = {}
+        try:
+            remises_group = PaiementRemise.objects.filter(
+                paiement__in=paiements_periode
+            ).values(
+                'paiement__eleve__classe_id'
+            ).annotate(
+                total=Sum('montant_remise')
+            )
+            remises_par_classe_map = {row['paiement__eleve__classe_id']: (row['total'] or Decimal('0')) for row in remises_group}
+        except Exception:
+            remises_par_classe_map = {}
         if eleves_concernes_ids:
             qs_ech = EcheancierPaiement.objects.filter(
                 eleve_id__in=list(eleves_concernes_ids),
@@ -292,6 +305,7 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
                         'total_du': Decimal('0'),
                         'total_paye': Decimal('0'),
                         'reste': Decimal('0'),
+                        'remises': Decimal('0'),
                     }
                 cm = classes_map[classe_id]
                 cm['effectif'] += 1
@@ -299,6 +313,11 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
                 cm['total_paye'] += paye
                 if solde > 0:
                     cm['reste'] += solde
+                # Injecter remises agrégées pour cette classe
+                try:
+                    cm['remises'] = remises_par_classe_map.get(classe_id, cm['remises'])
+                except Exception:
+                    pass
 
         donnees_ecole['paiements']['total_du_concernes'] = total_du_concernes
         donnees_ecole['paiements']['reste_a_payer'] = reste_a_payer
@@ -393,7 +412,7 @@ def generer_pdf_periode(donnees, debut, fin, type_periode):
             story.append(Paragraph("Répartition par classe", styles['Heading3']))
             story.append(Spacer(1, 6))
             class_data = [[
-                'Classe', 'Effectif', 'Total dû', 'Total payé', 'Reste à payer'
+                'Classe', 'Effectif', 'Total dû', 'Total payé', 'Remises', 'Reste à payer'
             ]]
             for c in donnees_ecole['classes']:
                 class_data.append([
@@ -401,10 +420,11 @@ def generer_pdf_periode(donnees, debut, fin, type_periode):
                     str(c['effectif']),
                     f"{c['total_du']:,} GNF".replace(',', ' '),
                     f"{c['total_paye']:,} GNF".replace(',', ' '),
+                    f"{c.get('remises', 0):,} GNF".replace(',', ' '),
                     f"{c['reste']:,} GNF".replace(',', ' '),
                 ])
 
-            class_table = Table(class_data, colWidths=[120, 60, 100, 100, 100])
+            class_table = Table(class_data, colWidths=[120, 60, 90, 90, 90, 90])
             class_table.setStyle(TableStyle([
                 ('BACKGROUND', (0,0), (-1,0), colors.lightgrey),
                 ('TEXTCOLOR', (0,0), (-1,0), colors.black),

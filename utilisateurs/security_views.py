@@ -7,7 +7,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.core.cache import cache
 from django.http import HttpResponseForbidden
-from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
 from django.views.decorators.cache import never_cache
 from django.utils.decorators import method_decorator
 from django.views.generic import View
@@ -55,6 +55,7 @@ def reset_failed_attempts(ip):
     cache_key = f"failed_login_{ip}"
     cache.delete(cache_key)
 
+@ensure_csrf_cookie
 @csrf_protect
 @never_cache
 def secure_login(request):

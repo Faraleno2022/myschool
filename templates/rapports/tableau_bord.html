@@ -105,6 +105,9 @@
                                         <button class="btn btn-primary btn-sm" onclick="genererRapport('journalier')">
                                             <i class="fas fa-download me-1"></i>Aujourd'hui
                                         </button>
+                                        <button class="btn btn-outline-secondary btn-sm" onclick="exporterRapport('journalier')">
+                                            <i class="fas fa-file-excel me-1"></i>Exporter Excel
+                                        </button>
                                         <button class="btn btn-outline-primary btn-sm" onclick="choisirDateJournalier()">
                                             <i class="fas fa-calendar me-1"></i>Choisir date
                                         </button>
@@ -121,6 +124,9 @@
                                     <div class="d-flex flex-column gap-2">
                                         <button class="btn btn-success btn-sm" onclick="genererRapport('hebdomadaire')">
                                             <i class="fas fa-download me-1"></i>Cette semaine
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm" onclick="exporterRapport('hebdomadaire')">
+                                            <i class="fas fa-file-excel me-1"></i>Exporter Excel
                                         </button>
                                         <button class="btn btn-outline-success btn-sm" onclick="choisirSemaineHebdomadaire()">
                                             <i class="fas fa-calendar me-1"></i>Choisir semaine
@@ -139,6 +145,9 @@
                                         <button class="btn btn-info btn-sm" onclick="genererRapport('mensuel')">
                                             <i class="fas fa-download me-1"></i>Ce mois
                                         </button>
+                                        <button class="btn btn-outline-secondary btn-sm" onclick="exporterRapport('mensuel')">
+                                            <i class="fas fa-file-excel me-1"></i>Exporter Excel
+                                        </button>
                                         <button class="btn btn-outline-info btn-sm" onclick="choisirMoisMensuel()">
                                             <i class="fas fa-calendar me-1"></i>Choisir mois
                                         </button>
@@ -155,6 +164,9 @@
                                     <div class="d-flex flex-column gap-2">
                                         <button class="btn btn-warning btn-sm" onclick="genererRapport('annuel')">
                                             <i class="fas fa-download me-1"></i>Cette année
+                                        </button>
+                                        <button class="btn btn-outline-secondary btn-sm" onclick="exporterRapport('annuel')">
+                                            <i class="fas fa-file-excel me-1"></i>Exporter Excel
                                         </button>
                                         <button class="btn btn-outline-warning btn-sm" onclick="choisirAnneeAnnuel()">
                                             <i class="fas fa-calendar me-1"></i>Choisir année
@@ -352,6 +364,31 @@ function genererRapport(type) {
     }, 2000);
 }
 
+function exporterRapport(type) {
+    const base = `{% url 'rapports:tableau_bord' %}`; // ex: /rapports/
+    if (type === 'journalier') {
+        const today = new Date().toISOString().slice(0,10);
+        window.open(`${base}journalier/export/excel/?date=${today}`, '_blank');
+    } else if (type === 'hebdomadaire') {
+        // Calcule le lundi de la semaine courante
+        const d = new Date();
+        const day = d.getDay();
+        const diff = (day === 0 ? -6 : 1) - day; // ajuste pour lundi
+        const monday = new Date(d);
+        monday.setDate(d.getDate() + diff);
+        const debut = monday.toISOString().slice(0,10);
+        window.open(`${base}hebdomadaire/export/excel/?debut=${debut}`, '_blank');
+    } else if (type === 'mensuel') {
+        const now = new Date();
+        const mois = now.getMonth() + 1;
+        const annee = now.getFullYear();
+        window.open(`${base}mensuel/export/excel/?mois=${mois}&annee=${annee}`, '_blank');
+    } else if (type === 'annuel') {
+        const annee = new Date().getFullYear();
+        window.open(`${base}annuel/export/excel/?annee=${annee}`, '_blank');
+    }
+}
+
 function choisirDateJournalier() {
     const modal = new bootstrap.Modal(document.getElementById('modalDateJournalier'));
     modal.show();
@@ -383,10 +420,23 @@ function genererRapportAvecDate(type) {
     bootstrap.Modal.getInstance(document.getElementById('modalDateJournalier')).hide();
 }
 
+function exporterRapportAvecDate() {
+    const date = document.getElementById('dateJournalier').value;
+    window.open(`{% url 'rapports:tableau_bord' %}journalier/export/excel/?date=${date}`, '_blank');
+    bootstrap.Modal.getInstance(document.getElementById('modalDateJournalier')).hide();
+}
+
 function genererRapportMensuelAvecDate() {
     const mois = document.getElementById('moisMensuel').value;
     const annee = document.getElementById('anneeMensuel').value;
     window.open(`{% url 'rapports:tableau_bord' %}mensuel/?mois=${mois}&annee=${annee}`, '_blank');
+    bootstrap.Modal.getInstance(document.getElementById('modalMoisMensuel')).hide();
+}
+
+function exporterRapportMensuelAvecDate() {
+    const mois = document.getElementById('moisMensuel').value;
+    const annee = document.getElementById('anneeMensuel').value;
+    window.open(`{% url 'rapports:tableau_bord' %}mensuel/export/excel/?mois=${mois}&annee=${annee}`, '_blank');
     bootstrap.Modal.getInstance(document.getElementById('modalMoisMensuel')).hide();
 }
 

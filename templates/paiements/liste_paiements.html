@@ -357,33 +357,31 @@ function exportListeExcel() {
     const base = '{% url "paiements:export_liste_paiements_excel" %}';
     const out = new URL(base, window.location.origin);
     const q = u.searchParams.get('q') || (document.getElementById('q')?.value || '').trim();
+    const statut = u.searchParams.get('statut');
     if (q) out.searchParams.set('q', q);
+    if (statut) out.searchParams.set('statut', statut);
     window.open(out.toString(), '_blank');
 }
 
 function rejeterPaiement(paiementId) {
-    if (confirm('Êtes-vous sûr de vouloir rejeter ce paiement ?')) {
-        // Logique de rejet du paiement
-        fetch(`/paiements/${paiementId}/rejeter/`, {
-            method: 'POST',
-            headers: {
-                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value,
-                'Content-Type': 'application/json',
-            },
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('Erreur lors du rejet du paiement');
-            }
-        })
-        .catch(error => {
-            console.error('Erreur:', error);
+    if (!confirm('Êtes-vous sûr de vouloir rejeter ce paiement ?')) return;
+    // Utilise csrfFetch (défini globalement dans base.html)
+    csrfFetch(`/paiements/${paiementId}/rejeter/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
             alert('Erreur lors du rejet du paiement');
-        });
-    }
+        }
+    })
+    .catch(error => {
+        console.error('Erreur:', error);
+        alert('Erreur lors du rejet du paiement');
+    });
 }
 </script>
 {% endblock %}

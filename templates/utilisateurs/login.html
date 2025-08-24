@@ -9,18 +9,15 @@
     <div class="card-body p-4">
       <h1 class="h4 mb-3 text-center"><i class="fas fa-sign-in-alt me-2"></i>Connexion</h1>
 
-      {% if form.errors %}
-        <div class="alert alert-danger">
-          <i class="fas fa-exclamation-triangle me-1"></i>
-          Identifiants invalides. Veuillez réessayer.
-        </div>
-      {% endif %}
+      {# Les erreurs/infos sont affichées via messages dans base.html #}
 
-      <form method="post" novalidate>
+      <form method="post" action="{% url 'utilisateurs:login' %}" novalidate>
         {% csrf_token %}
-        {# Préserve la redirection vers la page d'origine (#next) #}
-        {% if redirect_field_value %}
-          <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+        {# Préserve la redirection vers la page d'origine (next) #}
+        {% if request.GET.next %}
+          <input type="hidden" name="next" value="{{ request.GET.next }}">
+        {% elif request.POST.next %}
+          <input type="hidden" name="next" value="{{ request.POST.next }}">
         {% endif %}
         <div class="mb-3">
           <label for="id_username" class="form-label">Nom d'utilisateur</label>

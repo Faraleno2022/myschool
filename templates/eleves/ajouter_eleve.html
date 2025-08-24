@@ -293,6 +293,7 @@
                                     {% if responsable_principal_form.telephone.errors %}
                                         <div class="text-danger small mt-1">{{ responsable_principal_form.telephone.errors.0 }}</div>
                                     {% endif %}
+                                    <div class="form-text">Entrez 8 à 9 chiffres (local) ou un numéro avec indicatif (+224XXXXXXXXX). Le numéro sera normalisé automatiquement à l'enregistrement.</div>
                                 </div>
                             </div>
                         </div>
@@ -426,6 +427,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     selectResponsable.value = '';
                     selectResponsable.disabled = true;
                 }
+
+                // Rendre les champs du nouveau responsable requis
+                const champsRequis = [
+                    'resp_principal-prenom',
+                    'resp_principal-nom',
+                    'resp_principal-relation',
+                    'resp_principal-telephone'
+                ];
+                champsRequis.forEach(name => {
+                    const el = nouveauResponsable.querySelector(`[name="${name}"]`);
+                    if (el) el.setAttribute('required', 'required');
+                });
+                // Ne pas imposer de pattern JS ici; laisser le widget Django gérer (accepte local 8–9 chiffres ou +224...)
                 
                 console.log('Mode: Créer nouveau responsable');
             } else {
@@ -442,6 +456,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 const nouveauChamps = nouveauResponsable.querySelectorAll('input, select, textarea');
                 nouveauChamps.forEach(champ => {
                     champ.value = '';
+                });
+
+                // Retirer l'obligation des champs du nouveau responsable
+                const champsRequis = [
+                    'resp_principal-prenom',
+                    'resp_principal-nom',
+                    'resp_principal-relation',
+                    'resp_principal-telephone'
+                ];
+                champsRequis.forEach(name => {
+                    const el = nouveauResponsable.querySelector(`[name="${name}"]`);
+                    if (el) el.removeAttribute('required');
                 });
                 
                 console.log('Mode: Sélectionner responsable existant');
