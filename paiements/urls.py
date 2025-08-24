@@ -37,8 +37,12 @@ urlpatterns = [
     path('ajax/calculer-remise/', views.ajax_calculer_remise, name='ajax_calculer_remise'),
     path('ajax/classes/', views.ajax_classes_par_ecole, name='ajax_classes_par_ecole'),
     
+    # Webhooks (Twilio)
+    path('twilio/status-callback/', views.twilio_status_callback, name='twilio_status_callback'),
+    
     # Remises
     path('remise/<int:paiement_id>/', views.appliquer_remise_paiement, name='appliquer_remise'),
     path('calculateur-remise/', views.calculateur_remise, name='calculateur_remise'),
 ]
+
 

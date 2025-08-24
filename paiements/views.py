@@ -15,6 +15,7 @@ from django.core.paginator import Paginator
 from decimal import Decimal
 from datetime import date, datetime
 import os
+import logging
 
 from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise, Relance
 from eleves.models import Eleve, GrilleTarifaire, Classe
@@ -24,11 +25,16 @@ from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
 from utilisateurs.permissions import can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports
 # Removed incorrect imports from rapports.utils (format_currency, ensure_current_academic_year not present)
 from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+from django.urls import reverse
 import re
 import unicodedata
 
 # Filigrane PDF partagé
 from ecole_moderne.pdf_utils import draw_logo_watermark
+
+# Twilio helper
+from .twilio_utils import send_payment_confirmation_async
 
 # --- Configuration des tolérances (ajustables) ---
 # Tolérance absolue pour la détection "Inscription + 1ère tranche"
@@ -1698,6 +1704,46 @@ def valider_paiement(request, paiement_id):
                     paiement.date_validation = timezone.now()
                     paiement.save()
 
+                    # Envoi asynchrone du message de confirmation (SMS/WhatsApp)
+                    try:
+                        # Récupérer le numéro du responsable principal s'il existe
+                        to_number = None
+                        try:
+                            to_number = getattr(getattr(paiement.eleve, 'responsable_principal', None), 'telephone', None)
+                        except Exception:
+                            to_number = None
+
+                        # Construire le message en français
+                        eleve = paiement.eleve
+                        ecole_nom = getattr(getattr(eleve.classe, 'ecole', None), 'nom', '') or 'École'
+                        montant_int = int((paiement.montant or Decimal('0')))
+                        montant_fmt = f"{montant_int:,}".replace(',', ' ')
+                        body = (
+                            f"Confirmation de paiement - {ecole_nom}\n"
+                            f"Reçu N° {paiement.numero_recu}\n"
+                            f"Élève: {eleve.prenom} {eleve.nom} (Mat: {eleve.matricule})\n"
+                            f"Montant: {montant_fmt} GNF\n"
+                            f"Date: {timezone.localtime(paiement.date_validation).strftime('%d/%m/%Y %H:%M')}\n"
+                            f"Merci pour votre règlement."
+                        )
+
+                        # Générer l'URL absolue de callback si le route est défini
+                        status_cb = None
+                        try:
+                            status_cb = request.build_absolute_uri(reverse('paiements:twilio_status_callback'))
+                        except Exception:
+                            status_cb = None
+
+                        # Feu et oublie si un numéro est disponible
+                        send_payment_confirmation_async(
+                            to_number=to_number,
+                            body=body,
+                            channel_env=os.getenv('TWILIO_CHANNEL', None),
+                            status_callback=status_cb,
+                        )
+                    except Exception as _err:
+                        logging.getLogger(__name__).warning("Twilio send skipped/failed: %s", _err)
+
                     # Afficher les messages non bloquants
                     for w in feedback.get('warnings', []):
                         messages.warning(request, w)
@@ -2913,3 +2959,16 @@ def rapport_remises(request):
     }
 
     return render(request, 'paiements/rapport_remises.html', context)
+
+@csrf_exempt
+@require_http_methods(["POST"]) 
+def twilio_status_callback(request):
+    """Réception des callbacks de statut Twilio (optionnel).
+    Journalise l'événement et répond 200.
+    """
+    try:
+        data = request.POST.dict()
+    except Exception:
+        data = {}
+    logging.getLogger(__name__).info("Twilio status callback: %s", data)
+    return JsonResponse({"status": "ok"})
