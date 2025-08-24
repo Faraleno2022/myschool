@@ -658,9 +658,14 @@ def envoyer_rappel_paiement(request):
             except Eleve.DoesNotExist:
                 continue
 
-            # total dû
-            echeanciers_retard = EcheancierPaiement.objects.filter(eleve=eleve, solde_restant__gt=0)
-            total_du = sum(e.solde_restant for e in echeanciers_retard)
+            # total dû (ne pas filtrer sur un @property au niveau ORM)
+            total_du = Decimal('0')
+            try:
+                echeancier = EcheancierPaiement.objects.get(eleve=eleve)
+                if echeancier.solde_restant > 0:
+                    total_du = echeancier.solde_restant
+            except EcheancierPaiement.DoesNotExist:
+                pass
 
             # Préparer destinataires: principal et secondaire si disponibles
             destinataires = []
