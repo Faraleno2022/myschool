@@ -324,6 +324,11 @@
                                 <div class="text-danger small">{{ form.montant.errors.0 }}</div>
                             {% endif %}
                             <div id="montantDisplay" class="montant-display mt-2">0 GNF</div>
+                            <div class="mt-2 small text-muted">
+                                <span>Montant final (après remise): </span>
+                                <strong id="finalAmountDisplay">0 GNF</strong>
+                                <span id="remiseInfo" class="ms-2" style="display:none;"></span>
+                            </div>
                         </div>
                         
                         <div class="col-md-6 mb-3">
@@ -482,6 +487,10 @@
                     <span class="label">Montant saisi:</span>
                     <span id="stickyMontant" class="value raw">0 GNF</span>
                 </div>
+                <div>
+                    <span class="label">Montant final:</span>
+                    <span id="stickyFinal" class="value final">0 GNF</span>
+                </div>
                 <div class="text-muted small d-none d-md-block">
                     <i class="fas fa-info-circle me-1"></i>Vérifiez avant d'enregistrer
                 </div>
@@ -515,6 +524,37 @@ document.addEventListener('DOMContentLoaded', function() {
             if (stickyMontant) stickyMontant.textContent = '0 GNF';
         }
     }
+
+    // Helpers and shared elements
+    const badge = document.getElementById('montantSuggestionBadge');
+    const badgeValue = document.getElementById('montantSuggestionValue');
+
+    function fmtGNF(v) {
+        try { return Number(v||0).toLocaleString('fr-FR') + ' GNF'; } catch(_) { return String(v||0) + ' GNF'; }
+    }
+
+    function roundNearest1000(v) {
+        const n = Number(v||0);
+        if (!isFinite(n)) return 0;
+        return Math.round(n / 1000) * 1000;
+    }
+
+    function getEcheancierSafe() {
+        try { return (typeof getEcheancier === 'function') ? getEcheancier() : null; } catch(_) { return null; }
+    }
+
+    // Renvoie la base scolarité hors inscription
+    function getTuitionBase() {
+        const ech = getEcheancierSafe();
+        if (!ech) return null;
+        const due = (Number(ech.t1_du||0) + Number(ech.t2_du||0) + Number(ech.t3_du||0));
+        const paye = (Number(ech.t1_paye||0) + Number(ech.t2_paye||0) + Number(ech.t3_paye||0));
+        const rest = Math.max(0, due - paye);
+        return { due, paye, rest };
+    }
+
+    // Optionnel: point d'accroche pour afficher un hint 1%
+    function updateOnePercentHint() { /* no-op if UI not present */ }
     
     // Mettre à jour l'affichage du montant lors de la saisie
     if (montantInput) {
