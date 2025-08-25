@@ -199,7 +199,7 @@
                                                 <small class="text-muted">{{ echeancier.eleve.classe.nom }} - {{ echeancier.eleve.classe.ecole.nom }}</small>
                                             </p>
                                             <small class="text-danger">
-                                                <i class="fas fa-clock me-1"></i>Retard: {{ echeancier.solde_restant|floatformat:0|intcomma }} GNF
+                                                <i class="fas fa-clock me-1"></i>Retard: {{ echeancier.retard_db|floatformat:0|intcomma }} GNF
                                             </small>
                                         </div>
                                         <div class="text-end">

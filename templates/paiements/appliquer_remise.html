@@ -116,6 +116,7 @@
                                     </div>
                                     <div class="card-body">
                                         {{ form.montant_original.as_hidden }}
+                                        <input type="hidden" id="id_base_scolarite" name="base_scolarite" value="{{ base_scolarite }}">
                                         <!-- Sélecteur de remise scolarité (%) 1-10 -->
                                         <div class="mb-3">
                                             <label class="form-label" for="id_pourcentage_scolarite">
@@ -123,7 +124,7 @@
                                             </label>
                                             {{ form.pourcentage_scolarite }}
                                             <small class="text-muted d-block mt-1">
-                                                Le pourcentage choisi s'appliquera sur la base scolarité (T1+T2+T3). L'aperçu ci-dessous utilise le montant de ce paiement à titre indicatif.
+                                                Le pourcentage choisi s'applique sur la base scolarité (T1+T2+T3). L'aperçu utilise cette base scolarité, pas le montant saisi.
                                             </small>
                                         </div>
                                         
@@ -228,14 +229,13 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const checkboxes = document.querySelectorAll('.remise-checkbox');
-    const montantOriginal = parseFloat('{{ paiement.montant }}');
+    const montantOriginalInput = document.getElementById('id_montant_original');
+    const montantOriginal = parseFloat(montantOriginalInput && montantOriginalInput.value ? montantOriginalInput.value.replace(/\s/g, '') : '0');
     const btnAppliquer = document.getElementById('btnAppliquer');
     const selectPct = document.getElementById('id_pourcentage_scolarite');
-    // Si des remises sont disponibles, activer le bouton par défaut (l'envoi est de toute façon validé côté JS)
-    if (checkboxes.length > 0) {
-        btnAppliquer.disabled = false;
-    }
-    
+    const baseScolariteInput = document.getElementById('id_base_scolarite');
+    const baseScolarite = parseFloat(baseScolariteInput && baseScolariteInput.value ? baseScolariteInput.value.replace(/\s/g, '') : '0');
+    // Le bouton reste désactivé tant qu'aucune sélection n'est faite; voir updatePreview()
     function updatePreview() {
         let totalRemises = 0;
         let remisesDetails = [];
@@ -264,12 +264,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
 
-        // Appliquer le pourcentage scolarité si choisi (aperçu basé sur montantOriginal)
+        // Appliquer le pourcentage scolarité si choisi (aperçu basé sur base scolarité T1+T2+T3)
         if (selectPct && selectPct.value) {
             const pct = parseFloat(selectPct.value);
             if (!isNaN(pct) && pct > 0) {
                 hasSelection = true;
-                const montantPct = (montantOriginal * pct) / 100;
+                const montantPct = (baseScolarite * pct) / 100;
                 totalRemises += montantPct;
                 remisesDetails.push({
                     nom: `Remise scolarité ${pct}%`,

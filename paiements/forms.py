@@ -158,12 +158,30 @@ class EcheancierForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # Année scolaire par défaut
-        if not self.instance.pk:
+        if not self.instance.pk and not self.initial.get('annee_scolaire'):
             current_year = date.today().year
             if date.today().month >= 9:  # Année scolaire commence en septembre
                 self.fields['annee_scolaire'].initial = f"{current_year}-{current_year + 1}"
             else:
                 self.fields['annee_scolaire'].initial = f"{current_year - 1}-{current_year}"
+
+        # Attacher data-iso aux champs date pour que le fallback JS du template puisse les remplir
+        date_fields = [
+            'date_echeance_inscription',
+            'date_echeance_tranche_1',
+            'date_echeance_tranche_2',
+            'date_echeance_tranche_3',
+        ]
+        for f in date_fields:
+            try:
+                # Valeur initiale potentielle (passée via initial du formulaire)
+                val = self.initial.get(f) or self.fields[f].initial
+                if val:
+                    # S'assurer que le widget a un attribut data-iso exploitable par le template
+                    self.fields[f].widget.attrs['data-iso'] = getattr(val, 'isoformat', lambda: str(val))()
+            except Exception:
+                # En cas d'erreur, on n'empêche pas le rendu du formulaire
+                continue
 
     def clean(self):
         cleaned_data = super().clean()

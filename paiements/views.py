@@ -18,10 +18,21 @@ import logging
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.core.paginator import Paginator
-from django.db.models import F, ExpressionWrapper, DecimalField
+from django.db.models import F, ExpressionWrapper, DecimalField, Case, When, Value, Q, Sum
+from django.db.models.functions import Coalesce, Least
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side, numbers
+from io import BytesIO
+try:
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.utils import ImageReader
+except Exception:
+    canvas = None
+    A4 = (595.27, 841.89)
+    ImageReader = None
+from ecole_moderne.pdf_utils import draw_logo_watermark
 
 from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise, Relance, TwilioInboundMessage
 from eleves.models import Eleve, GrilleTarifaire, Classe
@@ -154,15 +165,45 @@ def _compute_stats():
         date_paiement__lte=today,
     ).count()
 
-    # Élèves en retard: solde restant > 0
-    solde_expr = (
-        F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due')
-        - (F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'))
+    # Élèves en retard: montants exigibles (échéances dépassées) > payés + remises
+    exigible_expr = (
+        Case(
+            When(date_echeance_inscription__lte=today, then=F('frais_inscription_du')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_1__lte=today, then=F('tranche_1_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_2__lte=today, then=F('tranche_2_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_3__lte=today, then=F('tranche_3_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
     )
+    remises_expr = Coalesce(
+        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Value(0),
+        output_field=DecimalField(max_digits=10, decimal_places=0),
+    )
+    # Les remises ne doivent compenser que le montant exigible à date (pas les échéances futures)
+    remises_applicables = Least(remises_expr, exigible_expr)
+    paye_effectif_expr = (
+        F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+        + remises_applicables
+    )
+    retard_expr = ExpressionWrapper(exigible_expr - paye_effectif_expr, output_field=DecimalField(max_digits=10, decimal_places=0))
     eleves_retard_count = (
         EcheancierPaiement.objects
-        .annotate(solde=ExpressionWrapper(solde_expr, output_field=DecimalField(max_digits=10, decimal_places=0)))
-        .filter(solde__gt=0)
+        .annotate(retard=retard_expr)
+        .filter(retard__gt=0)
         .count()
     )
 
@@ -211,17 +252,47 @@ def tableau_bord_paiements(request):
         )
     paiements_recents = list(paiements_recents_qs[:20])
 
-    # Top élèves en retard (solde décroissant) – NOTE: ne pas annoter "solde_restant" (collision avec @property)
-    solde_expr = (
-        F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due')
-        - (F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'))
+    # Top élèves en retard (montant de retard décroissant)
+    exigible_expr = (
+        Case(
+            When(date_echeance_inscription__lte=today, then=F('frais_inscription_du')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_1__lte=today, then=F('tranche_1_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_2__lte=today, then=F('tranche_2_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_3__lte=today, then=F('tranche_3_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
     )
+    remises_expr = Coalesce(
+        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Value(0),
+        output_field=DecimalField(max_digits=10, decimal_places=0),
+    )
+    # Les remises ne compensent que les montants exigibles au jour J
+    remises_applicables = Least(remises_expr, exigible_expr)
+    paye_effectif_expr = (
+        F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+        + remises_applicables
+    )
+    retard_expr = ExpressionWrapper(exigible_expr - paye_effectif_expr, output_field=DecimalField(max_digits=10, decimal_places=0))
     eleves_en_retard = (
         EcheancierPaiement.objects
         .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-        .annotate(solde_db=ExpressionWrapper(solde_expr, output_field=DecimalField(max_digits=10, decimal_places=0)))
-        .filter(solde_db__gt=0)
-        .order_by('-solde_db')[:10]
+        .annotate(retard_db=retard_expr)
+        .filter(retard_db__gt=0)
+        .order_by('-retard_db')[:10]
     )
 
     context = {
@@ -347,11 +418,20 @@ def detail_paiement(request, paiement_id:int):
         'can_validate_payments': can_validate_payments(request.user) if request.user.is_authenticated else False,
     }
 
+    # Total des remises appliquées sur ce paiement
+    try:
+        remises_total = (
+            paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
+        )
+    except Exception:
+        remises_total = 0
+
     context = {
         'titre_page': f"Détail du paiement #{paiement.id}",
         'paiement': paiement,
         'is_admin': user_is_admin(request.user) if request.user.is_authenticated else False,
         'user_permissions': perms_ctx,
+        'remises_total': int(remises_total or 0),
     }
     return render(request, 'paiements/detail_paiement.html', context)
 
@@ -516,20 +596,56 @@ def envoyer_notifs_retards(request):
     if not (user_is_admin(request.user) or can_view_reports(request.user)):
         return HttpResponse(status=403)
 
-    # Annoter solde restant au niveau DB pour filtrer efficacement
-    solde_expr = (
-        F('frais_inscription_du') + F('tranche_1_due') + F('tranche_2_due') + F('tranche_3_due')
-        - (F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'))
+    # Annoter montant de retard au niveau DB: (exigible - (payé + remises))
+    try:
+        from django.utils import timezone as _tz
+        today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
+    except Exception:
+        today = date.today()
+
+    exigible_expr = (
+        Case(
+            When(date_echeance_inscription__lte=today, then=F('frais_inscription_du')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_1__lte=today, then=F('tranche_1_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_2__lte=today, then=F('tranche_2_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_3__lte=today, then=F('tranche_3_due')),
+            default=Value(0),
+            output_field=DecimalField(max_digits=10, decimal_places=0),
+        )
     )
+    remises_expr = Coalesce(
+        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Value(0),
+        output_field=DecimalField(max_digits=10, decimal_places=0),
+    )
+    # Limiter l'effet des remises au montant actuellement exigible
+    remises_applicables = Least(remises_expr, exigible_expr)
+    paye_effectif_expr = (
+        F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee')
+        + remises_applicables
+    )
+    retard_expr = ExpressionWrapper(exigible_expr - paye_effectif_expr, output_field=DecimalField(max_digits=10, decimal_places=0))
     qs = (
         EcheancierPaiement.objects.select_related('eleve', 'eleve__classe')
-        .annotate(solde=ExpressionWrapper(solde_expr, output_field=DecimalField(max_digits=10, decimal_places=0)))
-        .filter(solde__gt=0)
+        .annotate(retard=retard_expr)
+        .filter(retard__gt=0)
     )
     envoyes = 0
     for ech in qs[:500]:  # sécurité: batch max 500
         try:
-            send_retard_notification(ech.eleve, ech.solde)
+            send_retard_notification(ech.eleve, ech.retard)
             envoyes += 1
         except Exception:
             logging.getLogger(__name__).exception("Échec envoi retard pour %s", getattr(ech.eleve, 'nom_complet', 'eleve'))
@@ -695,11 +811,259 @@ def creer_echeancier(request, eleve_id:int):
         'eleve': eleve,
         'form': form,
         'grille': grille if 'grille' in locals() else None,
+        'action': 'Créer',
     }
     return render(request, 'paiements/form_echeancier.html', context)
 
 def generer_recu_pdf(request, paiement_id:int):
-    return HttpResponse(f'Reçu PDF paiement {paiement_id} (placeholder)', content_type='application/pdf')
+    """Génère un reçu PDF téléchargeable pour un paiement validé.
+
+    - Ajoute un filigrane via `ecole_moderne/pdf_utils.draw_logo_watermark`
+    - Inclut les informations clés du paiement et de l'élève
+    - Liste les remises appliquées et affiche le total des remises
+    """
+    paiement = get_object_or_404(
+        Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement', 'eleve__classe', 'eleve__classe__ecole'),
+        pk=paiement_id,
+    )
+
+    # Optionnel: n'autoriser le reçu que pour les paiements validés
+    if getattr(paiement, 'statut', 'EN_ATTENTE') != 'VALIDE':
+        messages.warning(request, "Le reçu n'est disponible que pour les paiements validés.")
+        return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+
+    if canvas is None:
+        return HttpResponse("La génération de PDF n'est pas disponible sur ce serveur (ReportLab manquant).", status=500)
+
+    # Calcul total remises
+    remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
+
+    # Préparer le buffer et le canvas
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+
+    # Filigrane (désactivé par défaut; activer avec ?wm=1)
+    try:
+        if (request.GET.get('wm') or '').strip() == '1':
+            draw_logo_watermark(c, width, height, opacity=0.05, rotate=30, scale=1.2)
+    except Exception:
+        pass
+
+    # Mise en page simple
+    left = 40
+    top = height - 40
+    line_h = 18
+
+    def draw_line(text, x=left, y=None, bold=False):
+        nonlocal top
+        if y is None:
+            y = top
+        font_name = 'Helvetica-Bold' if bold else 'Helvetica'
+        c.setFont(font_name, 11)
+        c.drawString(x, y, text)
+        top = y - line_h
+
+    # En-tête
+    c.setFont('Helvetica-Bold', 16)
+    c.drawString(left, top, "Reçu de paiement")
+    top -= 10
+    c.setFont('Helvetica', 10)
+    c.drawString(left, top, (paiement.eleve.classe.ecole.nom if getattr(paiement.eleve.classe, 'ecole', None) else ""))
+    top -= 20
+
+    # Photo élève (en haut à droite si disponible) ou placeholder avec initiales si absente
+    try:
+        img_drawn = False
+        img_w, img_h = 100, 100
+        x_img = width - 40 - img_w
+        y_img = height - 40 - img_h
+        if ImageReader is not None:
+            photo_path = getattr(getattr(paiement.eleve, 'photo', None), 'path', None)
+            if photo_path and os.path.exists(photo_path):
+                try:
+                    img = ImageReader(photo_path)
+                    c.drawImage(img, x_img, y_img, width=img_w, height=img_h, preserveAspectRatio=True, mask='auto')
+                    img_drawn = True
+                except Exception:
+                    img_drawn = False
+        if not img_drawn:
+            # Dessiner un placeholder avec initiales
+            nom_complet = str(getattr(paiement.eleve, 'nom_complet', '') or '').strip()
+            initiales = ''.join([p[0].upper() for p in nom_complet.split()[:2]]) or 'E'
+            c.setLineWidth(1)
+            try:
+                c.roundRect(x_img, y_img, img_w, img_h, 8)
+            except Exception:
+                c.rect(x_img, y_img, img_w, img_h)
+            c.setFont('Helvetica-Bold', 24)
+            c.drawCentredString(x_img + img_w/2, y_img + img_h/2 - 8, initiales)
+            c.setFont('Helvetica', 8)
+            c.drawCentredString(x_img + img_w/2, y_img + 6, "Pas de photo")
+        # Afficher le nom de l'élève sous l'image/placeholder
+        try:
+            nom_aff = str(getattr(paiement.eleve, 'nom_complet', '') or '').strip()
+            if nom_aff:
+                c.setFont('Helvetica', 9)
+                c.drawCentredString(x_img + img_w/2, y_img - 12, nom_aff)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    # Informations paiement
+    draw_line(f"Numéro de reçu : {paiement.numero_recu}", bold=True)
+    draw_line(f"Date de paiement : {paiement.date_paiement.strftime('%d/%m/%Y')}")
+    draw_line(f"Type de paiement : {paiement.type_paiement.nom}")
+    draw_line(f"Mode de paiement : {paiement.mode_paiement.nom}")
+    if getattr(paiement, 'reference_externe', None):
+        draw_line(f"Référence externe : {paiement.reference_externe}")
+    if getattr(paiement, 'observations', None):
+        # Limiter l'observation à une ligne raisonnable pour le reçu
+        obs = str(paiement.observations).strip()
+        if obs:
+            draw_line(f"Observations : {obs}")
+    draw_line(f"Montant : {str(f'{paiement.montant:,.0f}').replace(',', ' ')} GNF", bold=True)
+
+    if remises_total and int(remises_total) > 0:
+        draw_line(f"Total remises : -{str(f'{int(remises_total):,}').replace(',', ' ')} GNF")
+    # Montant net (jamais négatif)
+    montant_net = max(0, int(paiement.montant - (remises_total or 0)))
+    draw_line(f"Montant net à payer : {str(f'{montant_net:,}').replace(',', ' ')} GNF", bold=True)
+
+    # Élève
+    top -= 6
+    draw_line("Informations de l'élève", bold=True)
+    draw_line(f"Nom : {paiement.eleve.nom_complet}")
+    if getattr(paiement.eleve, 'matricule', None):
+        draw_line(f"Matricule : {paiement.eleve.matricule}")
+    if getattr(paiement.eleve, 'classe', None):
+        draw_line(f"Classe : {paiement.eleve.classe}")
+
+    # Échéances (si disponibles sur l'échéancier de l'élève)
+    try:
+        echeancier = getattr(paiement.eleve, 'echeancier', None)
+    except Exception:
+        echeancier = None
+    if echeancier:
+        top -= 6
+        draw_line("Échéances", bold=True)
+        try:
+            def _fmt_amount(v):
+                try:
+                    return str(f"{int(v or 0):,}").replace(',', ' ')
+                except Exception:
+                    return str(v or 0)
+            def _fmt_date(d):
+                try:
+                    return d.strftime('%d/%m/%Y') if d else ''
+                except Exception:
+                    return str(d) if d else ''
+            # Inscription
+            draw_line(f"Inscription: {_fmt_amount(echeancier.frais_inscription_du)} GNF - Échéance: {_fmt_date(echeancier.date_echeance_inscription)}")
+            # Tranches
+            draw_line(f"1ère tranche: {_fmt_amount(echeancier.tranche_1_due)} GNF - Échéance: {_fmt_date(echeancier.date_echeance_tranche_1)}")
+            draw_line(f"2ème tranche: {_fmt_amount(echeancier.tranche_2_due)} GNF - Échéance: {_fmt_date(echeancier.date_echeance_tranche_2)}")
+            draw_line(f"3ème tranche: {_fmt_amount(echeancier.tranche_3_due)} GNF - Échéance: {_fmt_date(echeancier.date_echeance_tranche_3)}")
+        except Exception:
+            pass
+
+        # Restes à payer par tranche
+        try:
+            def _reste(due, paye):
+                try:
+                    return max(0, int((due or 0) - (paye or 0)))
+                except Exception:
+                    return 0
+            # Calcul global basé sur les paiements validés: somme(montants) - somme(remises)
+            try:
+                total_du = int((echeancier.frais_inscription_du or 0) + (echeancier.tranche_1_due or 0) + (echeancier.tranche_2_due or 0) + (echeancier.tranche_3_due or 0))
+            except Exception:
+                total_du = 0
+
+            try:
+                aggs = (
+                    Paiement.objects
+                    .filter(eleve=paiement.eleve, statut='VALIDE')
+                    .aggregate(sum_montant=Sum('montant'), sum_remises=Sum('remises__montant_remise'))
+                )
+                sum_montant = int(aggs.get('sum_montant') or 0)
+                sum_remises = int(aggs.get('sum_remises') or 0)
+            except Exception:
+                sum_montant = 0
+                sum_remises = 0
+
+            # Calcul de la couverture: montants payés + remises validées (les remises couvrent une partie du dû)
+            couverture_validee = max(0, int(sum_montant) + int(sum_remises))
+            # Inclure le paiement courant s'il n'est pas encore validé (montant + remises sur ce reçu)
+            try:
+                couverture_courante = max(0, int(paiement.montant) + int(remises_total or 0))
+            except Exception:
+                couverture_courante = 0
+            couverture_effective = couverture_validee + (couverture_courante if paiement.statut != 'VALIDE' else 0)
+            tout_solde = (total_du <= couverture_effective)
+            solde_global = max(0, int(total_du - couverture_effective))
+
+            top -= 6
+            # Solde global restant
+            draw_line(f"Solde global restant : {str(f'{solde_global:,}').replace(',', ' ')} GNF", bold=True)
+            draw_line("Restes à payer par tranche", bold=True)
+            if tout_solde:
+                r_insc = r_t1 = r_t2 = r_t3 = 0
+            else:
+                r_insc = _reste(echeancier.frais_inscription_du, echeancier.frais_inscription_paye)
+                r_t1 = _reste(echeancier.tranche_1_due, echeancier.tranche_1_payee)
+                r_t2 = _reste(echeancier.tranche_2_due, echeancier.tranche_2_payee)
+                r_t3 = _reste(echeancier.tranche_3_due, echeancier.tranche_3_payee)
+            draw_line(f"Inscription: {str(f'{r_insc:,}').replace(',', ' ')} GNF")
+            draw_line(f"1ère tranche: {str(f'{r_t1:,}').replace(',', ' ')} GNF")
+            draw_line(f"2ème tranche: {str(f'{r_t2:,}').replace(',', ' ')} GNF")
+            draw_line(f"3ème tranche: {str(f'{r_t3:,}').replace(',', ' ')} GNF")
+        except Exception:
+            pass
+
+    # Remises détaillées
+    if remises_total and int(remises_total) > 0:
+        top -= 6
+        draw_line("Remises appliquées", bold=True)
+        for pr in paiement.remises.select_related('remise').all():
+            nom = getattr(pr.remise, 'nom', 'Remise')
+            montant = str(f"{int(pr.montant_remise):,}").replace(',', ' ')
+            draw_line(f"- {nom} : -{montant} GNF")
+
+    # Bloc signatures
+    top -= 20
+    c.setFont('Helvetica-Bold', 11)
+    c.drawString(left, top, "Signatures")
+    top -= 16
+    # Lignes de signature (caissier et responsable)
+    sig_line_y = top
+    c.setLineWidth(0.8)
+    # Caissier à gauche
+    c.line(left, sig_line_y, left + 200, sig_line_y)
+    c.setFont('Helvetica', 10)
+    c.drawString(left, sig_line_y - 14, "Caissier(e)")
+    # Responsable à droite
+    right_x = left + 260
+    c.setLineWidth(0.8)
+    c.line(right_x, sig_line_y, right_x + 200, sig_line_y)
+    c.setFont('Helvetica', 10)
+    c.drawString(right_x, sig_line_y - 14, "Responsable")
+
+    # Pied de page
+    c.setFont('Helvetica', 9)
+    c.drawRightString(width - 40, 30, f"Généré le {timezone.now().strftime('%d/%m/%Y %H:%M')}")
+
+    c.showPage()
+    c.save()
+
+    pdf = buffer.getvalue()
+    buffer.close()
+
+    filename = f"Recu_{paiement.numero_recu}.pdf"
+    response = HttpResponse(pdf, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
 
 def export_liste_paiements_excel(request):
     """Exporte en Excel la liste des paiements selon les filtres (q, statut).
@@ -932,13 +1296,59 @@ def appliquer_remise_paiement(request, paiement_id:int):
         messages.warning(request, "Seuls les paiements en attente peuvent recevoir des remises.")
         return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
+    # Base scolarité = T1+T2+T3 (hors inscription)
+    base_scolarite = 0
+    try:
+        ech = getattr(paiement.eleve, 'echeancier', None)
+        if ech:
+            base_scolarite = int((ech.tranche_1_due or 0) + (ech.tranche_2_due or 0) + (ech.tranche_3_due or 0))
+        if not base_scolarite:
+            # Fallback via grille tarifaire de la classe
+            try:
+                from eleves.models import GrilleTarifaire as _Grille
+                classe = getattr(paiement.eleve, 'classe', None)
+                ecole = getattr(classe, 'ecole', None)
+                niveau = getattr(classe, 'niveau', None)
+                annee = getattr(classe, 'annee_scolaire', None)
+                grille = None
+                if ecole and niveau and annee:
+                    grille = _Grille.objects.filter(ecole=ecole, niveau=niveau, annee_scolaire=annee).first()
+                if not grille and ecole and niveau:
+                    grille = _Grille.objects.filter(ecole=ecole, niveau=niveau).order_by('-annee_scolaire').first()
+                if grille:
+                    base_scolarite = int((grille.tranche_1 or 0) + (grille.tranche_2 or 0) + (grille.tranche_3 or 0))
+            except Exception:
+                pass
+    except Exception:
+        base_scolarite = 0
+
     if request.method == 'POST':
         form = PaiementRemiseForm(request.POST, paiement=paiement)
         if form.is_valid():
             remises = form.cleaned_data.get('remises') or []
+            pct_str = form.cleaned_data.get('pourcentage_scolarite') or ''
+            try:
+                pct_value = int(pct_str) if str(pct_str).isdigit() else 0
+            except Exception:
+                pct_value = 0
+            # Si aucune remise n'est sélectionnée, ne rien modifier et afficher une erreur
+            if not remises and pct_value <= 0:
+                messages.error(request, "Aucune remise sélectionnée. Aucune modification n'a été effectuée.")
+                try:
+                    remises_existantes = list(paiement.remises.select_related('remise').all())
+                except Exception:
+                    remises_existantes = []
+                context = {
+                    'paiement': paiement,
+                    'form': form,
+                    'remises_existantes': remises_existantes,
+                    'base_scolarite': int(base_scolarite or 0),
+                }
+                return render(request, 'paiements/appliquer_remise.html', context)
+
             # pourcentage_scolarite est un aperçu UI, on ne le persiste pas ici faute de modèle dédié
             with transaction.atomic():
-                # Supprimer les remises existantes puis recréer selon la sélection
+                # Remplacer les remises existantes par la sélection
                 PaiementRemise.objects.filter(paiement=paiement).delete()
                 created = 0
                 for remise in remises:
@@ -950,6 +1360,53 @@ def appliquer_remise_paiement(request, paiement_id:int):
                         paiement=paiement,
                         remise=remise,
                         montant_remise=montant_remise,
+                    )
+                    created += 1
+
+                # Appliquer également la remise scolarité (%) si choisie
+                if pct_value > 0:
+                    from datetime import date
+                    annee = paiement.date_paiement.year
+                    # Chercher une remise existante "Remise scolarité X%" active et couvrant la date
+                    nom_remise = f"Remise scolarité {pct_value}%"
+                    remise_pct = RemiseReduction.objects.filter(
+                        nom=nom_remise,
+                        type_remise='POURCENTAGE',
+                        valeur=pct_value,
+                        actif=True,
+                        date_debut__lte=paiement.date_paiement,
+                        date_fin__gte=paiement.date_paiement,
+                    ).first()
+                    if not remise_pct:
+                        # Créer une remise "technique" pour l'année en cours
+                        remise_pct = RemiseReduction.objects.create(
+                            nom=nom_remise,
+                            type_remise='POURCENTAGE',
+                            valeur=pct_value,
+                            motif='AUTRE',
+                            description="Remise scolarité variable (technique)",
+                            date_debut=date(annee, 1, 1),
+                            date_fin=date(annee, 12, 31),
+                            actif=True,
+                        )
+                    # 3% s'applique sur base scolarité (T1+T2+T3), pas sur le montant du paiement
+                    try:
+                        montant_remise_pct = (base_scolarite * pct_value) / 100
+                    except Exception:
+                        montant_remise_pct = (paiement.montant * pct_value) / 100
+                    # Ne jamais dépasser le montant du paiement
+                    try:
+                        from decimal import Decimal as _D
+                        montant_remise_pct = min(_D(montant_remise_pct), _D(paiement.montant))
+                    except Exception:
+                        try:
+                            montant_remise_pct = min(float(montant_remise_pct), float(paiement.montant))
+                        except Exception:
+                            pass
+                    PaiementRemise.objects.create(
+                        paiement=paiement,
+                        remise=remise_pct,
+                        montant_remise=montant_remise_pct,
                     )
                     created += 1
             messages.success(request, f"Remises appliquées: {created}.")
@@ -969,6 +1426,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
         'paiement': paiement,
         'form': form,
         'remises_existantes': remises_existantes,
+        'base_scolarite': int(base_scolarite or 0),
     }
     return render(request, 'paiements/appliquer_remise.html', context)
 
