@@ -27,6 +27,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 
 # Utilitaire PDF partagé (filigrane)
 from ecole_moderne.pdf_utils import draw_logo_watermark
+from ecole_moderne.security_decorators import delete_permission_required
 
 # Excel
 try:
@@ -810,7 +811,7 @@ def export_tous_eleves_excel(request):
         return HttpResponse(f"Erreur lors de la génération du fichier Excel: {str(e)}", status=500)
 
 @login_required
-@require_http_methods(["POST"])
+@delete_permission_required()
 def supprimer_eleve(request, eleve_id):
     """Vue pour supprimer un élève (soft delete)"""
     qs = Eleve.objects.all()

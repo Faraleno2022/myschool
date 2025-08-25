@@ -56,6 +56,75 @@
     </div>
 </div>
 
+<!-- Dû scolarité après remises + Frais d'inscription (filtre libre appliqué) -->
+<div class="stats-row">
+    <div class="row">
+        <div class="col-md-4">
+            <div class="stat-card">
+                <div class="stat-value text-danger">{{ totaux_du.du_sco_net|default:0|floatformat:0|intcomma }}</div>
+                <div class="stat-label">Dû scolarité net après remises</div>
+                {% if totaux_du.eleves_count %}
+                    <small class="text-muted">{{ totaux_du.eleves_count|intcomma }} élève{{ totaux_du.eleves_count|pluralize }}</small>
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-card">
+                <div class="stat-value text-secondary">{{ totaux_du.frais_inscription_total|default:0|floatformat:0|intcomma }}</div>
+                <div class="stat-label">Frais d'inscription</div>
+                <small class="text-muted">{{ totaux_du.frais_inscription_unitaire|default:30000|intcomma }} GNF / élève (fixe)</small>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-card">
+                <div class="stat-value text-dark">{{ totaux_du.du_global_net|default:0|floatformat:0|intcomma }}</div>
+                <div class="stat-label">Total dû global (net)</div>
+                {% if q %}
+                    <small class="text-muted">Calculé sur le filtre: "{{ q }}"</small>
+                {% else %}
+                    <small class="text-muted">Calcul global (tous les élèves)</small>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if totaux_du_detail_classes %}
+<div class="payments-table mt-3">
+    <div class="table-responsive">
+        <table class="table table-sm table-striped mb-0">
+            <thead>
+                <tr>
+                    <th>École</th>
+                    <th>Classe</th>
+                    <th class="text-end"># Élèves</th>
+                    <th class="text-end">Dû scolarité net</th>
+                    <th class="text-end">Inscription</th>
+                    <th class="text-end">Total dû net</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in totaux_du_detail_classes %}
+                <tr>
+                    <td>{{ row.ecole_nom }}</td>
+                    <td>{{ row.classe_nom }}</td>
+                    <td class="text-end">{{ row.eleves_count|intcomma }}</td>
+                    <td class="text-end">{{ row.du_sco_net|floatformat:0|intcomma }}</td>
+                    <td class="text-end">{{ row.frais_inscription_total|floatformat:0|intcomma }}</td>
+                    <td class="text-end fw-bold">{{ row.du_global_net|floatformat:0|intcomma }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% if q %}
+        <div class="p-2">
+            <small class="text-muted">Détail calculé sur le filtre: "{{ q }}"</small>
+        </div>
+    {% endif %}
+</div>
+{% endif %}
+
 <!-- Tableau des paiements -->
 <div class="payments-table">
     {% if page_obj %}

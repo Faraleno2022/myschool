@@ -26,6 +26,7 @@ from .forms import EnseignantForm, AffectationClasseForm
 from eleves.models import Ecole, Classe
 from utilisateurs.utils import user_is_admin, user_school
 from utilisateurs.permissions import can_add_teachers
+from ecole_moderne.security_decorators import delete_permission_required
 
 def _ecole_utilisateur(request):
     """Compat: utiliser l'utilitaire centralisé"""
@@ -516,6 +517,7 @@ def clore_affectation(request, affectation_id):
 
 
 @login_required
+@delete_permission_required()
 def supprimer_affectation(request, affectation_id):
     """Supprimer une affectation (si besoin)"""
     affectation = get_object_or_404(

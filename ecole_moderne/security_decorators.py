@@ -27,6 +27,70 @@ def admin_required(view_func):
         return view_func(request, *args, **kwargs)
     return wrapper
 
+def delete_permission_required(allowed_username="FELIXSUZANELENO", confirm_value="FELIXSUZANELENO", confirm_field="confirm_name"):
+    """
+    Décorateur pour restreindre toute opération de suppression à un seul utilisateur
+    spécifique (par défaut 'FELIXSUZANELENO') et exiger une confirmation explicite
+    du même nom en saisie.
+
+    Comportement:
+    - Si l'utilisateur courant n'est pas `allowed_username` -> 403
+    - GET  -> affiche une page de confirmation avec champ texte à saisir
+    - POST -> vérifie que request.POST[confirm_field] == confirm_value (casse stricte)
+
+    La vue décorée ne doit contenir que la logique de suppression. Ce décorateur
+    garantit que seule une requête POST confirmée atteint la vue.
+    """
+    from django.shortcuts import render
+    from django.views.decorators.csrf import csrf_protect
+    from django.utils.decorators import method_decorator
+
+    def decorator(view_func):
+        @functools.wraps(view_func)
+        @login_required
+        @csrf_protect
+        def wrapper(request, *args, **kwargs):
+            # Refuser tout utilisateur autre que celui autorisé
+            if request.user.username != allowed_username:
+                logger.warning(
+                    f"Suppression refusée: user={request.user.username}, ip={get_client_ip(request)}"
+                )
+                return HttpResponseForbidden("Suppression réservée à l'administrateur principal.")
+
+            # Confirmation requise
+            if request.method == 'GET':
+                context = {
+                    'confirm_value': confirm_value,
+                    'confirm_field': confirm_field,
+                    'action_url': request.get_full_path(),
+                    'username': request.user.username,
+                }
+                return render(request, 'administration/confirm_delete.html', context)
+
+            if request.method == 'POST':
+                provided = request.POST.get(confirm_field, '')
+                if provided != confirm_value:
+                    # Si AJAX, renvoyer un JSON 403
+                    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+                        return JsonResponse({'success': False, 'error': 'Confirmation invalide.'}, status=403)
+                    context = {
+                        'confirm_value': confirm_value,
+                        'confirm_field': confirm_field,
+                        'action_url': request.get_full_path(),
+                        'username': request.user.username,
+                        'error': "Le nom de confirmation est incorrect."
+                    }
+                    return render(request, 'administration/confirm_delete.html', context, status=403)
+
+                # Confirmation réussie -> exécuter la vue de suppression
+                return view_func(request, *args, **kwargs)
+
+            # Toute autre méthode refusée
+            return HttpResponseForbidden("Méthode non autorisée.")
+
+        return wrapper
+    return decorator
+
 def rate_limit(max_requests=10, window=60):
     """
     Décorateur pour limiter le nombre de requêtes par utilisateur

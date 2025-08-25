@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from django.utils import timezone
 import logging
 import json
+from ecole_moderne.security_decorators import delete_permission_required
 
 # Imports des modèles à réinitialiser
 from eleves.models import Eleve, Responsable, Classe, HistoriqueEleve, Ecole, GrilleTarifaire
@@ -64,6 +65,10 @@ def system_reset_dashboard(request):
 def confirm_system_reset(request):
     """Confirmation et exécution de la réinitialisation système"""
     
+    # Restriction stricte: seul l'utilisateur autorisé peut réinitialiser (supprimer massivement)
+    if request.user.username != 'FELIXSUZANELENO':
+        return JsonResponse({'success': False, 'error': 'Action non autorisée.'}, status=403)
+
     # Log de debug
     logger.info(f"Reset request received from {request.user.username}")
     logger.info(f"Request method: {request.method}")
@@ -443,9 +448,9 @@ def model_detail_view(request, app_label, model_name, object_id):
     
     return render(request, 'administration/model_detail.html', context)
 
+@delete_permission_required()
 @login_required
 @user_passes_test(is_super_admin, login_url='/admin/')
-@require_POST
 @csrf_protect
 def model_delete_view(request, app_label, model_name, object_id):
     """Vue pour supprimer un enregistrement"""
@@ -485,9 +490,9 @@ def model_delete_view(request, app_label, model_name, object_id):
             'error': f'Erreur lors de la suppression: {str(e)}'
         })
 
+@delete_permission_required()
 @login_required
 @user_passes_test(is_super_admin, login_url='/admin/')
-@require_POST
 @csrf_protect
 def model_bulk_delete_view(request, app_label, model_name):
     """Vue pour supprimer plusieurs enregistrements"""
