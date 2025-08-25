@@ -372,16 +372,21 @@ function deleteRecord() {
     if (confirm(confirmMessage)) {
         // Deuxième confirmation pour les actions critiques
         const finalConfirm = `DERNIÈRE CONFIRMATION\n\n` +
-            `Tapez "SUPPRIMER" pour confirmer la suppression définitive :`;
+            `Par mesure de sécurité, tapez exactement \"FELIXSUZANELENO\" pour confirmer :`;
             
         const userInput = prompt(finalConfirm);
-        if (userInput === "SUPPRIMER") {
+        if (userInput === "FELIXSUZANELENO") {
+            const body = new URLSearchParams();
+            body.append('confirm_name', 'FELIXSUZANELENO');
+
             fetch(`/administration/model/{{ app_label }}/{{ model_name }}/{{ object.pk }}/delete/`, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': '{{ csrf_token }}',
-                    'X-Requested-With': 'XMLHttpRequest'
-                }
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+                },
+                body: body.toString()
             })
             .then(response => response.json())
             .then(data => {

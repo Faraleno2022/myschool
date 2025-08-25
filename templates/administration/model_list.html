@@ -483,12 +483,23 @@ function deleteRecord(id, name) {
 
 document.getElementById('confirmDelete').addEventListener('click', function() {
     if (deleteId) {
+        const confirmInput = prompt(`DERNIÈRE CONFIRMATION\n\nTapez exactement "FELIXSUZANELENO" pour confirmer la suppression définitive :`);
+        if (confirmInput !== 'FELIXSUZANELENO') {
+            alert('❌ Suppression annulée - Texte de confirmation incorrect');
+            return;
+        }
+
+        const body = new URLSearchParams();
+        body.append('confirm_name', 'FELIXSUZANELENO');
+
         fetch(`/administration/model/{{ app_label }}/{{ model_name }}/${deleteId}/delete/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': '{{ csrf_token }}',
-                'X-Requested-With': 'XMLHttpRequest'
-            }
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
+            },
+            body: body.toString()
         })
         .then(response => response.json())
         .then(data => {
@@ -516,16 +527,24 @@ function bulkDelete() {
         `Êtes-vous absolument certain de vouloir continuer ?`;
     
     if (confirm(confirmMessage)) {
-        const formData = new FormData();
-        selectedIds.forEach(id => formData.append('ids[]', id));
-        
+        const finalConfirm = prompt(`DERNIÈRE CONFIRMATION (Suppression en masse)\n\nTapez exactement "FELIXSUZANELENO" pour confirmer :`);
+        if (finalConfirm !== 'FELIXSUZANELENO') {
+            alert('❌ Suppression en masse annulée - Texte de confirmation incorrect');
+            return;
+        }
+
+        const body = new URLSearchParams();
+        selectedIds.forEach(id => body.append('ids[]', id));
+        body.append('confirm_name', 'FELIXSUZANELENO');
+
         fetch(`/administration/model/{{ app_label }}/{{ model_name }}/bulk-delete/`, {
             method: 'POST',
             headers: {
                 'X-CSRFToken': '{{ csrf_token }}',
-                'X-Requested-With': 'XMLHttpRequest'
+                'X-Requested-With': 'XMLHttpRequest',
+                'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
             },
-            body: formData
+            body: body.toString()
         })
         .then(response => response.json())
         .then(data => {
