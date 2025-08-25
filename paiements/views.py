@@ -1391,27 +1391,67 @@ def liste_eleves_soldes(request):
 
     # Expressions de calcul
     dues_sco = (
-        Coalesce(F('tranche_1_due'), Value(0))
-        + Coalesce(F('tranche_2_due'), Value(0))
-        + Coalesce(F('tranche_3_due'), Value(0))
+        Coalesce(
+            F('tranche_1_due'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Coalesce(
+            F('tranche_2_due'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Coalesce(
+            F('tranche_3_due'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
     )
     paye_total = (
-        Coalesce(F('frais_inscription_paye'), Value(0))
-        + Coalesce(F('tranche_1_payee'), Value(0))
-        + Coalesce(F('tranche_2_payee'), Value(0))
-        + Coalesce(F('tranche_3_payee'), Value(0))
+        Coalesce(
+            F('frais_inscription_paye'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Coalesce(
+            F('tranche_1_payee'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Coalesce(
+            F('tranche_2_payee'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Coalesce(
+            F('tranche_3_payee'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
     )
     remises_total = Coalesce(
-        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
-        Value(0),
-        output_field=DecimalField(max_digits=10, decimal_places=0),
+        Sum(
+            'eleve__paiements__remises__montant_remise',
+            filter=Q(eleve__paiements__statut='VALIDE'),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
+        Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+        output_field=DecimalField(max_digits=12, decimal_places=0),
     )
-    net_sco_du = Greatest(Value(0), ExpressionWrapper(dues_sco - remises_total, output_field=DecimalField(max_digits=10, decimal_places=0)))
+    net_sco_du = Greatest(
+        Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+        ExpressionWrapper(dues_sco - remises_total, output_field=DecimalField(max_digits=12, decimal_places=0))
+    )
     net_du = ExpressionWrapper(
-        Coalesce(F('frais_inscription_du'), Value(0)) + net_sco_du,
-        output_field=DecimalField(max_digits=10, decimal_places=0),
+        Coalesce(
+            F('frais_inscription_du'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + net_sco_du,
+        output_field=DecimalField(max_digits=12, decimal_places=0),
     )
-    solde_calc = ExpressionWrapper(net_du - paye_total, output_field=DecimalField(max_digits=10, decimal_places=0))
+    solde_calc = ExpressionWrapper(net_du - paye_total, output_field=DecimalField(max_digits=12, decimal_places=0))
 
     qs = qs.annotate(
         total_du_calc=net_du,
@@ -1425,10 +1465,26 @@ def liste_eleves_soldes(request):
 
     # Totaux
     aggr = qs_soldes.aggregate(
-        du=Coalesce(Sum('total_du_calc'), Value(0)),
-        paye=Coalesce(Sum('total_paye_calc'), Value(0)),
-        solde=Coalesce(Sum('solde_calcule'), Value(0)),
-        remises=Coalesce(Sum('total_remises_calc'), Value(0)),
+        du=Coalesce(
+            Sum('total_du_calc', output_field=DecimalField(max_digits=12, decimal_places=0)),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
+        paye=Coalesce(
+            Sum('total_paye_calc', output_field=DecimalField(max_digits=12, decimal_places=0)),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
+        solde=Coalesce(
+            Sum('solde_calcule', output_field=DecimalField(max_digits=12, decimal_places=0)),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
+        remises=Coalesce(
+            Sum('total_remises_calc', output_field=DecimalField(max_digits=12, decimal_places=0)),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
     )
 
     # Pagination
