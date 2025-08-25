@@ -219,6 +219,7 @@ def _compute_stats():
     }
 
 
+@login_required
 def tableau_bord_paiements(request):
     """Affiche le tableau de bord des paiements avec stats et listes utiles."""
     if not _template_exists('paiements/tableau_bord.html'):
@@ -304,6 +305,7 @@ def tableau_bord_paiements(request):
     }
     return render(request, 'paiements/tableau_bord.html', context)
 
+@login_required
 def liste_paiements(request):
     """Liste des paiements avec recherche, filtres de statut et pagination.
     Paramètres GET:
@@ -492,6 +494,7 @@ def liste_paiements(request):
         return render(request, template, context)
     return HttpResponse('Liste des paiements')
 
+@login_required
 def detail_paiement(request, paiement_id:int):
     """Affiche le détail d'un paiement.
 
@@ -531,6 +534,7 @@ def detail_paiement(request, paiement_id:int):
     }
     return render(request, 'paiements/detail_paiement.html', context)
 
+@login_required
 def ajouter_paiement(request, eleve_id:int=None):
     """Créer un paiement.
     - GET: affiche le formulaire `templates/paiements/form_paiement.html`
@@ -586,6 +590,7 @@ def ajouter_paiement(request, eleve_id:int=None):
     }
     return render(request, 'paiements/form_paiement.html', context)
 
+@login_required
 def valider_paiement(request, paiement_id:int):
     """Valide un paiement en le passant au statut VALIDE.
 
@@ -638,6 +643,7 @@ def valider_paiement(request, paiement_id:int):
     messages.success(request, "Paiement validé avec succès.")
     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
+@login_required
 def relancer_eleve(request, eleve_id:int):
     """Crée une relance et envoie la notification (WhatsApp/SMS) au responsable.
     GET params optionnels:
@@ -682,6 +688,7 @@ def relancer_eleve(request, eleve_id:int):
     except Exception:
         return redirect('paiements:liste_paiements')
 
+@login_required
 def envoyer_notifs_retards(request):
     """Envoie des notifications de retard aux responsables des élèves avec solde > 0.
     Action manuelle: GET uniquement, simple résumé via messages.
@@ -750,6 +757,7 @@ def envoyer_notifs_retards(request):
     # Rediriger vers relances ou tableau de bord
     return redirect('paiements:liste_relances')
 
+@login_required
 def liste_relances(request):
     """Liste des relances avec filtres et pagination."""
     titre_page = "Liste des relances"
@@ -788,6 +796,7 @@ def liste_relances(request):
         return render(request, template, context)
     return HttpResponse('Liste des relances')
 
+@login_required
 def echeancier_eleve(request, eleve_id:int):
     """Affiche l'échéancier et l'historique des paiements d'un élève.
 
@@ -1523,6 +1532,7 @@ def liste_eleves_soldes(request):
         return render(request, template, context)
     return HttpResponse('Élèves soldés')
 
+@login_required
 def ajax_statistiques_paiements(request):
     """Retourne les stats du tableau de bord pour mise à jour AJAX."""
     stats = _compute_stats()
@@ -1581,12 +1591,15 @@ def ajax_eleve_info(request):
 
     return JsonResponse(data)
 
+@login_required
 def ajax_calculer_remise(request):
     return JsonResponse({'ok': True, 'montant_apres_remise': 0})
 
+@login_required
 def ajax_classes_par_ecole(request):
     return JsonResponse({'ok': True, 'classes': []})
 
+@login_required
 @can_apply_discounts
 def appliquer_remise_paiement(request, paiement_id:int):
     """Affiche et traite le formulaire d'application de remises pour un paiement."""
@@ -1734,6 +1747,7 @@ def appliquer_remise_paiement(request, paiement_id:int):
     }
     return render(request, 'paiements/appliquer_remise.html', context)
 
+@login_required
 def calculateur_remise(request):
     return HttpResponse('Calculateur de remise (placeholder)')
 

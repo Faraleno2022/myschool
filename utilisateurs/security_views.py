@@ -27,33 +27,53 @@ def get_client_ip(request):
         ip = request.META.get('REMOTE_ADDR')
     return ip
 
-def is_ip_blocked(ip):
-    """Vérifie si une IP est bloquée"""
-    cache_key = f"blocked_login_{ip}"
-    return cache.get(cache_key, False)
+def is_ip_blocked(ip, username=None):
+    """Vérifie si une IP ou un couple IP+username est bloqué."""
+    # Blocage global IP
+    if cache.get(f"blocked_login_{ip}", False):
+        return True
+    # Blocage ciblé IP+username
+    if username:
+        return cache.get(f"blocked_login_{ip}_{username.lower()}", False)
+    return False
 
 def block_ip(ip, duration=300):
-    """Bloque une IP pour une durée donnée"""
+    """Bloque une IP pour une durée donnée (helper rétro-compatible)."""
     cache_key = f"blocked_login_{ip}"
     cache.set(cache_key, True, duration)
     logger.warning(f"IP {ip} bloquée pour tentatives de connexion répétées")
 
-def get_failed_attempts(ip):
-    """Obtient le nombre de tentatives échouées pour une IP"""
-    cache_key = f"failed_login_{ip}"
-    return cache.get(cache_key, 0)
+def block_ip_username(ip, username, duration=900):
+    """Bloque un couple IP+username pour une durée donnée (par défaut 15 min)."""
+    if not username:
+        return block_ip(ip, duration)
+    cache_key = f"blocked_login_{ip}_{username.lower()}"
+    cache.set(cache_key, True, duration)
+    logger.warning(f"Blocage IP+username activé: {ip} / {username}")
 
-def increment_failed_attempts(ip):
-    """Incrémente le compteur de tentatives échouées"""
-    cache_key = f"failed_login_{ip}"
+def get_failed_attempts(ip, username=None):
+    """Obtient le nombre de tentatives échouées pour une IP ou IP+username."""
+    if username:
+        key = f"failed_login_{ip}_{username.lower()}"
+    else:
+        key = f"failed_login_{ip}"
+    return cache.get(key, 0)
+
+def increment_failed_attempts(ip, username=None, ttl=900):
+    """Incrémente le compteur de tentatives échouées (IP+username si fourni)."""
+    if username:
+        cache_key = f"failed_login_{ip}_{username.lower()}"
+    else:
+        cache_key = f"failed_login_{ip}"
     attempts = cache.get(cache_key, 0) + 1
-    cache.set(cache_key, attempts, 300)  # 5 minutes
+    cache.set(cache_key, attempts, ttl)  # 15 minutes
     return attempts
 
-def reset_failed_attempts(ip):
-    """Remet à zéro le compteur de tentatives échouées"""
-    cache_key = f"failed_login_{ip}"
-    cache.delete(cache_key)
+def reset_failed_attempts(ip, username=None):
+    """Remet à zéro le compteur de tentatives échouées (IP+username si fourni)."""
+    if username:
+        cache.delete(f"failed_login_{ip}_{username.lower()}")
+    cache.delete(f"failed_login_{ip}")
 
 @ensure_csrf_cookie
 @csrf_protect
@@ -64,7 +84,7 @@ def secure_login(request):
     """
     client_ip = get_client_ip(request)
     
-    # Vérifier si l'IP est bloquée
+    # Vérifier si l'IP est bloquée (pré-POST)
     if is_ip_blocked(client_ip):
         logger.warning(f"Tentative de connexion depuis IP bloquée: {client_ip}")
         return render(request, 'utilisateurs/login.html', {
@@ -87,6 +107,14 @@ def secure_login(request):
             messages.error(request, 'Données invalides.')
             return render(request, 'utilisateurs/login.html')
         
+        # Vérifier un éventuel blocage ciblé IP+username
+        if is_ip_blocked(client_ip, username=username):
+            logger.warning(f"Tentative de connexion depuis IP+username bloqués: {client_ip} / {username}")
+            return render(request, 'utilisateurs/login.html', {
+                'error': 'Trop de tentatives. Veuillez réessayer plus tard.',
+                'blocked': True
+            })
+
         # Authentification
         user = authenticate(request, username=username, password=password)
         
@@ -94,7 +122,7 @@ def secure_login(request):
             if user.is_active:
                 # Connexion réussie
                 login(request, user)
-                reset_failed_attempts(client_ip)
+                reset_failed_attempts(client_ip, username=username)
                 
                 # Log de connexion réussie
                 logger.info(f"Connexion réussie: {username} depuis IP: {client_ip}")
@@ -109,17 +137,17 @@ def secure_login(request):
                 logger.warning(f"Tentative de connexion sur compte désactivé: {username} depuis IP: {client_ip}")
         else:
             # Échec de connexion
-            attempts = increment_failed_attempts(client_ip)
-            
+            attempts = increment_failed_attempts(client_ip, username=username, ttl=900)
+
             logger.warning(f"Échec de connexion: {username} depuis IP: {client_ip} (tentative {attempts})")
-            
-            # Bloquer après 5 tentatives
+
+            # Bloquer après 5 tentatives (15 minutes)
             if attempts >= 5:
-                block_ip(client_ip, 300)  # 5 minutes
-                messages.error(request, 'Trop de tentatives échouées. Votre IP a été temporairement bloquée.')
+                block_ip_username(client_ip, username, duration=900)
+                messages.error(request, 'Trop de tentatives échouées. Accès temporairement bloqué.')
             else:
-                remaining = 5 - attempts
-                messages.error(request, f'Nom d\'utilisateur ou mot de passe incorrect. {remaining} tentatives restantes.')
+                # Message discret sans indiquer le nombre restant
+                messages.error(request, "Nom d'utilisateur ou mot de passe incorrect.")
     
     return render(request, 'utilisateurs/login.html')
 
