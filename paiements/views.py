@@ -18,8 +18,9 @@ import logging
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.core.paginator import Paginator
-from django.db.models import F, ExpressionWrapper, DecimalField, Case, When, Value, Q, Sum
+from django.db.models import F, ExpressionWrapper, DecimalField, Case, When, Value, Q, Sum, Count
 from django.db.models.functions import Coalesce, Least
+from django.db.models.functions import Greatest
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Font, PatternFill, Border, Side, numbers
@@ -39,7 +40,7 @@ from eleves.models import Eleve, GrilleTarifaire, Classe
 from .forms import PaiementForm, EcheancierForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
-from utilisateurs.permissions import can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports
+from utilisateurs.permissions import can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports, can_apply_discounts
 from .notifications import (
     send_payment_receipt,
     send_enrollment_confirmation,
@@ -360,6 +361,73 @@ def liste_paiements(request):
     total_ce_mois = ce_mois_qs.count()
     montant_ce_mois = int(ce_mois_qs.aggregate(total=Sum('montant'))['total'] or 0)
 
+    # Calculs supplémentaires: Dû scolarité net après remises + frais d'inscription fixes (30k/élève)
+    eleves_qs = Eleve.objects.all()
+    if q:
+        eleves_qs = eleves_qs.filter(
+            Q(nom__icontains=q) | Q(prenom__icontains=q) | Q(matricule__icontains=q)
+            | Q(classe__nom__icontains=q) | Q(classe__ecole__nom__icontains=q)
+            | Q(paiements__numero_recu__icontains=q) | Q(paiements__reference_externe__icontains=q)
+            | Q(paiements__observations__icontains=q)
+        ).distinct()
+
+    eleves_count = eleves_qs.count() if q else Eleve.objects.count()
+
+    eche_qs = EcheancierPaiement.objects.filter(eleve__in=eleves_qs)
+    dues_sco_expr = (
+        Coalesce(F('tranche_1_due'), Value(0))
+        + Coalesce(F('tranche_2_due'), Value(0))
+        + Coalesce(F('tranche_3_due'), Value(0))
+    )
+    remises_expr = Coalesce(
+        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Value(0),
+        output_field=DecimalField(max_digits=12, decimal_places=0),
+    )
+    aggr_du = eche_qs.aggregate(
+        dues_sco=Coalesce(Sum(dues_sco_expr), Value(0)),
+        remises=remises_expr,
+    )
+    dues_sco_total = int(aggr_du.get('dues_sco') or 0)
+    remises_total = int(aggr_du.get('remises') or 0)
+    du_sco_net = max(dues_sco_total - remises_total, 0)
+    frais_inscription_par_eleve = 30000
+    frais_inscription_total = eleves_count * frais_inscription_par_eleve
+    du_global_net = du_sco_net + frais_inscription_total
+
+    # Détail par école/classe (filtre libre appliqué aux élèves)
+    detail_qs = (
+        eche_qs
+        .values(
+            'eleve__classe__ecole__id', 'eleve__classe__ecole__nom',
+            'eleve__classe__id', 'eleve__classe__nom'
+        )
+        .annotate(
+            eleves_count=Count('eleve', distinct=True),
+            dues_sco_sum=Coalesce(Sum(dues_sco_expr), Value(0)),
+            remises_sum=remises_expr,
+        )
+        .order_by('eleve__classe__ecole__nom', 'eleve__classe__nom')
+    )
+    totaux_du_detail_classes = []
+    for row in detail_qs:
+        dues = int(row.get('dues_sco_sum') or 0)
+        rem = int(row.get('remises_sum') or 0)
+        net_sco = max(dues - rem, 0)
+        cnt = int(row.get('eleves_count') or 0)
+        insc = cnt * frais_inscription_par_eleve
+        tot = net_sco + insc
+        totaux_du_detail_classes.append({
+            'ecole_id': row.get('eleve__classe__ecole__id'),
+            'ecole_nom': row.get('eleve__classe__ecole__nom'),
+            'classe_id': row.get('eleve__classe__id'),
+            'classe_nom': row.get('eleve__classe__nom'),
+            'eleves_count': cnt,
+            'du_sco_net': net_sco,
+            'frais_inscription_total': insc,
+            'du_global_net': tot,
+        })
+
     # Pagination
     paginator = Paginator(qs, 25)
     page_obj = paginator.get_page(page)
@@ -379,6 +447,14 @@ def liste_paiements(request):
             'total_ce_mois': int(total_ce_mois or 0),
             'montant_ce_mois': int(montant_ce_mois or 0),
         },
+        'totaux_du': {
+            'eleves_count': int(eleves_count or 0),
+            'du_sco_net': int(du_sco_net or 0),
+            'frais_inscription_total': int(frais_inscription_total or 0),
+            'du_global_net': int(du_global_net or 0),
+            'frais_inscription_unitaire': int(frais_inscription_par_eleve),
+        },
+        'totaux_du_detail_classes': totaux_du_detail_classes,
         # Alerte relance en haut du fragment (compte global des élèves en retard)
         'eleves_en_retard': _compute_stats().get('eleves_en_retard', 0),
     }
@@ -655,22 +731,42 @@ def envoyer_notifs_retards(request):
     return redirect('paiements:liste_relances')
 
 def liste_relances(request):
-    """Liste des relances (UI existante, données placeholder)."""
+    """Liste des relances avec filtres et pagination."""
     titre_page = "Liste des relances"
-    q = request.GET.get('q', '').strip()
-    canal = request.GET.get('canal', '')
-    statut = request.GET.get('statut', '')
+    q = (request.GET.get('q') or '').strip()
+    canal = (request.GET.get('canal') or '').strip().upper()
+    statut = (request.GET.get('statut') or '').strip().upper()
+
+    qs = (
+        Relance.objects.select_related('eleve', 'eleve__classe')
+        .order_by('-date_creation')
+    )
+    if q:
+        qs = qs.filter(
+            Q(eleve__nom__icontains=q)
+            | Q(eleve__prenom__icontains=q)
+            | Q(eleve__matricule__icontains=q)
+            | Q(message__icontains=q)
+        )
+    if canal:
+        qs = qs.filter(canal=canal)
+    if statut:
+        qs = qs.filter(statut=statut)
+
+    paginator = Paginator(qs, 25)
+    page_obj = paginator.get_page(request.GET.get('page') or 1)
+
     context = {
         'titre_page': titre_page,
         'q': q,
         'canal': canal,
         'statut': statut,
-        'page_obj': [],
+        'page_obj': page_obj,
     }
     template = 'paiements/relances.html' if _template_exists('paiements/relances.html') else None
     if template:
         return render(request, template, context)
-    return HttpResponse('Liste des relances (placeholder)')
+    return HttpResponse('Liste des relances')
 
 def echeancier_eleve(request, eleve_id:int):
     """Affiche l'échéancier et l'historique des paiements d'un élève.
@@ -1170,47 +1266,178 @@ def export_liste_paiements_excel(request):
     return response
 
 def rapport_remises(request):
-    """Rapport de remises – rend le template avec totaux/rows vides."""
+    """Rapport des remises avec agrégations par élève et filtres période/recherche.
+
+    Contexte pour `templates/paiements/rapport_remises.html`:
+      - rows: liste de dicts avec paiements/élève et champs: nb_remises, total_remise
+      - total_global: somme de toutes les remises listées
+      - q, date_debut, date_fin: filtres saisis
+    """
     titre_page = "Rapport des remises"
-    q = request.GET.get('q', '').strip()
-    date_debut = request.GET.get('date_debut', '')
-    date_fin = request.GET.get('date_fin', '')
+    q = (request.GET.get('q') or '').strip()
+    date_debut = (request.GET.get('date_debut') or '').strip()
+    date_fin = (request.GET.get('date_fin') or '').strip()
+
+    # Base queryset sur les remises liées à des paiements validés
+    rem_qs = PaiementRemise.objects.select_related('paiement', 'paiement__eleve')
+    rem_qs = rem_qs.filter(paiement__statut='VALIDE')
+
+    # Filtre période sur la date du paiement si fournie
+    try:
+        if date_debut:
+            rem_qs = rem_qs.filter(paiement__date_paiement__gte=date_debut)
+        if date_fin:
+            rem_qs = rem_qs.filter(paiement__date_paiement__lte=date_fin)
+    except Exception:
+        # En cas de format invalide, ignorer silencieusement
+        pass
+
+    # Filtre recherche simple sur élève
+    if q:
+        rem_qs = rem_qs.filter(
+            Q(paiement__eleve__nom__icontains=q)
+            | Q(paiement__eleve__prenom__icontains=q)
+            | Q(paiement__eleve__matricule__icontains=q)
+            | Q(paiement__eleve__classe__nom__icontains=q)
+        )
+
+    # Agrégations par élève
+    rows = (
+        rem_qs
+        .values(
+            'paiement__eleve__id',
+            'paiement__eleve__prenom',
+            'paiement__eleve__nom',
+            'paiement__eleve__matricule',
+            'paiement__eleve__classe__nom',
+        )
+        .annotate(
+            nb_remises=Count('id'),
+            total_remise=Coalesce(Sum('montant_remise'), Value(0, output_field=DecimalField(max_digits=10, decimal_places=0)))
+        )
+        .order_by('-total_remise')
+    )
+
+    total_global = 0
+    try:
+        total_global = int(rem_qs.aggregate(s=Coalesce(Sum('montant_remise'), Value(0)))['s'] or 0)
+    except Exception:
+        total_global = 0
+
     context = {
         'titre_page': titre_page,
         'q': q,
         'date_debut': date_debut,
         'date_fin': date_fin,
-        'rows': [],
-        'total_global': 0,
+        'rows': rows,
+        'total_global': total_global,
     }
     template = 'paiements/rapport_remises.html' if _template_exists('paiements/rapport_remises.html') else None
     if template:
         return render(request, template, context)
-    return HttpResponse('Rapport remises (placeholder)')
+    return HttpResponse('Rapport remises')
 
 def liste_eleves_soldes(request):
-    """Élèves soldés – rend la page avec filtres et totaux en placeholder."""
+    """Liste des élèves soldés en tenant compte des remises (hors frais d'inscription).
+
+    Règles:
+    - Frais d'inscription (30 000 GNF) non impactés par les remises.
+    - Remises s'appliquent uniquement à la scolarité (tranches 1..3).
+    - Élève considéré soldé si: net_du = inscription_du + max(tranches_du - remises_totales, 0) est payé.
+    """
     from django.utils import timezone as _tz
     today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
-    annee = request.GET.get('annee') or f"{today.year}-{today.year+1}"
-    ecole_id = request.GET.get('ecole_id', '')
-    classe_id = request.GET.get('classe_id', '')
-    q = request.GET.get('q', '').strip()
+
+    annee = (request.GET.get('annee') or f"{today.year}-{today.year+1}").strip()
+    ecole_id = (request.GET.get('ecole_id') or '').strip()
+    classe_id = (request.GET.get('classe_id') or '').strip()
+    q = (request.GET.get('q') or '').strip()
+
+    # Base queryset
+    qs = (
+        EcheancierPaiement.objects
+        .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+    )
+
+    # Filtres école/classe
+    if ecole_id:
+        qs = qs.filter(eleve__classe__ecole_id=ecole_id)
+    if classe_id:
+        qs = qs.filter(eleve__classe_id=classe_id)
+    if q:
+        qs = qs.filter(
+            Q(eleve__nom__icontains=q) | Q(eleve__prenom__icontains=q) | Q(eleve__matricule__icontains=q)
+        )
+
+    # Expressions de calcul
+    dues_sco = (
+        Coalesce(F('tranche_1_due'), Value(0))
+        + Coalesce(F('tranche_2_due'), Value(0))
+        + Coalesce(F('tranche_3_due'), Value(0))
+    )
+    paye_total = (
+        Coalesce(F('frais_inscription_paye'), Value(0))
+        + Coalesce(F('tranche_1_payee'), Value(0))
+        + Coalesce(F('tranche_2_payee'), Value(0))
+        + Coalesce(F('tranche_3_payee'), Value(0))
+    )
+    remises_total = Coalesce(
+        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Value(0),
+        output_field=DecimalField(max_digits=10, decimal_places=0),
+    )
+    net_sco_du = Greatest(Value(0), ExpressionWrapper(dues_sco - remises_total, output_field=DecimalField(max_digits=10, decimal_places=0)))
+    net_du = ExpressionWrapper(
+        Coalesce(F('frais_inscription_du'), Value(0)) + net_sco_du,
+        output_field=DecimalField(max_digits=10, decimal_places=0),
+    )
+    solde_calc = ExpressionWrapper(net_du - paye_total, output_field=DecimalField(max_digits=10, decimal_places=0))
+
+    qs = qs.annotate(
+        total_du_calc=net_du,
+        total_paye_calc=paye_total,
+        solde_calcule=solde_calc,
+        total_remises_calc=remises_total,
+    ).order_by('eleve__classe__nom', 'eleve__nom', 'eleve__prenom')
+
+    # Élèves soldés: solde <= 0
+    qs_soldes = qs.filter(solde_calcule__lte=0)
+
+    # Totaux
+    aggr = qs_soldes.aggregate(
+        du=Coalesce(Sum('total_du_calc'), Value(0)),
+        paye=Coalesce(Sum('total_paye_calc'), Value(0)),
+        solde=Coalesce(Sum('solde_calcule'), Value(0)),
+        remises=Coalesce(Sum('total_remises_calc'), Value(0)),
+    )
+
+    # Pagination
+    paginator = Paginator(qs_soldes, 25)
+    page_obj = paginator.get_page(request.GET.get('page') or 1)
+
+    # Options d'écoles/classes
+    ecoles_qs = []
+    try:
+        from eleves.models import Ecole
+        ecoles_qs = Ecole.objects.all().order_by('nom')
+    except Exception:
+        ecoles_qs = []
+    classes = Classe.objects.select_related('ecole').all().order_by('ecole__nom', 'nom')
 
     context = {
         'annee': annee,
         'annees_options': [annee],
-        'ecoles': [],
-        'classes': [],
+        'ecoles': ecoles_qs,
+        'classes': classes,
         'ecole_id': ecole_id,
         'classe_id': classe_id,
         'q': q,
-        'page_obj': [],
+        'page_obj': page_obj,
         'totaux': {
-            'du': 0,
-            'paye': 0,
-            'solde': 0,
-            'remises': 0,
+            'du': int(aggr['du'] or 0),
+            'paye': int(aggr['paye'] or 0),
+            'solde': int(aggr['solde'] or 0),
+            'remises': int(aggr['remises'] or 0),
         },
         'periode_debut': today.replace(month=9, day=1) if hasattr(today, 'replace') else today,
         'periode_fin': today,
@@ -1218,7 +1445,7 @@ def liste_eleves_soldes(request):
     template = 'paiements/eleves_soldes.html' if _template_exists('paiements/eleves_soldes.html') else None
     if template:
         return render(request, template, context)
-    return HttpResponse('Élèves soldés (placeholder)')
+    return HttpResponse('Élèves soldés')
 
 def ajax_statistiques_paiements(request):
     """Retourne les stats du tableau de bord pour mise à jour AJAX."""
@@ -1284,6 +1511,7 @@ def ajax_calculer_remise(request):
 def ajax_classes_par_ecole(request):
     return JsonResponse({'ok': True, 'classes': []})
 
+@can_apply_discounts
 def appliquer_remise_paiement(request, paiement_id:int):
     """Affiche et traite le formulaire d'application de remises pour un paiement."""
     paiement = get_object_or_404(

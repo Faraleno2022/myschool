@@ -24,7 +24,7 @@
             </a>
         {% endif %}
         {% if paiement.statut == 'EN_ATTENTE' %}
-            {% if is_admin or user_permissions.can_validate_payments %}
+            {% if is_admin or user_permissions.can_validate_payments or user_permissions.can_modify_payments %}
                 <a href="{% url 'paiements:appliquer_remise' paiement.id %}" class="btn btn-warning">
                     <i class="fas fa-percentage me-1"></i>Appliquer remises
                 </a>
@@ -202,7 +202,7 @@
                     <h6 class="card-title mb-0">
                         <i class="fas fa-percentage me-2"></i>Remises appliquées
                     </h6>
-                    {% if paiement.statut == 'EN_ATTENTE' and is_admin or paiement.statut == 'EN_ATTENTE' and user_permissions.can_validate_payments %}
+                    {% if paiement.statut == 'EN_ATTENTE' and (is_admin or user_permissions.can_validate_payments or user_permissions.can_modify_payments) %}
                         <a href="{% url 'paiements:appliquer_remise' paiement.id %}" class="btn btn-sm btn-outline-warning">
                             <i class="fas fa-edit me-1"></i>Modifier remises
                         </a>
@@ -243,7 +243,7 @@
                     </a>
 
                     {% if paiement.statut == 'EN_ATTENTE' %}
-                        {% if is_admin or user_permissions.can_validate_payments %}
+                        {% if is_admin or user_permissions.can_validate_payments or user_permissions.can_modify_payments %}
                             <a href="{% url 'paiements:appliquer_remise' paiement.id %}" class="btn btn-warning btn-sm w-100 mt-2">
                                 <i class="fas fa-percentage me-1"></i>Appliquer remises
                             </a>

@@ -33,6 +33,24 @@ def has_permission(user, permission_name):
     # Vérifier la permission spécifique
     return getattr(profil, permission_name, False)
 
+def has_any_permission(user, permission_names):
+    """
+    Vérifie si l'utilisateur possède AU MOINS une des permissions listées
+    """
+    if not user.is_authenticated:
+        return False
+    if user.is_superuser:
+        return True
+    profil = getattr(user, 'profil', None)
+    if not profil:
+        return False
+    if getattr(profil, 'role', None) == 'ADMIN':
+        return True
+    for perm in permission_names:
+        if getattr(profil, perm, False):
+            return True
+    return False
+
 def permission_required(permission_name, message=None):
     """
     Décorateur pour vérifier qu'un utilisateur a une permission spécifique
@@ -61,11 +79,47 @@ def permission_required(permission_name, message=None):
         return wrapper
     return decorator
 
+def any_permission_required(permission_names, message=None):
+    """
+    Décorateur: autorise l'accès si l'utilisateur a AU MOINS UNE des permissions.
+    """
+    def decorator(view_func):
+        @wraps(view_func)
+        @login_required
+        def wrapper(request, *args, **kwargs):
+            if not has_any_permission(request.user, permission_names):
+                logger.warning(
+                    f"Accès refusé: {request.user.username} a tenté d'accéder à {view_func.__name__} "
+                    f"sans les permissions requises (any of): {permission_names}"
+                )
+                error_message = message or "Vous n'avez pas les permissions requises."
+                return render(request, 'utilisateurs/permission_denied.html', {
+                    'error_message': error_message,
+                    'permission_name': ','.join(permission_names),
+                    'user_role': getattr(request.user.profil, 'role', 'INCONNU') if hasattr(request.user, 'profil') else 'INCONNU'
+                }, status=403)
+            return view_func(request, *args, **kwargs)
+        return wrapper
+    return decorator
+
 def can_add_payments(view_func):
     """Décorateur pour vérifier la permission d'ajouter des paiements"""
     return permission_required(
         'peut_ajouter_paiements',
         "Vous n'êtes pas autorisé à ajouter des paiements."
+    )(view_func)
+
+def can_apply_discounts(view_func):
+    """
+    Autorise l'accès aux écrans d'application/édition des remises si l'utilisateur
+    possède au moins une des permissions suivantes:
+    - peut_valider_paiements
+    - peut_modifier_paiements
+    Cela couvre notamment le rôle COMPTABLE quand configuré.
+    """
+    return any_permission_required(
+        ['peut_valider_paiements', 'peut_modifier_paiements'],
+        "Vous n'êtes pas autorisé à appliquer des remises."
     )(view_func)
 
 def can_add_expenses(view_func):
