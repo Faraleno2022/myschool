@@ -375,9 +375,21 @@ def liste_paiements(request):
 
     eche_qs = EcheancierPaiement.objects.filter(eleve__in=eleves_qs)
     dues_sco_expr = (
-        Coalesce(F('tranche_1_due'), Value(0))
-        + Coalesce(F('tranche_2_due'), Value(0))
-        + Coalesce(F('tranche_3_due'), Value(0))
+        Coalesce(
+            F('tranche_1_due'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Coalesce(
+            F('tranche_2_due'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Coalesce(
+            F('tranche_3_due'),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
     )
     remises_expr = Coalesce(
         Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
@@ -385,7 +397,11 @@ def liste_paiements(request):
         output_field=DecimalField(max_digits=12, decimal_places=0),
     )
     aggr_du = eche_qs.aggregate(
-        dues_sco=Coalesce(Sum(dues_sco_expr), Value(0)),
+        dues_sco=Coalesce(
+            Sum(dues_sco_expr, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
         remises=remises_expr,
     )
     dues_sco_total = int(aggr_du.get('dues_sco') or 0)
@@ -404,7 +420,11 @@ def liste_paiements(request):
         )
         .annotate(
             eleves_count=Count('eleve', distinct=True),
-            dues_sco_sum=Coalesce(Sum(dues_sco_expr), Value(0)),
+            dues_sco_sum=Coalesce(
+                Sum(dues_sco_expr, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+                output_field=DecimalField(max_digits=12, decimal_places=0),
+            ),
             remises_sum=remises_expr,
         )
         .order_by('eleve__classe__ecole__nom', 'eleve__classe__nom')
