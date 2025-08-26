@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load humanize %}
+{% load static %}
 
 {% block title %}{{ titre_page }} - {{ block.super }}{% endblock %}
 
@@ -60,7 +61,7 @@
                         {{ paiement.get_statut_display }}
                     </span>
                 </div>
-                <div class="card-body">
+                <div class="card-body wm-container">
                     <div class="row">
                         <div class="col-md-6">
                             <h6 class="text-muted mb-3">Informations générales</h6>
@@ -308,6 +309,24 @@
     .card-header {
         background-color: #f8f9fa;
         border-bottom: 1px solid #dee2e6;
+    }
+</style>
+{% endblock %}
+{% block extra_css %}
+<style>
+    .wm-container {
+        position: relative;
+        overflow: hidden;
+    }
+    .wm-container::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: url('{% static "logos/logo.png" %}') center/45% no-repeat;
+        opacity: 0.06; /* Visible mais discret */
+        transform: rotate(-20deg);
+        pointer-events: none;
+        filter: grayscale(100%);
     }
 </style>
 {% endblock %}

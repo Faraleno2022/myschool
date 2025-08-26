@@ -904,7 +904,6 @@ def generer_pdf_journalier(donnees, date_rapport):
 
 
 @login_required
-@admin_required
 def rapport_remises_detaille(request):
     """Rapport détaillé des remises appliquées"""
     date_debut = request.GET.get('date_debut')

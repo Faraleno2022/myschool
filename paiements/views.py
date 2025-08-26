@@ -968,10 +968,9 @@ def generer_recu_pdf(request, paiement_id:int):
     c = canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
 
-    # Filigrane (désactivé par défaut; activer avec ?wm=1)
+    # Filigrane: toujours actif pour les reçus PDF (opacité optimisée définie dans pdf_utils)
     try:
-        if (request.GET.get('wm') or '').strip() == '1':
-            draw_logo_watermark(c, width, height, opacity=0.05, rotate=30, scale=1.2)
+        draw_logo_watermark(c, width, height)
     except Exception:
         pass
 
@@ -1366,6 +1365,7 @@ def rapport_remises(request):
         return render(request, template, context)
     return HttpResponse('Rapport remises')
 
+@login_required
 def liste_eleves_soldes(request):
     """Liste des élèves soldés en tenant compte des remises (hors frais d'inscription).
 

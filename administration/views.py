@@ -4,7 +4,8 @@ from django.contrib.auth.models import User
 from django.views.decorators.http import require_POST
 from django.views.decorators.csrf import csrf_protect
 from django.contrib import messages
-from django.db import transaction
+from django.db import transaction, IntegrityError
+from django.db.models.deletion import ProtectedError
 from django.apps import apps
 from django.http import JsonResponse
 from django.core.paginator import Paginator
@@ -65,9 +66,9 @@ def system_reset_dashboard(request):
 def confirm_system_reset(request):
     """Confirmation et exécution de la réinitialisation système"""
     
-    # Restriction stricte: seul l'utilisateur autorisé peut réinitialiser (supprimer massivement)
-    if request.user.username != 'FELIXSUZANELENO':
-        return JsonResponse({'success': False, 'error': 'Action non autorisée.'}, status=403)
+    # Accès déjà contrôlé par les décorateurs @login_required et @user_passes_test(is_super_admin)
+    # Suppression de la restriction hardcodée sur le nom d'utilisateur pour permettre à tout super admin/staff
+    # d'exécuter la réinitialisation conformément aux règles de sécurité globales.
 
     # Log de debug
     logger.info(f"Reset request received from {request.user.username}")
@@ -448,7 +449,6 @@ def model_detail_view(request, app_label, model_name, object_id):
     
     return render(request, 'administration/model_detail.html', context)
 
-@delete_permission_required()
 @login_required
 @user_passes_test(is_super_admin, login_url='/admin/')
 @csrf_protect
@@ -483,6 +483,38 @@ def model_delete_view(request, app_label, model_name, object_id):
             'message': f'{model._meta.verbose_name} "{obj_str}" supprimé avec succès.'
         })
         
+    except ProtectedError as e:
+        # Construire un message clair avec les relations bloquantes
+        blocking = []
+        try:
+            # e.protected_objects peut contenir les objets liés qui bloquent
+            related = getattr(e, 'protected_objects', [])
+            if related:
+                # Compter par modèle pour un message synthétique
+                counts = {}
+                for ro in related:
+                    key = ro._meta.verbose_name_plural
+                    counts[key] = counts.get(key, 0) + 1
+                for label, cnt in counts.items():
+                    blocking.append(f"{cnt} {label}")
+        except Exception:
+            pass
+        details = f" — dépendances: {', '.join(blocking)}" if blocking else ''
+        logger.warning(f"Suppression bloquée (ProtectedError) {model._meta.verbose_name} {object_id}{details}")
+        return JsonResponse({
+            'success': False,
+            'error': (
+                "Suppression impossible: cet élément est référencé par d'autres données protégées"
+                + details
+                + ". Supprimez/retirez d'abord ces éléments liés."
+            )
+        })
+    except IntegrityError as e:
+        logger.error(f"IntegrityError lors de la suppression {model._meta.verbose_name} {object_id}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': "Suppression impossible à cause d'une contrainte d'intégrité (FK/UNIQUE)."
+        })
     except Exception as e:
         logger.error(f"Erreur lors de la suppression {model._meta.verbose_name} {object_id}: {str(e)}")
         return JsonResponse({
@@ -490,7 +522,6 @@ def model_delete_view(request, app_label, model_name, object_id):
             'error': f'Erreur lors de la suppression: {str(e)}'
         })
 
-@delete_permission_required()
 @login_required
 @user_passes_test(is_super_admin, login_url='/admin/')
 @csrf_protect
@@ -533,6 +564,28 @@ def model_bulk_delete_view(request, app_label, model_name):
             'message': f'{deleted_count} {model._meta.verbose_name_plural} supprimé(s) avec succès.'
         })
         
+    except ProtectedError as e:
+        # Nombre d'objets bloquants (toutes relations confondues)
+        nb_blocking = 0
+        try:
+            nb_blocking = len(getattr(e, 'protected_objects', []) or [])
+        except Exception:
+            pass
+        logger.warning(f"Suppression en masse bloquée (ProtectedError) {model._meta.verbose_name_plural}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': (
+                "Suppression en masse impossible: certains éléments sont référencés par d'autres données protégées"
+                + (f" (≈{nb_blocking} dépendances)" if nb_blocking else '')
+                + ". Supprimez/retirez d'abord les éléments liés."
+            )
+        })
+    except IntegrityError as e:
+        logger.error(f"IntegrityError suppression en masse {model._meta.verbose_name_plural}: {str(e)}")
+        return JsonResponse({
+            'success': False,
+            'error': "Suppression en masse impossible à cause d'une contrainte d'intégrité (FK/UNIQUE)."
+        })
     except Exception as e:
         logger.error(f"Erreur lors de la suppression en masse {model._meta.verbose_name_plural}: {str(e)}")
         return JsonResponse({
