@@ -30,6 +30,22 @@ def is_super_admin(user):
     """Vérifie si l'utilisateur est un super administrateur"""
     return user.is_superuser and user.is_staff
 
+def can_access_retards_paiement(user):
+    """Vérifie si l'utilisateur peut accéder aux retards de paiement"""
+    if not user.is_authenticated:
+        return False
+    
+    # Super admin et staff ont accès
+    if user.is_superuser or user.is_staff:
+        return True
+    
+    # Vérifier le rôle via le profil
+    try:
+        profil = user.profil
+        return profil.role in ['ADMIN', 'COMPTABLE', 'DIRECTEUR']
+    except:
+        return False
+
 @login_required
 @user_passes_test(is_super_admin, login_url='/admin/')
 def system_reset_dashboard(request):
@@ -595,7 +611,7 @@ def model_bulk_delete_view(request, app_label, model_name):
 
 
 @login_required
-@user_passes_test(lambda u: u.is_superuser and u.is_staff)
+@user_passes_test(can_access_retards_paiement)
 def eleves_retard_paiement(request):
     """Vue pour lister les élèves en retard de paiement avec fonctionnalités de communication"""
     
@@ -683,7 +699,7 @@ def eleves_retard_paiement(request):
 
 
 @login_required
-@user_passes_test(lambda u: u.is_superuser and u.is_staff)
+@user_passes_test(can_access_retards_paiement)
 def envoyer_rappel_paiement(request):
     """Vue pour envoyer des rappels de paiement par SMS/WhatsApp"""
     

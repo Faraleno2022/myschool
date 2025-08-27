@@ -1084,9 +1084,34 @@ def export_rapport_paiements_pdf(request):
     response = HttpResponse(content_type='application/pdf')
     response['Content-Disposition'] = 'attachment; filename="rapport_paiements.pdf"'
 
-    doc = SimpleDocTemplate(response, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=60, bottomMargin=30)
+    # Créer un template avec filigrane
+    class WatermarkDocTemplate(SimpleDocTemplate):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+        
+        def afterPage(self):
+            c = self.canv
+            try:
+                from ecole_moderne.pdf_utils import draw_logo_watermark
+                draw_logo_watermark(c, self.pagesize[0], self.pagesize[1])
+            except Exception:
+                pass
+    
+    doc = WatermarkDocTemplate(response, pagesize=landscape(A4), rightMargin=20, leftMargin=20, topMargin=60, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
+    
+    # Ajouter le logo en en-tête
+    try:
+        from django.contrib.staticfiles import finders
+        logo_path = finders.find('logos/logo.png')
+        if logo_path:
+            from reportlab.platypus import Image
+            logo = Image(logo_path, width=60, height=60)
+            elements.append(logo)
+            elements.append(Spacer(1, 10))
+    except Exception:
+        pass
 
     titre = "Rapport des salaires payés"
     if annee:

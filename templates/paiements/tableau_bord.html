@@ -22,11 +22,12 @@
         <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
             <i class="fas fa-bell me-1"></i>Relances
         </a>
-        {% if perms.utilisateurs.peut_consulter_rapports %}
-        <a href="{% url 'paiements:rapport_remises' %}" class="btn btn-outline-success">
+        <a href="{% url 'administration:eleves_retard_paiement' %}" class="btn btn-outline-danger">
+            <i class="fas fa-exclamation-triangle me-1"></i>Retards de paiement
+        </a>
+        <a href="{% url 'rapports:rapport_remises' %}" class="btn btn-outline-success">
             <i class="fas fa-percent me-1"></i>Rapport des remises
         </a>
-        {% endif %}
     </div>
 {% endblock %}
 
@@ -247,17 +248,18 @@
                         <a href="{% url 'paiements:liste_relances' %}" class="btn btn-outline-warning">
                             <i class="fas fa-bell me-2"></i>Voir les relances
                         </a>
+                        <a href="{% url 'administration:eleves_retard_paiement' %}" class="btn btn-danger">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Retards de paiement
+                        </a>
                         <a href="{% url 'paiements:liste_eleves_soldes' %}" class="btn btn-outline-success">
                             <i class="fas fa-check-circle me-2"></i>Élèves soldés
                         </a>
                         <a href="{% url 'eleves:liste_eleves' %}" class="btn btn-info">
                             <i class="fas fa-users me-2"></i>Gérer les Élèves
                         </a>
-                        {% if perms.utilisateurs.peut_consulter_rapports %}
-                        <a href="{% url 'paiements:rapport_remises' %}" class="btn btn-success">
+                        <a href="{% url 'rapports:rapport_remises' %}" class="btn btn-success">
                             <i class="fas fa-tags me-2"></i>Rapport des remises
                         </a>
-                        {% endif %}
                     </div>
                 </div>
             </div>

@@ -434,6 +434,13 @@ def export_eleves_classe_pdf(request, classe_id):
     c = canvas.Canvas(response, pagesize=landscape(A4))
     width, height = landscape(A4)
     c.setPageCompression(1)
+    
+    # Ajouter le filigrane
+    try:
+        from ecole_moderne.pdf_utils import draw_logo_watermark
+        draw_logo_watermark(c, width, height)
+    except Exception:
+        pass
 
     # Polices (Calibri/Arial si dispo, sinon Helvetica par défaut)
     font_name = 'Helvetica'
@@ -621,6 +628,13 @@ def export_tous_eleves_pdf(request):
         c = canvas.Canvas(response, pagesize=landscape(A4))
         width, height = landscape(A4)
         c.setPageCompression(1)
+        
+        # Ajouter le filigrane
+        try:
+            from ecole_moderne.pdf_utils import draw_logo_watermark
+            draw_logo_watermark(c, width, height)
+        except Exception:
+            pass
 
         # Configuration des polices
         font_name = 'Helvetica'
@@ -1187,6 +1201,13 @@ def fiche_inscription_pdf(request, eleve_id):
     c = canvas.Canvas(response, pagesize=A4)
     width, height = A4
     
+    # Ajouter le filigrane
+    try:
+        from ecole_moderne.pdf_utils import draw_logo_watermark
+        draw_logo_watermark(c, width, height)
+    except Exception:
+        pass
+    
     # Configuration des polices avec détection cross-platform
     main_font_registered = False
     try:
@@ -1271,27 +1292,83 @@ def fiche_inscription_pdf(request, eleve_id):
     finally:
         c.restoreState()
     
-    # En-tête
+    # En-tête avec logo de l'école
     y = height - 2*cm
+    
+    # Logo en en-tête (côté gauche)
     try:
-        c.setFont("MainFont-Bold", 16)
-    except:
-        c.setFont("Helvetica-Bold", 16)
-    
-    # Centrer le texte manuellement avec taille réduite
-    text = eleve.classe.ecole.nom.upper()
-    text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
-    c.drawString((width - text_width) / 2, y, text)
-    y -= 0.8*cm
-    
-    try:
-        c.setFont("MainFont-Bold", 16)
-    except:
-        c.setFont("Helvetica-Bold", 16)
-    
-    text = "FICHE D'INSCRIPTION"
-    text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
-    c.drawString((width - text_width) / 2, y, text)
+        from django.contrib.staticfiles import finders
+        logo_path = finders.find('logos/logo.png')
+        
+        if logo_path:
+            try:
+                logo_w, logo_h = 80, 80
+                c.drawImage(logo_path, 2*cm, y - logo_h, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
+                
+                # Titre à côté du logo
+                try:
+                    c.setFont("MainFont-Bold", 18)
+                except:
+                    c.setFont("Helvetica-Bold", 18)
+                
+                text = eleve.classe.ecole.nom.upper()
+                c.drawString(2*cm + logo_w + 20, y - 25, text)
+                
+                # Sous-titre
+                try:
+                    c.setFont("MainFont-Bold", 16)
+                except:
+                    c.setFont("Helvetica-Bold", 16)
+                
+                text = "FICHE D'INSCRIPTION"
+                c.drawString(2*cm + logo_w + 20, y - 50, text)
+                
+                y -= (logo_h + 20)
+            except Exception:
+                # Fallback sans logo
+                try:
+                    c.setFont("MainFont-Bold", 16)
+                except:
+                    c.setFont("Helvetica-Bold", 16)
+                
+                text = eleve.classe.ecole.nom.upper()
+                text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+                c.drawString((width - text_width) / 2, y, text)
+                y -= 0.8*cm
+                
+                text = "FICHE D'INSCRIPTION"
+                text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+                c.drawString((width - text_width) / 2, y, text)
+        else:
+            # Fallback sans logo
+            try:
+                c.setFont("MainFont-Bold", 16)
+            except:
+                c.setFont("Helvetica-Bold", 16)
+            
+            text = eleve.classe.ecole.nom.upper()
+            text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+            c.drawString((width - text_width) / 2, y, text)
+            y -= 0.8*cm
+            
+            text = "FICHE D'INSCRIPTION"
+            text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+            c.drawString((width - text_width) / 2, y, text)
+    except Exception:
+        # Fallback complet en cas d'erreur
+        try:
+            c.setFont("MainFont-Bold", 16)
+        except:
+            c.setFont("Helvetica-Bold", 16)
+        
+        text = eleve.classe.ecole.nom.upper()
+        text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+        c.drawString((width - text_width) / 2, y, text)
+        y -= 0.8*cm
+        
+        text = "FICHE D'INSCRIPTION"
+        text_width = c.stringWidth(text, "MainFont-Bold", 16) if "MainFont-Bold" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica-Bold", 16)
+        c.drawString((width - text_width) / 2, y, text)
     
     y -= 1.5*cm
     

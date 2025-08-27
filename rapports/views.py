@@ -30,6 +30,22 @@ from openpyxl.utils import get_column_letter
 # Décorateur d'accès admin uniquement
 admin_required = user_passes_test(user_is_admin)
 
+def can_access_rapports(user):
+    """Vérifie si l'utilisateur peut accéder aux rapports"""
+    if not user.is_authenticated:
+        return False
+    
+    # Super admin et staff ont accès
+    if user.is_superuser or user.is_staff:
+        return True
+    
+    # Vérifier le rôle via le profil
+    try:
+        profil = user.profil
+        return profil.role in ['ADMIN', 'COMPTABLE', 'DIRECTEUR']
+    except:
+        return False
+
 @login_required
 @admin_required
 def tableau_bord(request):
@@ -766,9 +782,37 @@ def collecter_donnees_journalieres(date_rapport, user=None):
 def generer_pdf_journalier(donnees, date_rapport):
     """Génère le PDF du rapport journalier"""
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4)
+    
+    # Créer le canvas pour ajouter le filigrane
+    from reportlab.pdfgen import canvas as pdf_canvas
+    
+    class WatermarkDocTemplate(SimpleDocTemplate):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+        
+        def afterPage(self):
+            c = self.canv
+            try:
+                from ecole_moderne.pdf_utils import draw_logo_watermark
+                draw_logo_watermark(c, self.pagesize[0], self.pagesize[1])
+            except Exception:
+                pass
+    
+    doc = WatermarkDocTemplate(buffer, pagesize=A4)
     styles = getSampleStyleSheet()
     story = []
+    
+    # Ajouter le logo en en-tête
+    try:
+        from django.contrib.staticfiles import finders
+        logo_path = finders.find('logos/logo.png')
+        if logo_path:
+            from reportlab.platypus import Image
+            logo = Image(logo_path, width=60, height=60)
+            story.append(logo)
+            story.append(Spacer(1, 10))
+    except Exception:
+        pass
     
     # Titre
     titre_style = ParagraphStyle(
@@ -904,6 +948,7 @@ def generer_pdf_journalier(donnees, date_rapport):
 
 
 @login_required
+@user_passes_test(can_access_rapports)
 def rapport_remises_detaille(request):
     """Rapport détaillé des remises appliquées"""
     date_debut = request.GET.get('date_debut')

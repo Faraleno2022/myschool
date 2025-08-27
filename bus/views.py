@@ -168,7 +168,11 @@ def generer_recu_abonnement_pdf(request, abo_id):
     width, height = A4
 
     # Filigrane standardisé (logo centré, rotation légère, opacité 4%)
-    draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
+    try:
+        from ecole_moderne.pdf_utils import draw_logo_watermark
+        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
+    except Exception:
+        pass
 
     # Titre
     c.setFont('Helvetica-Bold', 16)

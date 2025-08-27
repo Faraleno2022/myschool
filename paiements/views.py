@@ -1,5 +1,5 @@
 from django.shortcuts import render, get_object_or_404, redirect
-from django.contrib.auth.decorators import login_required
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.views.decorators.cache import cache_page
 from django.views.decorators.vary import vary_on_cookie
 from django.contrib import messages
@@ -988,13 +988,51 @@ def generer_recu_pdf(request, paiement_id:int):
         c.drawString(x, y, text)
         top = y - line_h
 
-    # En-tête
-    c.setFont('Helvetica-Bold', 16)
-    c.drawString(left, top, "Reçu de paiement")
-    top -= 10
-    c.setFont('Helvetica', 10)
-    c.drawString(left, top, (paiement.eleve.classe.ecole.nom if getattr(paiement.eleve.classe, 'ecole', None) else ""))
-    top -= 20
+    # Logo en en-tête (côté gauche)
+    try:
+        from django.contrib.staticfiles import finders
+        logo_path = finders.find('logos/logo.png')
+        
+        if logo_path and ImageReader is not None:
+            try:
+                logo_img = ImageReader(logo_path)
+                logo_w, logo_h = 80, 80
+                c.drawImage(logo_img, left, top - logo_h, width=logo_w, height=logo_h, preserveAspectRatio=True, mask='auto')
+                
+                # Titre à côté du logo
+                c.setFont('Helvetica-Bold', 18)
+                c.drawString(left + logo_w + 20, top - 25, "REÇU DE PAIEMENT")
+                
+                # Nom de l'école sous le titre
+                c.setFont('Helvetica-Bold', 12)
+                ecole_nom = paiement.eleve.classe.ecole.nom if getattr(paiement.eleve.classe, 'ecole', None) else ""
+                c.drawString(left + logo_w + 20, top - 45, ecole_nom)
+                
+                top -= (logo_h + 20)
+            except Exception:
+                # Fallback sans logo
+                c.setFont('Helvetica-Bold', 18)
+                c.drawString(left, top, "REÇU DE PAIEMENT")
+                top -= 15
+                c.setFont('Helvetica-Bold', 12)
+                c.drawString(left, top, (paiement.eleve.classe.ecole.nom if getattr(paiement.eleve.classe, 'ecole', None) else ""))
+                top -= 25
+        else:
+            # Fallback sans logo
+            c.setFont('Helvetica-Bold', 18)
+            c.drawString(left, top, "REÇU DE PAIEMENT")
+            top -= 15
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(left, top, (paiement.eleve.classe.ecole.nom if getattr(paiement.eleve.classe, 'ecole', None) else ""))
+            top -= 25
+    except Exception:
+        # Fallback en cas d'erreur
+        c.setFont('Helvetica-Bold', 18)
+        c.drawString(left, top, "REÇU DE PAIEMENT")
+        top -= 15
+        c.setFont('Helvetica-Bold', 12)
+        c.drawString(left, top, (paiement.eleve.classe.ecole.nom if getattr(paiement.eleve.classe, 'ecole', None) else ""))
+        top -= 25
 
     # Photo élève (en haut à droite si disponible) ou placeholder avec initiales si absente
     try:
@@ -1366,6 +1404,7 @@ def rapport_remises(request):
     return HttpResponse('Rapport remises')
 
 @login_required
+@user_passes_test(lambda u: u.is_staff or (hasattr(u, 'profil') and u.profil.role in ['ADMIN', 'COMPTABLE', 'DIRECTEUR']))
 def liste_eleves_soldes(request):
     """Liste des élèves soldés en tenant compte des remises (hors frais d'inscription).
 
