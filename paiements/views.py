@@ -50,10 +50,220 @@ from .notifications import (
 
 # ... (rest of the code remains the same)
 
+def ensure_echeancier_for_eleve(eleve: "Eleve", *, created_by=None) -> "EcheancierPaiement":
+    """Crée (silencieusement) un `EcheancierPaiement` pour l'élève s'il n'existe pas.
+
+    - Utilise `eleves.GrilleTarifaire` pour pré-remplir les montants dus et l'année scolaire
+    - Définit des dates d'échéance par défaut: inscription=today, T1=15/01, T2=15/03, T3=15/05
+    - Retourne l'échéancier existant ou nouvellement créé
+    """
+    try:
+        ech = getattr(eleve, 'echeancier', None)
+    except Exception:
+        ech = None
+    if ech:
+        return ech
+
+    # Déterminer la meilleure grille disponible
+    try:
+        niveau = getattr(eleve.classe, 'niveau', None)
+        ecole = getattr(eleve.classe, 'ecole', None)
+        annee_classe = getattr(eleve.classe, 'annee_scolaire', None)
+    except Exception:
+        niveau = None
+        ecole = None
+        annee_classe = None
+
+    try:
+        from datetime import date as _d
+        today_d = _d.today()
+    except Exception:
+        from datetime import date as _d
+        today_d = _d.today()
+
+    annee_scolaire_def = f"{today_d.year}-{today_d.year+1}" if today_d.month >= 9 else f"{today_d.year-1}-{today_d.year}"
+    grille = None
+    try:
+        if ecole and niveau:
+            # 1) Grille exacte sur l'année de la classe
+            if annee_classe:
+                grille = GrilleTarifaire.objects.filter(ecole=ecole, niveau=niveau, annee_scolaire=annee_classe).first()
+            # 2) Sinon année scolaire par défaut
+            if grille is None:
+                grille = GrilleTarifaire.objects.filter(ecole=ecole, niveau=niveau, annee_scolaire=annee_scolaire_def).first()
+            # 3) Sinon la plus récente
+            if grille is None:
+                grille = GrilleTarifaire.objects.filter(ecole=ecole, niveau=niveau).order_by('-annee_scolaire').first()
+    except Exception:
+        grille = None
+
+    # Préparer les champs
+    if grille:
+        annee_scol = grille.annee_scolaire
+        fi = grille.frais_inscription or 0
+        t1 = grille.tranche_1 or 0
+        t2 = grille.tranche_2 or 0
+        t3 = grille.tranche_3 or 0
+    else:
+        annee_scol = annee_classe or annee_scolaire_def
+        fi = 0
+        t1 = 0
+        t2 = 0
+        t3 = 0
+
+    # Dates d'échéance par défaut
+    try:
+        try:
+            annee_debut = int(str(annee_scol).split('-')[0])
+        except Exception:
+            annee_debut = today_d.year if today_d.month >= 9 else today_d.year - 1
+        annee_fin = annee_debut + 1
+        from datetime import date as _d
+        d_insc = today_d
+        d_t1 = _d(annee_fin, 1, 15)
+        d_t2 = _d(annee_fin, 3, 15)
+        d_t3 = _d(annee_fin, 5, 15)
+    except Exception:
+        d_insc = today_d
+        d_t1 = today_d
+        d_t2 = today_d
+        d_t3 = today_d
+
+    with transaction.atomic():
+        ech = EcheancierPaiement.objects.create(
+            eleve=eleve,
+            annee_scolaire=annee_scol,
+            frais_inscription_du=fi,
+            tranche_1_due=t1,
+            tranche_2_due=t2,
+            tranche_3_due=t3,
+            date_echeance_inscription=d_insc,
+            date_echeance_tranche_1=d_t1,
+            date_echeance_tranche_2=d_t2,
+            date_echeance_tranche_3=d_t3,
+            cree_par=created_by if created_by and getattr(created_by, 'is_authenticated', False) else None,
+        )
+    return ech
+
+def _auto_validate_echeancier_for_eleve(eleve: "Eleve") -> None:
+    """Synchronise l'échéancier de l'élève avec les paiements VALIDÉS avant impression du reçu.
+
+    Règles conservatrices:
+    - Si la somme des paiements validés + remises couvre le total dû -> statut = PAYE_COMPLET
+      et on aligne les champs *_payee sur les *_due pour cohérence d'affichage.
+    - Si couverture = 0 -> statut = A_PAYER (pas d'allocation détaillée effectuée ici)
+    - Sinon -> statut = PAYE_PARTIEL (sans répartir finement par tranche)
+
+    Cette fonction évite les incohérences si l'allocation manuelle par tranche a été oubliée.
+    """
+    try:
+        # Récupérer l'échéancier (sans exception si absent)
+        try:
+            echeancier = getattr(eleve, 'echeancier', None)
+        except Exception:
+            echeancier = None
+        if echeancier is None:
+            echeancier = EcheancierPaiement.objects.filter(eleve=eleve).first()
+        if not echeancier:
+            return
+
+        # Totaux dus
+        try:
+            total_du = int((echeancier.frais_inscription_du or 0)
+                           + (echeancier.tranche_1_due or 0)
+                           + (echeancier.tranche_2_due or 0)
+                           + (echeancier.tranche_3_due or 0))
+        except Exception:
+            total_du = 0
+
+        # Paiements validés et remises appliquées sur des paiements
+        try:
+            aggs = (
+                Paiement.objects
+                .filter(eleve=eleve, statut='VALIDE')
+                .aggregate(sum_montant=Sum('montant'), sum_remises=Sum('remises__montant_remise'))
+            )
+            sum_montant = int(aggs.get('sum_montant') or 0)
+            sum_remises = int(aggs.get('sum_remises') or 0)
+        except Exception:
+            sum_montant = 0
+            sum_remises = 0
+
+        couverture = max(0, sum_montant + sum_remises)
+
+        # Déterminer le nouveau statut avec gestion du retard
+        # Calcul de l'exigible (sommes dont la date d'échéance est passée ou aujourd'hui)
+        try:
+            from django.utils import timezone as _tz
+            today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
+        except Exception:
+            today = date.today()
+        try:
+            exigible = 0
+            if echeancier.date_echeance_inscription and echeancier.date_echeance_inscription <= today:
+                exigible += int(echeancier.frais_inscription_du or 0)
+            if echeancier.date_echeance_tranche_1 and echeancier.date_echeance_tranche_1 <= today:
+                exigible += int(echeancier.tranche_1_due or 0)
+            if echeancier.date_echeance_tranche_2 and echeancier.date_echeance_tranche_2 <= today:
+                exigible += int(echeancier.tranche_2_due or 0)
+            if echeancier.date_echeance_tranche_3 and echeancier.date_echeance_tranche_3 <= today:
+                exigible += int(echeancier.tranche_3_due or 0)
+        except Exception:
+            exigible = 0
+
+        # Sommes déjà enregistrées comme payées dans l'échéancier + remises applicables (bornées à l'exigible)
+        try:
+            paye_echeancier = int((echeancier.frais_inscription_paye or 0)
+                                  + (echeancier.tranche_1_payee or 0)
+                                  + (echeancier.tranche_2_payee or 0)
+                                  + (echeancier.tranche_3_payee or 0))
+        except Exception:
+            paye_echeancier = 0
+        # Utiliser la couverture réelle (paiements validés + remises) pour ne pas dépendre d'une répartition fine
+        paye_effectif = min(couverture, total_du)
+
+        if total_du <= 0:
+            new_statut = 'PAYE_COMPLET'
+        elif paye_effectif >= total_du:
+            new_statut = 'PAYE_COMPLET'
+        elif exigible > 0 and paye_effectif < exigible:
+            new_statut = 'EN_RETARD'
+        elif paye_effectif <= 0:
+            new_statut = 'A_PAYER'
+        else:
+            new_statut = 'PAYE_PARTIEL'
+
+        # Appliquer le statut et éventuellement aligner les montants payés si totalement soldé
+        changed = False
+        if echeancier.statut != new_statut:
+            echeancier.statut = new_statut
+            changed = True
+        if new_statut == 'PAYE_COMPLET':
+            # Aligner les montants payés pour refléter le soldé complet
+            if echeancier.frais_inscription_paye != echeancier.frais_inscription_du:
+                echeancier.frais_inscription_paye = echeancier.frais_inscription_du
+                changed = True
+            if echeancier.tranche_1_payee != echeancier.tranche_1_due:
+                echeancier.tranche_1_payee = echeancier.tranche_1_due
+                changed = True
+            if echeancier.tranche_2_payee != echeancier.tranche_2_due:
+                echeancier.tranche_2_payee = echeancier.tranche_2_due
+                changed = True
+            if echeancier.tranche_3_payee != echeancier.tranche_3_due:
+                echeancier.tranche_3_payee = echeancier.tranche_3_due
+                changed = True
+
+        if changed:
+            echeancier.save()
+    except Exception:
+        # Ne jamais bloquer l'impression du reçu à cause de cette étape
+        logging.getLogger(__name__).exception("Erreur lors de la validation automatique de l'échéancier")
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def twilio_inbound(request):
     """Réception des messages entrants Twilio (SMS/WhatsApp).
+{{ ... }}
     Journalise les données utiles et répond 200.
     """
     if not _is_valid_twilio_request(request):
@@ -559,6 +769,12 @@ def ajouter_paiement(request, eleve_id:int=None):
                     paiement.cree_par = request.user
                 # Statut par défaut reste EN_ATTENTE (défini dans le modèle)
                 paiement.save()
+                # Auto-création de l'échéancier s'il n'existe pas, puis synchro/validation
+                try:
+                    ech = ensure_echeancier_for_eleve(paiement.eleve, created_by=request.user if request.user.is_authenticated else None)
+                    _auto_validate_echeancier_for_eleve(paiement.eleve)
+                except Exception:
+                    logging.getLogger(__name__).exception("Auto-création/validation échéancier après enregistrement paiement")
             # Notifications: reçu paiement (WhatsApp + SMS) et, si inscription, confirmation d'inscription
             try:
                 send_payment_receipt(paiement.eleve, paiement)
@@ -567,13 +783,9 @@ def ajouter_paiement(request, eleve_id:int=None):
                     send_enrollment_confirmation(paiement.eleve, paiement)
             except Exception:
                 logging.getLogger(__name__).exception("Erreur lors de l'envoi des notifications Twilio")
-            messages.success(request, "Paiement enregistré avec succès. Étape suivante: création de l'échéancier.")
-            try:
-                # Rediriger vers la création d'échéancier pour l'élève concerné
-                return redirect('paiements:creer_echeancier', eleve_id=paiement.eleve_id)
-            except Exception:
-                # Fallback: page d'échéancier de l'élève
-                return redirect('paiements:echeancier_eleve', eleve_id=paiement.eleve_id)
+            messages.success(request, "Paiement enregistré avec succès. L'échéancier a été créé/mis à jour automatiquement.")
+            # Rediriger vers la page échéancier de l'élève
+            return redirect('paiements:echeancier_eleve', eleve_id=paiement.eleve_id)
         else:
             messages.error(request, "Veuillez corriger les erreurs du formulaire.")
     else:
@@ -633,6 +845,13 @@ def valider_paiement(request, paiement_id:int):
                 _allocate_payment_to_echeancier(paiement)  # type: ignore[misc]
         except Exception:
             logging.getLogger(__name__).exception("Erreur lors de l'allocation du paiement à l'échéancier")
+
+        # S'assurer que l'échéancier existe et synchroniser le statut (incl. EN_RETARD)
+        try:
+            ensure_echeancier_for_eleve(paiement.eleve, created_by=request.user if request.user.is_authenticated else None)
+            _auto_validate_echeancier_for_eleve(paiement.eleve)
+        except Exception:
+            logging.getLogger(__name__).exception("Erreur ensure/auto-validate échéancier après validation du paiement")
 
     # Envoyer le reçu de paiement après validation
     try:
@@ -940,6 +1159,26 @@ def creer_echeancier(request, eleve_id:int):
     }
     return render(request, 'paiements/form_echeancier.html', context)
 
+@login_required
+def assurer_echeancier(request, eleve_id: int):
+    """Assure la création automatique de l'échéancier si manquant, puis redirige vers la page échéancier.
+
+    Utilise `ensure_echeancier_for_eleve()` pour créer silencieusement à partir de la grille tarifaire.
+    """
+    eleve = get_object_or_404(Eleve.objects.select_related('classe', 'classe__ecole'), pk=eleve_id)
+    try:
+        ensure_echeancier_for_eleve(
+            eleve,
+            created_by=request.user if getattr(request.user, 'is_authenticated', False) else None,
+        )
+        # Synchroniser le statut juste après
+        _auto_validate_echeancier_for_eleve(eleve)
+        messages.success(request, "Échéancier créé/mis à jour automatiquement.")
+    except Exception:
+        logging.getLogger(__name__).exception("Erreur lors de l'assurance de l'échéancier")
+        messages.error(request, "Impossible de créer automatiquement l'échéancier. Veuillez réessayer ou le créer manuellement.")
+    return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
+
 def generer_recu_pdf(request, paiement_id:int):
     """Génère un reçu PDF téléchargeable pour un paiement validé.
 
@@ -959,6 +1198,13 @@ def generer_recu_pdf(request, paiement_id:int):
 
     if canvas is None:
         return HttpResponse("La génération de PDF n'est pas disponible sur ce serveur (ReportLab manquant).", status=500)
+
+    # Valider/synchroniser l'échéancier de l'élève avant génération du reçu
+    try:
+        with transaction.atomic():
+            _auto_validate_echeancier_for_eleve(paiement.eleve)
+    except Exception:
+        logging.getLogger(__name__).exception("Validation automatique de l'échéancier avant reçu échouée")
 
     # Calcul total remises
     remises_total = paiement.remises.aggregate(total=Sum('montant_remise')).get('total') or 0
@@ -1416,7 +1662,9 @@ def liste_eleves_soldes(request):
     from django.utils import timezone as _tz
     today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
 
-    annee = (request.GET.get('annee') or f"{today.year}-{today.year+1}").strip()
+    # Forcer 2025-2026 comme année courante pour cohérence avec les données
+    default_annee = "2025-2026"
+    annee = (request.GET.get('annee') or default_annee).strip()
     ecole_id = (request.GET.get('ecole_id') or '').strip()
     classe_id = (request.GET.get('classe_id') or '').strip()
     q = (request.GET.get('q') or '').strip()
@@ -1426,6 +1674,12 @@ def liste_eleves_soldes(request):
         EcheancierPaiement.objects
         .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
     )
+
+    # Restreindre à l'année scolaire sélectionnée
+    try:
+        qs = qs.filter(annee_scolaire=annee)
+    except Exception:
+        pass
 
     # Filtres école/classe
     if ecole_id:
@@ -1477,10 +1731,44 @@ def liste_eleves_soldes(request):
             output_field=DecimalField(max_digits=12, decimal_places=0),
         )
     )
+    # Déterminer la période de l'année scolaire pour restreindre les remises aux paiements de l'année
+    try:
+        annee_debut = int(annee.split('-')[0])
+        periode_debut = date(annee_debut, 9, 1)
+        periode_fin = date(annee_debut + 1, 8, 31)
+    except Exception:
+        # Fallback simple si parsing échoue: limiter à l'année civile courante
+        periode_debut = date(today.year, 1, 1)
+        periode_fin = date(today.year, 12, 31)
+    # Important: caper la fin de période à aujourd'hui pour éviter une fin future
+    try:
+        if periode_fin > today:
+            periode_fin = today
+    except Exception:
+        pass
+
     remises_total = Coalesce(
         Sum(
             'eleve__paiements__remises__montant_remise',
-            filter=Q(eleve__paiements__statut='VALIDE'),
+            filter=(
+                Q(eleve__paiements__statut='VALIDE') &
+                Q(eleve__paiements__date_paiement__gte=periode_debut) &
+                Q(eleve__paiements__date_paiement__lte=periode_fin)
+            ),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        ),
+        Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
+        output_field=DecimalField(max_digits=12, decimal_places=0),
+    )
+    # Paiements validés sur la période (même s'ils ne sont pas encore alloués dans l'échéancier)
+    paiements_valides_total = Coalesce(
+        Sum(
+            'eleve__paiements__montant',
+            filter=(
+                Q(eleve__paiements__statut='VALIDE') &
+                Q(eleve__paiements__date_paiement__gte=periode_debut) &
+                Q(eleve__paiements__date_paiement__lte=periode_fin)
+            ),
             output_field=DecimalField(max_digits=12, decimal_places=0),
         ),
         Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)),
@@ -1499,11 +1787,18 @@ def liste_eleves_soldes(request):
         + net_sco_du,
         output_field=DecimalField(max_digits=12, decimal_places=0),
     )
-    solde_calc = ExpressionWrapper(net_du - paye_total, output_field=DecimalField(max_digits=12, decimal_places=0))
+    # Choisir le meilleur indicateur de "payé":
+    # - prioriser la somme réelle des paiements validés (puisque l'allocation peut être différée)
+    # - fallback sur les champs agrégés de l'échéancier
+    paye_effectif = Greatest(
+        Coalesce(paiements_valides_total, Value(0, output_field=DecimalField(max_digits=12, decimal_places=0))),
+        Coalesce(paye_total, Value(0, output_field=DecimalField(max_digits=12, decimal_places=0))),
+    )
+    solde_calc = ExpressionWrapper(net_du - paye_effectif, output_field=DecimalField(max_digits=12, decimal_places=0))
 
     qs = qs.annotate(
         total_du_calc=net_du,
-        total_paye_calc=paye_total,
+        total_paye_calc=paye_effectif,
         solde_calcule=solde_calc,
         total_remises_calc=remises_total,
     ).order_by('eleve__classe__nom', 'eleve__nom', 'eleve__prenom')
@@ -1563,8 +1858,8 @@ def liste_eleves_soldes(request):
             'solde': int(aggr['solde'] or 0),
             'remises': int(aggr['remises'] or 0),
         },
-        'periode_debut': today.replace(month=9, day=1) if hasattr(today, 'replace') else today,
-        'periode_fin': today,
+        'periode_debut': periode_debut,
+        'periode_fin': periode_fin,
     }
     template = 'paiements/eleves_soldes.html' if _template_exists('paiements/eleves_soldes.html') else None
     if template:

@@ -9,7 +9,8 @@ from django.db.models.deletion import ProtectedError
 from django.apps import apps
 from django.http import JsonResponse
 from django.core.paginator import Paginator
-from django.db.models import Q, F, Value
+from django.db.models import Q, F, Value, Sum, Case, When, DecimalField, ExpressionWrapper
+from django.db.models.functions import Coalesce, Least, Greatest
 from decimal import Decimal
 from datetime import datetime, timedelta
 from django.utils import timezone
@@ -613,88 +614,158 @@ def model_bulk_delete_view(request, app_label, model_name):
 @login_required
 @user_passes_test(can_access_retards_paiement)
 def eleves_retard_paiement(request):
-    """Vue pour lister les élèves en retard de paiement avec fonctionnalités de communication"""
-    
-    # Récupérer tous les échéanciers et filtrer ceux avec solde restant > 0
-    echeanciers = EcheancierPaiement.objects.select_related(
-        'eleve', 'eleve__responsable_principal', 'eleve__responsable_secondaire', 'eleve__classe'
+    """Liste les élèves en retard: montants exigibles à date - (paiements + remises de l'année) > 0.
+    Utilise l'année scolaire (septembre→août) et supporte la recherche/pagination.
+    """
+    today = timezone.localdate() if hasattr(timezone, 'localdate') else datetime.now().date()
+
+    # Paramètres filtres
+    annee = (request.GET.get('annee') or '').strip()
+    search_query = request.GET.get('search', '').strip()
+
+    # Déterminer l'année scolaire par défaut si non fournie
+    # Forcer 2025-2026 comme année courante pour cohérence avec les données
+    if not annee:
+        annee = "2025-2026"
+
+    # Période académique pour filtrer les remises
+    try:
+        annee_debut = int(annee.split('-')[0])
+        periode_debut = datetime(annee_debut, 9, 1).date()
+        periode_fin = datetime(annee_debut + 1, 8, 31).date()
+    except Exception:
+        periode_debut = datetime(today.year, 1, 1).date()
+        periode_fin = datetime(today.year, 12, 31).date()
+
+    # Base queryset
+    qs = (
+        EcheancierPaiement.objects
+        .select_related('eleve', 'eleve__responsable_principal', 'eleve__responsable_secondaire', 'eleve__classe')
+        .filter(annee_scolaire=annee)
     )
-    
-    # Filtrer les échéanciers avec solde restant > 0
-    echeanciers_retard = []
-    for echeancier in echeanciers:
-        if echeancier.solde_restant > 0:
-            echeanciers_retard.append(echeancier)
-    
-    # Calculer les retards par élève
-    eleves_retard = {}
-    for echeancier in echeanciers_retard:
-        eleve = echeancier.eleve
-        if eleve.id not in eleves_retard:
-            eleves_retard[eleve.id] = {
-                'eleve': eleve,
-                'total_du': Decimal('0'),
-                'echeanciers': [],
-                'jours_retard': 0,
-                'responsable_principal': eleve.responsable_principal,
-                'responsable_secondaire': eleve.responsable_secondaire,
-                'telephone_principal': eleve.responsable_principal.telephone if eleve.responsable_principal else None,
-                'telephone_secondaire': eleve.responsable_secondaire.telephone if eleve.responsable_secondaire else None,
-            }
-        
-        eleves_retard[eleve.id]['total_du'] += echeancier.solde_restant
-        eleves_retard[eleve.id]['echeanciers'].append(echeancier)
-        
-        # Calculer les jours de retard (approximatif basé sur la date de création de l'échéancier)
-        if echeancier.date_creation:
-            jours_depuis_creation = (datetime.now().date() - echeancier.date_creation.date()).days
-            if jours_depuis_creation > 30:  # Considérer comme retard après 30 jours
-                eleves_retard[eleve.id]['jours_retard'] = max(
-                    eleves_retard[eleve.id]['jours_retard'], 
-                    jours_depuis_creation - 30
-                )
-    
-    # Convertir en liste et trier par montant dû (décroissant)
-    eleves_retard_list = sorted(
-        eleves_retard.values(), 
-        key=lambda x: x['total_du'], 
-        reverse=True
+
+    # Exigible à date (inscription + tranches échues)
+    exigible_expr = (
+        Case(When(date_echeance_inscription__lte=today, then=F('frais_inscription_du')), default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
+        + Case(When(date_echeance_tranche_1__lte=today, then=F('tranche_1_due')), default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
+        + Case(When(date_echeance_tranche_2__lte=today, then=F('tranche_2_due')), default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
+        + Case(When(date_echeance_tranche_3__lte=today, then=F('tranche_3_due')), default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
     )
-    
+
+    # Remises validées pendant l'année scolaire (jusqu'à aujourd'hui)
+    remises_expr = Coalesce(
+        Sum(
+            'eleve__paiements__remises__montant_remise',
+            filter=(
+                Q(eleve__paiements__statut='VALIDE') &
+                Q(eleve__paiements__date_paiement__gte=periode_debut) &
+                Q(eleve__paiements__date_paiement__lte=min(periode_fin, today))
+            )
+        ),
+        Value(0),
+        output_field=DecimalField(max_digits=12, decimal_places=0),
+    )
+    # Remises applicables ne doivent pas excéder l'exigible à date
+    remises_applicables = Least(remises_expr, exigible_expr)
+
+    # Montants payés (paiement anticipé accepté)
+    paye_total = (F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee'))
+    # Paiements validés dans la période académique (même s'ils ne sont pas alloués dans l'échéancier)
+    paiements_valides_total = Coalesce(
+        Sum(
+            'eleve__paiements__montant',
+            filter=(
+                Q(eleve__paiements__statut='VALIDE') &
+                Q(eleve__paiements__date_paiement__gte=periode_debut) &
+                Q(eleve__paiements__date_paiement__lte=min(periode_fin, today))
+            )
+        ),
+        Value(0),
+        output_field=DecimalField(max_digits=12, decimal_places=0),
+    )
+    # Choisir le payé effectif: le plus grand entre paiements validés et cumuls d'échéancier
+    paye_effectif = Greatest(paiements_valides_total, paye_total)
+
+    # Arriéré à date
+    # arrears = max(0, exigible - (paye_total + remises_applicables))
+    arrears_expr = ExpressionWrapper(exigible_expr - (paye_effectif + remises_applicables), output_field=DecimalField(max_digits=12, decimal_places=0))
+
+    qs = qs.annotate(
+        exigible_a_date=exigible_expr,
+        remises_applicables=remises_applicables,
+        paye_total=paye_effectif,
+        arrears=arrears_expr,
+    ).filter(arrears__gt=0).order_by('-arrears', 'eleve__nom', 'eleve__prenom')
+
+    # Recherche simple sur élève et responsable principal
+    if search_query:
+        qs = qs.filter(
+            Q(eleve__prenom__icontains=search_query) |
+            Q(eleve__nom__icontains=search_query) |
+            Q(eleve__matricule__icontains=search_query) |
+            Q(eleve__responsable_principal__nom__icontains=search_query)
+        )
+
     # Pagination
-    paginator = Paginator(eleves_retard_list, 25)
+    paginator = Paginator(qs, 25)
     page_number = request.GET.get('page')
     page_obj = paginator.get_page(page_number)
-    
-    # Recherche
-    search_query = request.GET.get('search', '').strip()
-    if search_query:
-        filtered_eleves = []
-        for eleve_data in eleves_retard_list:
-            eleve = eleve_data['eleve']
-            if (search_query.lower() in eleve.prenom.lower() or 
-                search_query.lower() in eleve.nom.lower() or 
-                search_query.lower() in eleve.matricule.lower() or
-                (eleve_data['responsable_principal'] and 
-                 search_query.lower() in eleve_data['responsable_principal'].nom.lower())):
-                filtered_eleves.append(eleve_data)
-        
-        paginator = Paginator(filtered_eleves, 25)
-        page_obj = paginator.get_page(page_number)
-    
+
+    # Adapter les objets pour le template existant (ajout d'attributs attendus)
+    for obj in page_obj.object_list:
+        # Confort: responsables et téléphones
+        rp = getattr(obj.eleve, 'responsable_principal', None)
+        rs = getattr(obj.eleve, 'responsable_secondaire', None)
+        obj.responsable_principal = rp
+        obj.responsable_secondaire = rs
+        obj.telephone_principal = getattr(rp, 'telephone', None) if rp else None
+        obj.telephone_secondaire = getattr(rs, 'telephone', None) if rs else None
+
+        # Montant dû attendu par le template
+        obj.total_du = getattr(obj, 'arrears', 0)
+
+        # Jours de retard approximatif: basé sur la dernière échéance échue
+        dates = []
+        try:
+            if obj.date_echeance_inscription and obj.date_echeance_inscription <= today:
+                dates.append(obj.date_echeance_inscription)
+            if obj.date_echeance_tranche_1 and obj.date_echeance_tranche_1 <= today:
+                dates.append(obj.date_echeance_tranche_1)
+            if obj.date_echeance_tranche_2 and obj.date_echeance_tranche_2 <= today:
+                dates.append(obj.date_echeance_tranche_2)
+            if obj.date_echeance_tranche_3 and obj.date_echeance_tranche_3 <= today:
+                dates.append(obj.date_echeance_tranche_3)
+        except Exception:
+            dates = []
+        if dates:
+            derniere_echeance = max(dates)
+            obj.jours_retard = max(0, (today - derniere_echeance).days)
+        else:
+            obj.jours_retard = 0
+
     # Statistiques
-    total_eleves_retard = len(eleves_retard_list)
-    total_montant_du = sum(eleve['total_du'] for eleve in eleves_retard_list)
-    
+    total_eleves_retard = qs.count()
+    total_montant_du = qs.aggregate(
+        s=Coalesce(
+            Sum('arrears'),
+            Value(Decimal('0'), output_field=DecimalField(max_digits=12, decimal_places=0)),
+            output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+    )['s'] or Decimal('0')
+    filtered_count = page_obj.paginator.count if search_query else None
+
     context = {
         'titre_page': 'Élèves en Retard de Paiement',
         'page_obj': page_obj,
         'search_query': search_query,
         'total_eleves_retard': total_eleves_retard,
         'total_montant_du': total_montant_du,
-        'filtered_count': len(page_obj.object_list) if search_query else None,
+        'annee': annee,
+        'periode_debut': periode_debut,
+        'periode_fin': periode_fin,
+        'filtered_count': filtered_count,
     }
-    
+
     return render(request, 'administration/eleves_retard_paiement.html', context)
 
 

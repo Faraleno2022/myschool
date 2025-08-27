@@ -21,6 +21,7 @@ urlpatterns = [
     # Échéanciers
     path('echeancier/<int:eleve_id>/', views.echeancier_eleve, name='echeancier_eleve'),
     path('echeancier/creer/<int:eleve_id>/', views.creer_echeancier, name='creer_echeancier'),
+    path('echeancier/assurer/<int:eleve_id>/', views.assurer_echeancier, name='assurer_echeancier'),
     
     # Génération de documents
     path('recu/<int:paiement_id>/pdf/', views.generer_recu_pdf, name='generer_recu_pdf'),
