@@ -721,8 +721,8 @@ def eleves_retard_paiement(request):
         obj.telephone_principal = getattr(rp, 'telephone', None) if rp else None
         obj.telephone_secondaire = getattr(rs, 'telephone', None) if rs else None
 
-        # Montant dû attendu par le template
-        obj.total_du = getattr(obj, 'arrears', 0)
+        # Montant dû: le template lit désormais directement l'attribut annoté 'arrears'
+        # obj.total_du = getattr(obj, 'arrears', 0)
 
         # Jours de retard approximatif: basé sur la dernière échéance échue
         dates = []
