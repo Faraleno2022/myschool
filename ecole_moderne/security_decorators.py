@@ -3,6 +3,7 @@ Décorateurs de sécurité pour protéger les vues contre les attaques
 """
 import functools
 import logging
+from django.contrib import messages
 from django.http import HttpResponseForbidden, JsonResponse
 from django.contrib.auth.decorators import login_required
 from django.core.cache import cache
