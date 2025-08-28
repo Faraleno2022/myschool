@@ -40,7 +40,7 @@ from eleves.models import Eleve, GrilleTarifaire, Classe
 from .forms import PaiementForm, EcheancierForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
-from utilisateurs.permissions import can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports, can_apply_discounts
+from utilisateurs.permissions import has_permission, can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports, can_apply_discounts
 from .notifications import (
     send_payment_receipt,
     send_enrollment_confirmation,
@@ -1336,7 +1336,7 @@ def valider_echeancier(request, eleve_id: int):
     - Redirige ensuite vers la page `echeancier_eleve`
     """
     # Autorisation
-    if not can_validate_payments(request.user):
+    if not has_permission(request.user, 'peut_valider_paiements'):
         messages.error(request, "Vous n'avez pas l'autorisation de valider les échéanciers.")
         return redirect('paiements:echeancier_eleve', eleve_id=eleve_id)
 
@@ -1359,6 +1359,26 @@ def valider_echeancier(request, eleve_id: int):
     except Exception:
         logging.getLogger(__name__).exception("Erreur lors de la validation/synchronisation de l'échéancier")
         messages.error(request, "Une erreur est survenue lors de la validation de l'échéancier.")
+    # Nouveau flux: si l'élève a un paiement récent en attente sans remise, rediriger vers son détail
+    try:
+        paiement_en_attente = (
+            Paiement.objects
+            .filter(eleve=eleve, statut='EN_ATTENTE')
+            .order_by('-date_paiement', '-date_creation', '-id')
+            .first()
+        )
+    except Exception:
+        paiement_en_attente = None
+
+    if paiement_en_attente:
+        try:
+            nb_remises = paiement_en_attente.remises.count()
+        except Exception:
+            nb_remises = 0
+        if (nb_remises or 0) == 0:
+            messages.info(request, "Aucune remise appliquée: veuillez valider le paiement en attente.")
+            return redirect('paiements:detail_paiement', paiement_id=paiement_en_attente.id)
+
     return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
 
 def generer_recu_pdf(request, paiement_id:int):

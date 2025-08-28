@@ -66,6 +66,19 @@ python manage.py runserver
 - Section "Dépenses globales" visible dans les rapports annuels/mensuels
 - Boutons CSV/PDF dans enseignants, états de salaire, rapports, statistiques élèves
 
+### Endpoints paiements (Août 2025)
+- Export Excel par période:
+  - `GET /paiements/export/periode/excel/?du=YYYY-MM-DD&au=YYYY-MM-DD&statut=VALIDE|EN_ATTENTE` → Fichier `.xlsx`
+- Rapports:
+  - `GET /paiements/rapport/retards/` → HTML (ou JSON fallback)
+  - `GET /paiements/rapport/encaissements/?du=&au=` → HTML (ou JSON fallback)
+- API JSON:
+  - `GET /paiements/api/paiements/?q=&statut=&limit=` → `{results: [...]}`
+  - `GET /paiements/api/paiements/<id>/` → Détails d’un paiement
+- Remises:
+  - `POST/GET /paiements/remise/<paiement_id>/annuler/` → Annule toutes les remises du paiement
+  - `POST/GET /paiements/remise/<paiement_id>/annuler/<remise_id>/` → Annule une remise spécifique
+
 ## Déploiement Git (GitHub)
 ```bash
 # Initialiser le dépôt
