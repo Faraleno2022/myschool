@@ -29,10 +29,20 @@ urlpatterns = [
     path('export/tranches-par-classe/pdf/', export_tranches_par_classe_pdf, name='export_tranches_par_classe_pdf'),
     path('export/tranches-par-classe/excel/', export_tranches_par_classe_excel, name='export_tranches_par_classe_excel'),
     path('export/liste/excel/', views.export_liste_paiements_excel, name='export_liste_paiements_excel'),
+    # Export par période (Excel)
+    path('export/periode/excel/', views.export_paiements_periode_excel, name='export_paiements_periode_excel'),
     path('rapport/remises/', views.rapport_remises, name='rapport_remises'),
+    
+    # Rapports
+    path('rapport/retards/', views.rapport_retards, name='rapport_retards'),
+    path('rapport/encaissements/', views.rapport_encaissements, name='rapport_encaissements'),
     
     # Élèves soldés (année scolaire réglée)
     path('eleves-soldes/', views.liste_eleves_soldes, name='liste_eleves_soldes'),
+    
+    # API JSON Paiements
+    path('api/paiements/', views.api_paiements_list, name='api_paiements_list'),
+    path('api/paiements/<int:pk>/', views.api_paiement_detail, name='api_paiement_detail'),
     
     # AJAX endpoints
     path('ajax/statistiques/', views.ajax_statistiques_paiements, name='ajax_statistiques_paiements'),
@@ -46,6 +56,10 @@ urlpatterns = [
     
     # Remises
     path('remise/<int:paiement_id>/', views.appliquer_remise_paiement, name='appliquer_remise'),
+    # Annulation de remise(s)
+    path('remise/<int:paiement_id>/annuler/', views.annuler_remise_paiement, name='annuler_remise_paiement'),
+    path('remise/<int:paiement_id>/annuler/<int:remise_id>/', views.annuler_remise_paiement, name='annuler_remise_paiement_unique'),
     path('calculateur-remise/', views.calculateur_remise, name='calculateur_remise'),
 ]
+
 

@@ -2364,6 +2364,197 @@ def appliquer_remise_paiement(request, paiement_id:int):
 def calculateur_remise(request):
     return HttpResponse('Calculateur de remise (placeholder)')
 
+@login_required
+@can_apply_discounts
+def annuler_remise_paiement(request, paiement_id:int, remise_id:int=None):
+    """Annule les remises appliquées à un paiement.
+
+    - Si remise_id est fourni: supprime uniquement cette remise
+    - Sinon: supprime toutes les remises du paiement
+    """
+    paiement = get_object_or_404(Paiement, pk=paiement_id)
+    try:
+        if remise_id:
+            PaiementRemise.objects.filter(paiement=paiement, id=remise_id).delete()
+            messages.success(request, "Remise supprimée.")
+        else:
+            PaiementRemise.objects.filter(paiement=paiement).delete()
+            messages.success(request, "Toutes les remises de ce paiement ont été supprimées.")
+    except Exception:
+        messages.error(request, "Impossible d'annuler la remise.")
+    return redirect('paiements:detail_paiement', paiement_id=paiement.id)
+
+@login_required
+def export_paiements_periode_excel(request):
+    """Exporte les paiements entre deux dates (du, au) en Excel.
+    Paramètres: ?du=YYYY-MM-DD&au=YYYY-MM-DD&statut=VALIDE|EN_ATTENTE|... (optionnel)
+    """
+    du = request.GET.get('du')
+    au = request.GET.get('au')
+    statut = (request.GET.get('statut') or '').strip()
+
+    qs = Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement')
+    # Filtres période
+    try:
+        if du:
+            qs = qs.filter(date_paiement__gte=du)
+        if au:
+            qs = qs.filter(date_paiement__lte=au)
+    except Exception:
+        pass
+    if statut:
+        qs = qs.filter(statut=statut)
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Paiements'
+    headers = ['Élève', 'Matricule', 'Classe', 'École', 'Type', 'Montant', 'Mode', 'Date', 'Statut', 'N° Reçu']
+    ws.append(headers)
+    for p in qs.order_by('date_paiement', 'id'):
+        ws.append([
+            f"{getattr(p.eleve, 'nom', '')} {getattr(p.eleve, 'prenom', '')}",
+            getattr(p.eleve, 'matricule', ''),
+            getattr(getattr(p.eleve, 'classe', None), 'nom', ''),
+            getattr(getattr(getattr(p.eleve, 'classe', None), 'ecole', None), 'nom', ''),
+            getattr(p.type_paiement, 'nom', ''),
+            int(p.montant or 0),
+            getattr(p.mode_paiement, 'nom', ''),
+            getattr(p, 'date_paiement', None).strftime('%Y-%m-%d') if getattr(p, 'date_paiement', None) else '',
+            p.statut,
+            p.numero_recu or '',
+        ])
+
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    filename = 'paiements_periode.xlsx'
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    wb.save(response)
+    return response
+
+@login_required
+def rapport_retards(request):
+    """Rapport des élèves en retard de paiement (montant exigible > payé+remises).
+    Filtres: ?classe_id=&ecole_id=&du=&au=
+    """
+    from django.utils import timezone as _tz
+    today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
+
+    exigible_expr = (
+        Case(
+            When(date_echeance_inscription__lte=today, then=F('frais_inscription_du')),
+            default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_1__lte=today, then=F('tranche_1_due')),
+            default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_2__lte=today, then=F('tranche_2_due')),
+            default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+        + Case(
+            When(date_echeance_tranche_3__lte=today, then=F('tranche_3_due')),
+            default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0),
+        )
+    )
+    remises_expr = Coalesce(
+        Sum('eleve__paiements__remises__montant_remise', filter=Q(eleve__paiements__statut='VALIDE')),
+        Value(0), output_field=DecimalField(max_digits=12, decimal_places=0),
+    )
+    remises_applicables = Least(remises_expr, exigible_expr)
+    paye_effectif_expr = (
+        F('frais_inscription_paye') + F('tranche_1_payee') + F('tranche_2_payee') + F('tranche_3_payee') + remises_applicables
+    )
+    retard_expr = ExpressionWrapper(exigible_expr - paye_effectif_expr, output_field=DecimalField(max_digits=12, decimal_places=0))
+
+    qs = (EcheancierPaiement.objects
+          .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+          .annotate(retard=retard_expr)
+          .filter(retard__gt=0)
+          .order_by('-retard'))
+
+    context = {'titre_page': 'Rapport des retards', 'items': qs}
+    if _template_exists('rapports/liste_rapports.html'):
+        return render(request, 'rapports/liste_rapports.html', context)
+    return HttpResponse(f"Retards: {qs.count()} élèves en retard")
+
+@login_required
+def rapport_encaissements(request):
+    """Rapport des encaissements entre ?du=&au=, somme et décompte par statut."""
+    du = request.GET.get('du')
+    au = request.GET.get('au')
+    qs = Paiement.objects.all()
+    try:
+        if du:
+            qs = qs.filter(date_paiement__gte=du)
+        if au:
+            qs = qs.filter(date_paiement__lte=au)
+    except Exception:
+        pass
+    total = int(qs.aggregate(total=Sum('montant'))['total'] or 0)
+    par_statut = list(qs.values('statut').annotate(count=Count('id'), somme=Coalesce(Sum('montant'), Value(0))).order_by('statut'))
+    context = {'titre_page': 'Rapport des encaissements', 'total': total, 'par_statut': par_statut}
+    if _template_exists('rapports/tableau_bord.html'):
+        return render(request, 'rapports/tableau_bord.html', context)
+    return JsonResponse({'total': total, 'par_statut': par_statut})
+
+@login_required
+def api_paiements_list(request):
+    """API JSON: liste des paiements avec filtres simples (?q=&statut=&limit=)."""
+    q = (request.GET.get('q') or '').strip()
+    statut = (request.GET.get('statut') or '').strip()
+    try:
+        limit = int(request.GET.get('limit') or 50)
+    except Exception:
+        limit = 50
+    qs = Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement')
+    if q:
+        qs = qs.filter(
+            Q(numero_recu__icontains=q) | Q(reference_externe__icontains=q) | Q(observations__icontains=q)
+            | Q(eleve__nom__icontains=q) | Q(eleve__prenom__icontains=q) | Q(eleve__matricule__icontains=q)
+        )
+    if statut:
+        qs = qs.filter(statut=statut)
+    data = []
+    for p in qs.order_by('-date_paiement', '-id')[:limit]:
+        data.append({
+            'id': p.id,
+            'eleve': {
+                'id': getattr(p.eleve, 'id', None),
+                'matricule': getattr(p.eleve, 'matricule', ''),
+                'nom': getattr(p.eleve, 'nom', ''),
+                'prenom': getattr(p.eleve, 'prenom', ''),
+            },
+            'type': getattr(p.type_paiement, 'nom', ''),
+            'mode': getattr(p.mode_paiement, 'nom', ''),
+            'montant': int(p.montant or 0),
+            'date': getattr(p, 'date_paiement', None).strftime('%Y-%m-%d') if getattr(p, 'date_paiement', None) else None,
+            'statut': p.statut,
+            'numero_recu': p.numero_recu,
+        })
+    return JsonResponse({'results': data})
+
+@login_required
+def api_paiement_detail(request, pk:int):
+    """API JSON: détail d'un paiement"""
+    p = get_object_or_404(Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement'), pk=pk)
+    data = {
+        'id': p.id,
+        'eleve': {
+            'id': getattr(p.eleve, 'id', None),
+            'matricule': getattr(p.eleve, 'matricule', ''),
+            'nom': getattr(p.eleve, 'nom', ''),
+            'prenom': getattr(p.eleve, 'prenom', ''),
+        },
+        'type': getattr(p.type_paiement, 'nom', ''),
+        'mode': getattr(p.mode_paiement, 'nom', ''),
+        'montant': int(p.montant or 0),
+        'date': getattr(p, 'date_paiement', None).strftime('%Y-%m-%d') if getattr(p, 'date_paiement', None) else None,
+        'statut': p.statut,
+        'numero_recu': p.numero_recu,
+        'remises_total': int(p.remises.aggregate(total=Sum('montant_remise')).get('total') or 0) if hasattr(p, 'remises') else 0,
+    }
+    return JsonResponse(data)
+
 def _template_exists(path:str)->bool:
     """Utilitaire léger: détecte si un template existe dans le chargeur Django."""
     try:
