@@ -29,9 +29,12 @@
         <div class="col-md-3">
             <div class="stat-card">
                 <div class="stat-value text-success">{{ totaux.montant_total|floatformat:0|intcomma }}</div>
-                <div class="stat-label">Montant total (GNF)</div>
+                <div class="stat-label">Total paiements listés (hors annulés)</div>
                 {% if totaux.montant_total != totaux.montant_ce_mois %}
                     <small class="text-muted">{{ totaux.montant_ce_mois|floatformat:0|intcomma }} ce mois</small>
+                {% endif %}
+                {% if totaux.montant_total_valide %}
+                    <div><small class="text-muted">Validés: {{ totaux.montant_total_valide|floatformat:0|intcomma }} GNF</small></div>
                 {% endif %}
             </div>
         </div>
@@ -71,8 +74,8 @@
         <div class="col-md-4">
             <div class="stat-card">
                 <div class="stat-value text-secondary">{{ totaux_du.frais_inscription_total|default:0|floatformat:0|intcomma }}</div>
-                <div class="stat-label">Frais d'inscription</div>
-                <small class="text-muted">{{ totaux_du.frais_inscription_unitaire|default:30000|intcomma }} GNF / élève (fixe)</small>
+                <div class="stat-label">Frais d'inscription (échéancier)</div>
+                <small class="text-muted">Calculés depuis les échéanciers filtrés</small>
             </div>
         </div>
         <div class="col-md-4">

@@ -22,6 +22,7 @@ urlpatterns = [
     path('echeancier/<int:eleve_id>/', views.echeancier_eleve, name='echeancier_eleve'),
     path('echeancier/creer/<int:eleve_id>/', views.creer_echeancier, name='creer_echeancier'),
     path('echeancier/assurer/<int:eleve_id>/', views.assurer_echeancier, name='assurer_echeancier'),
+    path('echeancier/valider/<int:eleve_id>/', views.valider_echeancier, name='valider_echeancier'),
     
     # Génération de documents
     path('recu/<int:paiement_id>/pdf/', views.generer_recu_pdf, name='generer_recu_pdf'),
@@ -47,3 +48,4 @@ urlpatterns = [
     path('remise/<int:paiement_id>/', views.appliquer_remise_paiement, name='appliquer_remise'),
     path('calculateur-remise/', views.calculateur_remise, name='calculateur_remise'),
 ]
+

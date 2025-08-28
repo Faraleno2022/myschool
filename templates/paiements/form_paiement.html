@@ -985,7 +985,14 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Fonction pour formater les montants
     function formatMontant(montant) {
-        return new Intl.NumberFormat('fr-FR').format(montant) + ' GNF';
+        let v = Number(montant);
+        if (!isFinite(v) || isNaN(v)) v = 0;
+        v = Math.max(0, Math.floor(v));
+        try {
+            return new Intl.NumberFormat('fr-FR').format(v) + ' GNF';
+        } catch(_) {
+            return String(v) + ' GNF';
+        }
     }
     
     // Fonction pour afficher les informations de l'élève
