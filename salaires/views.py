@@ -579,6 +579,21 @@ def etats_salaire(request):
     
     # Tri par défaut
     etats = etats.order_by('-periode__annee', '-periode__mois', 'enseignant__nom')
+
+    # Fallback intelligent: si aucun filtre n'est appliqué et que la requête est vide,
+    # afficher les états des 3 dernières périodes disponibles (par école si restreint)
+    filters_applied = any([periode_id, ecole_id, statut, search])
+    if not filters_applied and not etats.exists():
+        periodes_recent = PeriodeSalaire.objects.order_by('-annee', '-mois')
+        if restreindre:
+            periodes_recent = periodes_recent.filter(ecole=ecole_user)
+        recent_ids = list(periodes_recent.values_list('id', flat=True)[:3])
+        if recent_ids:
+            etats = (
+                EtatSalaire.objects.select_related('enseignant', 'periode', 'periode__ecole')
+                .filter(periode_id__in=recent_ids)
+                .order_by('-periode__annee', '-periode__mois', 'enseignant__nom')
+            )
     
     # Pagination
     paginator = Paginator(etats, 15)
@@ -973,6 +988,24 @@ def gestion_periodes(request):
         periodes = periodes.filter(cloturee=False)
     
     periodes = periodes.order_by('-annee', '-mois')
+
+    # Fallback: si aucun filtre n'est appliqué et aucune période trouvée,
+    # charger les 6 dernières périodes disponibles (restreintes à l'école de l'utilisateur si nécessaire)
+    filtres_appliques = any([ecole_id, annee, statut])
+    if not filtres_appliques and not periodes.exists():
+        fallback_base = PeriodeSalaire.objects.select_related('ecole')
+        if restreindre:
+            fallback_base = fallback_base.filter(ecole=ecole_user)
+        fallback_ids = list(
+            fallback_base.order_by('-annee', '-mois').values_list('id', flat=True)[:6]
+        )
+        periodes = (
+            PeriodeSalaire.objects
+            .select_related('ecole')
+            .prefetch_related('etats_salaire')
+            .filter(id__in=fallback_ids)
+            .order_by('-annee', '-mois')
+        )
     
     # Ajout des statistiques pour chaque période
     for periode in periodes:
@@ -986,25 +1019,51 @@ def gestion_periodes(request):
     
     # Données pour les filtres
     ecoles = Ecole.objects.all()
+    if restreindre and ecole_user:
+        ecoles = ecoles.filter(id=ecole_user.id)
     annees_disponibles = PeriodeSalaire.objects.values_list('annee', flat=True).distinct().order_by('-annee')
     
     # Statistiques
     from django.db.models import Count
-    total_etats = EtatSalaire.objects.filter(periode__in=periodes).count()
+    # Utiliser une requête de base non-slicée pour les stats globales si besoin
+    base_stats_qs = PeriodeSalaire.objects.all()
+    if restreindre and ecole_user:
+        base_stats_qs = base_stats_qs.filter(ecole=ecole_user)
+    if ecole_id:
+        base_stats_qs = base_stats_qs.filter(ecole_id=ecole_id)
+    if annee:
+        base_stats_qs = base_stats_qs.filter(annee=annee)
+    if statut == 'cloture':
+        base_stats_qs = base_stats_qs.filter(cloturee=True)
+    elif statut == 'ouvert':
+        base_stats_qs = base_stats_qs.filter(cloturee=False)
+
+    total_etats = EtatSalaire.objects.filter(periode__in=base_stats_qs).count()
     
     stats = {
-        'total_periodes': periodes.count(),
-        'periodes_ouvertes': periodes.filter(cloturee=False).count(),
-        'periodes_cloturees': periodes.filter(cloturee=True).count(),
+        'total_periodes': base_stats_qs.count(),
+        'periodes_ouvertes': base_stats_qs.filter(cloturee=False).count(),
+        'periodes_cloturees': base_stats_qs.filter(cloturee=True).count(),
         'etats_calcules': total_etats,
     }
     
+    # Période courante (première ouverte la plus récente) pour styling
+    try:
+        periode_courante = (
+            PeriodeSalaire.objects.filter(cloturee=False, **({'ecole': ecole_user} if restreindre else {}))
+            .order_by('-annee', '-mois')
+            .first()
+        )
+    except Exception:
+        periode_courante = None
+
     context = {
         'page_obj': page_obj,
         'periodes': page_obj,
         'ecoles': ecoles,
         'annees_disponibles': annees_disponibles,
         'stats': stats,
+        'periode_courante': periode_courante,
         'is_paginated': page_obj.has_other_pages(),
     }
     

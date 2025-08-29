@@ -1133,6 +1133,8 @@ def liste_relances(request):
     q = (request.GET.get('q') or '').strip()
     canal = (request.GET.get('canal') or '').strip().upper()
     statut = (request.GET.get('statut') or '').strip().upper()
+    # Filtrer par élève si fourni (depuis le bouton Alertes de la liste des paiements)
+    eleve_id = (request.GET.get('eleve_id') or '').strip()
 
     qs = (
         Relance.objects.select_related('eleve', 'eleve__classe')
@@ -1149,6 +1151,12 @@ def liste_relances(request):
         qs = qs.filter(canal=canal)
     if statut:
         qs = qs.filter(statut=statut)
+    if eleve_id:
+        try:
+            qs = qs.filter(eleve_id=int(eleve_id))
+        except Exception:
+            # Si la conversion échoue, on ignore le filtre pour ne pas casser la vue
+            pass
 
     paginator = Paginator(qs, 25)
     page_obj = paginator.get_page(request.GET.get('page') or 1)
@@ -1158,6 +1166,7 @@ def liste_relances(request):
         'q': q,
         'canal': canal,
         'statut': statut,
+        'eleve_id': eleve_id,
         'page_obj': page_obj,
     }
     template = 'paiements/relances.html' if _template_exists('paiements/relances.html') else None
