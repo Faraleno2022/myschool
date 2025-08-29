@@ -18,6 +18,46 @@
   </div>
 </form>
 
+<!-- Filtres rapides -->
+<div class="mb-3">
+  <div class="btn-group" role="group" aria-label="Filtres abonnements">
+    <a class="btn btn-sm {% if not filtre %}btn-primary{% else %}btn-outline-primary{% endif %}"
+       href="{% url 'bus:liste' %}?{% if q %}q={{ q|urlencode }}&{% endif %}">
+      <i class="fas fa-list me-1"></i>Tous
+    </a>
+    <a class="btn btn-sm {% if filtre == 'expires' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+       href="{% url 'bus:liste' %}?{% if q %}q={{ q|urlencode }}&{% endif %}filtre=expires">
+      <i class="fas fa-times-circle me-1"></i>Expirés
+    </a>
+    <a class="btn btn-sm {% if filtre == 'suspendus' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+       href="{% url 'bus:liste' %}?{% if q %}q={{ q|urlencode }}&{% endif %}filtre=suspendus">
+      <i class="fas fa-pause-circle me-1"></i>Suspendus
+    </a>
+    <a class="btn btn-sm {% if filtre == 'proches' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+       href="{% url 'bus:liste' %}?{% if q %}q={{ q|urlencode }}&{% endif %}filtre=proches">
+      <i class="fas fa-hourglass-half me-1"></i>Proches d'expiration
+    </a>
+    <a class="btn btn-sm {% if filtre == 'depassees' %}btn-primary{% else %}btn-outline-primary{% endif %}"
+       href="{% url 'bus:liste' %}?{% if q %}q={{ q|urlencode }}&{% endif %}filtre=depassees">
+      <i class="fas fa-exclamation-triangle me-1"></i>Expiration dépassée
+    </a>
+  </div>
+  {% if filtre %}
+    <span class="ms-2 text-muted small">Filtre actif: {{ filtre }}</span>
+  {% endif %}
+  {% if q %}
+    <span class="ms-2 badge text-bg-light">Recherche: "{{ q }}"</span>
+  {% endif %}
+  
+  <div class="mt-2 text-muted small">
+    <span class="me-3">Actifs: {{ nb_actifs|default:0|intcomma }}</span>
+    <span class="me-3">Expirés: {{ nb_expires|default:0|intcomma }}</span>
+    <span class="me-3">Suspendus: {{ nb_suspendus|default:0|intcomma }}</span>
+    <span class="me-3">Proches: {{ nb_expiration_proche|default:0|intcomma }}</span>
+    <span class="me-3">Dépassée: {{ nb_expiration_depassee|default:0|intcomma }}</span>
+  </div>
+</div>
+
 <!-- Cartes de synthèse -->
 <div class="row g-3 mb-3">
   <div class="col-md-3">

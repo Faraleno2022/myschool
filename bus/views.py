@@ -46,6 +46,7 @@ def liste_abonnements(request):
         qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
     q = (request.GET.get('q') or '').strip()
+    filtre = (request.GET.get('filtre') or '').strip().lower()
     if q:
         qs = qs.filter(
             Q(eleve__nom__icontains=q) |
@@ -56,7 +57,26 @@ def liste_abonnements(request):
             Q(contact_parent__icontains=q)
         )
 
-    # Aggregates for dashboard
+    # Appliquer le filtre de statut/échéance
+    today = timezone.localdate()
+    if filtre == 'expires':
+        qs = qs.filter(statut=AbonnementBus.Statut.EXPIRE)
+    elif filtre == 'suspendus':
+        qs = qs.filter(statut=AbonnementBus.Statut.SUSPENDU)
+    elif filtre == 'depassees':
+        qs = qs.filter(date_expiration__lt=today)
+    elif filtre == 'proches':
+        # Sélectionner par logique métier est_proche_expiration (fenêtre d'alerte)
+        ids_proches = []
+        for a_id, date_exp, alerte_jours in qs.values_list('id', 'date_expiration', 'alerte_avant_jours'):
+            if date_exp:
+                if date_exp >= today:
+                    delta = (date_exp - today).days
+                    if 0 <= delta <= (alerte_jours or 7):
+                        ids_proches.append(a_id)
+        qs = qs.filter(id__in=ids_proches)
+
+    # Aggregates for dashboard (sur le queryset filtré)
     total_count = qs.count()
     agg = qs.aggregate(
         total_montant=Sum('montant'),
@@ -69,7 +89,6 @@ def liste_abonnements(request):
     )
 
     # Counts for expiration proximity using only necessary fields
-    today = timezone.localdate()
     nb_expiration_proche = 0
     nb_expiration_depassee = 0
     for date_exp, alerte_jours in qs.values_list('date_expiration', 'alerte_avant_jours'):
@@ -106,6 +125,7 @@ def liste_abonnements(request):
         'titre_page': 'Abonnements Bus - Liste',
         'abonnements': qs.order_by('-updated_at')[:500],
         'q': q,
+        'filtre': filtre,
         # Dashboard context
         'total_count': total_count,
         'total_montant': agg.get('total_montant') or 0,
