@@ -5,10 +5,12 @@ from django.views.decorators.vary import vary_on_cookie
 from django.contrib import messages
 from django.http import HttpResponse
 from django.http import JsonResponse
-from django.db.models import Q
+from django.db.models import Q, Sum, Count
 from django.utils import timezone
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
+import io
+import csv
 
 from eleves.models import Eleve
 from .models import AbonnementBus
@@ -54,10 +56,70 @@ def liste_abonnements(request):
             Q(contact_parent__icontains=q)
         )
 
+    # Aggregates for dashboard
+    total_count = qs.count()
+    agg = qs.aggregate(
+        total_montant=Sum('montant'),
+        nb_actifs=Count('id', filter=Q(statut=AbonnementBus.Statut.ACTIF)),
+        nb_expires=Count('id', filter=Q(statut=AbonnementBus.Statut.EXPIRE)),
+        nb_suspendus=Count('id', filter=Q(statut=AbonnementBus.Statut.SUSPENDU)),
+        montant_actifs=Sum('montant', filter=Q(statut=AbonnementBus.Statut.ACTIF)),
+        montant_expires=Sum('montant', filter=Q(statut=AbonnementBus.Statut.EXPIRE)),
+        montant_suspendus=Sum('montant', filter=Q(statut=AbonnementBus.Statut.SUSPENDU)),
+    )
+
+    # Counts for expiration proximity using only necessary fields
+    today = timezone.localdate()
+    nb_expiration_proche = 0
+    nb_expiration_depassee = 0
+    for date_exp, alerte_jours in qs.values_list('date_expiration', 'alerte_avant_jours'):
+        if date_exp:
+            if date_exp < today:
+                nb_expiration_depassee += 1
+            else:
+                delta = (date_exp - today).days
+                if 0 <= delta <= (alerte_jours or 7):
+                    nb_expiration_proche += 1
+
+    # Breakdown by periodicite
+    choices_map = dict(AbonnementBus.Periodicite.choices)
+    periodicite_rows = []
+    for row in qs.values('periodicite').annotate(nb=Count('id'), montant=Sum('montant')):
+        code = row['periodicite']
+        periodicite_rows.append({
+            'code': code,
+            'label': choices_map.get(code, code or '-'),
+            'nb': row['nb'] or 0,
+            'montant': row['montant'] or 0,
+        })
+
+    # Top zones breakdown (limit 10)
+    zone_rows = []
+    for row in qs.values('zone').annotate(nb=Count('id'), montant=Sum('montant')).order_by('-nb')[:10]:
+        zone_rows.append({
+            'zone': row['zone'] or '-',
+            'nb': row['nb'] or 0,
+            'montant': row['montant'] or 0,
+        })
+
     context = {
         'titre_page': 'Abonnements Bus - Liste',
         'abonnements': qs.order_by('-updated_at')[:500],
         'q': q,
+        # Dashboard context
+        'total_count': total_count,
+        'total_montant': agg.get('total_montant') or 0,
+        'nb_actifs': agg.get('nb_actifs') or 0,
+        'nb_expires': agg.get('nb_expires') or 0,
+        'nb_suspendus': agg.get('nb_suspendus') or 0,
+        'nb_expiration_proche': nb_expiration_proche,
+        'nb_expiration_depassee': nb_expiration_depassee,
+        'montant_actifs': agg.get('montant_actifs') or 0,
+        'montant_expires': agg.get('montant_expires') or 0,
+        'montant_suspendus': agg.get('montant_suspendus') or 0,
+        # Breakdowns
+        'periodicite_rows': periodicite_rows,
+        'zone_rows': zone_rows,
     }
     return render(request, 'bus/liste.html', context)
 
@@ -288,3 +350,52 @@ def envoyer_relances_bus(request):
                 pass
 
     return JsonResponse({'success': True, 'message': f'{envoyes} message(s) envoyé(s)'})
+
+
+@login_required
+def export_abonnements_breakdown_csv(request, kind: str):
+    """Exporte au format CSV les répartitions par périodicité ou par zone.
+
+    kind: 'periodicite' ou 'zone'
+    Optionnellement respecte le filtre de recherche ?q= comme la liste.
+    """
+    kind = (kind or '').lower()
+    if kind not in ('periodicite', 'zone'):
+        return HttpResponse('Type invalide', status=400)
+
+    qs = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
+    if not user_is_admin(request.user):
+        qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
+
+    q = (request.GET.get('q') or '').strip()
+    if q:
+        qs = qs.filter(
+            Q(eleve__nom__icontains=q) |
+            Q(eleve__prenom__icontains=q) |
+            Q(eleve__matricule__icontains=q) |
+            Q(zone__icontains=q) |
+            Q(point_arret__icontains=q) |
+            Q(contact_parent__icontains=q)
+        )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+
+    if kind == 'periodicite':
+        writer.writerow(['Périodicité', 'Nombre', 'Montant (GNF)'])
+        label_map = dict(AbonnementBus.Periodicite.choices)
+        for row in qs.values('periodicite').annotate(nb=Count('id'), montant=Sum('montant')).order_by('periodicite'):
+            code = row['periodicite']
+            label = label_map.get(code, code or '-')
+            writer.writerow([label, row['nb'] or 0, int(row['montant'] or 0)])
+        filename = 'repartition_periodicite.csv'
+    else:
+        writer.writerow(['Zone', 'Nombre', 'Montant (GNF)'])
+        for row in qs.values('zone').annotate(nb=Count('id'), montant=Sum('montant')).order_by('-nb'):
+            writer.writerow([row['zone'] or '-', row['nb'] or 0, int(row['montant'] or 0)])
+        filename = 'repartition_zones.csv'
+
+    content = buffer.getvalue().encode('utf-8-sig')
+    resp = HttpResponse(content, content_type='text/csv; charset=utf-8')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp

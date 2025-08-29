@@ -2,7 +2,7 @@
 {% load humanize %}
 {% block title %}Bus scolaire - Abonnements{% endblock %}
 {% block breadcrumb_items %}
-<li class="breadcrumb-item"><a href="{% url 'bus:tableau_bord' %}">Bus scolaire</a></li>
+<li class="breadcrumb-item"><a href="{% url 'bus:index' %}">Bus scolaire</a></li>
 <li class="breadcrumb-item active" aria-current="page">Liste</li>
 {% endblock %}
 {% block page_actions %}
@@ -17,6 +17,128 @@
     <button class="btn btn-primary w-100" type="submit"><i class="fas fa-search me-1"></i>Rechercher</button>
   </div>
 </form>
+
+<!-- Cartes de synthèse -->
+<div class="row g-3 mb-3">
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center">
+          <div>
+            <div class="text-muted small">Total abonnements</div>
+            <div class="h4 mb-0">{{ total_count|intcomma }}</div>
+          </div>
+          <i class="fas fa-bus fa-2x text-primary"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Actifs</div>
+        <div class="h4 mb-1">{{ nb_actifs|intcomma }}</div>
+        <div class="text-success">{{ montant_actifs|default:0|intcomma }} GNF</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Expirés</div>
+        <div class="h4 mb-1">{{ nb_expires|intcomma }}</div>
+        <div class="text-danger">{{ montant_expires|default:0|intcomma }} GNF</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-3">
+    <div class="card shadow-sm h-100">
+      <div class="card-body">
+        <div class="text-muted small">Suspendus</div>
+        <div class="h4 mb-1">{{ nb_suspendus|intcomma }}</div>
+        <div class="text-warning">{{ montant_suspendus|default:0|intcomma }} GNF</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Expiration: proches et dépassées -->
+<div class="row g-3 mb-4">
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2"><i class="fas fa-hourglass-half me-1"></i>Proches d'expiration</div>
+      <div class="card-body">
+        <div class="display-6">{{ nb_expiration_proche|intcomma }}</div>
+        <div class="text-muted">Dans la fenêtre d'alerte</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header py-2"><i class="fas fa-times-circle me-1"></i>Expiration dépassée</div>
+      <div class="card-body">
+        <div class="display-6 text-danger">{{ nb_expiration_depassee|intcomma }}</div>
+        <div class="text-muted">À relancer</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Répartitions -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span><i class="fas fa-stream me-1"></i>Répartition par périodicité</span>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'bus:export_breakdown_csv' 'periodicite' %}?q={{ q|urlencode }}"><i class="fas fa-file-csv me-1"></i>Exporter CSV</a>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive mt-3">
+          <table class="table table-sm table-striped">
+            <thead><tr><th>Périodicité</th><th class="text-end">Nombre</th><th class="text-end">Montant</th></tr></thead>
+            <tbody>
+              {% for r in periodicite_rows %}
+              <tr>
+                <td>{{ r.label }}</td>
+                <td class="text-end">{{ r.nb|intcomma }}</td>
+                <td class="text-end">{{ r.montant|intcomma }} GNF</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3" class="text-center text-muted">Aucune donnée</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card shadow-sm h-100">
+      <div class="card-header d-flex justify-content-between align-items-center py-2">
+        <span><i class="fas fa-map-marker-alt me-1"></i>Top zones</span>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'bus:export_breakdown_csv' 'zone' %}?q={{ q|urlencode }}"><i class="fas fa-file-csv me-1"></i>Exporter CSV</a>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive mt-3">
+          <table class="table table-sm table-striped">
+            <thead><tr><th>Zone</th><th class="text-end">Nombre</th><th class="text-end">Montant</th></tr></thead>
+            <tbody>
+              {% for r in zone_rows %}
+              <tr>
+                <td>{{ r.zone }}</td>
+                <td class="text-end">{{ r.nb|intcomma }}</td>
+                <td class="text-end">{{ r.montant|intcomma }} GNF</td>
+              </tr>
+              {% empty %}
+              <tr><td colspan="3" class="text-center text-muted">Aucune donnée</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="table-container-scrollable">
 <table class="table table-striped table-hover align-middle">
@@ -58,3 +180,5 @@
 </table>
 </div>
 {% endblock %}
+
+{% block extra_js %}{% endblock %}

@@ -1930,7 +1930,7 @@ def liste_eleves_soldes(request):
     from django.utils import timezone as _tz
     today = _tz.localdate() if hasattr(_tz, 'localdate') else date.today()
 
-    # Forcer 2025-2026 comme année courante pour cohérence avec les données
+    # Forcer l'année scolaire par défaut à 2025-2026 (demande métier)
     default_annee = "2025-2026"
     annee = (request.GET.get('annee') or default_annee).strip()
     ecole_id = (request.GET.get('ecole_id') or '').strip()
@@ -2006,11 +2006,17 @@ def liste_eleves_soldes(request):
         periode_fin = date(annee_debut + 1, 8, 31)
     except Exception:
         # Fallback simple si parsing échoue: limiter à l'année civile courante
-        periode_debut = date(today.year, 1, 1)
-        periode_fin = date(today.year, 12, 31)
-    # Important: caper la fin de période à aujourd'hui pour éviter une fin future
+        annee_debut = today.year if today.month >= 9 else today.year - 1
+        periode_debut = date(annee_debut, 9, 1)
+        periode_fin = date(annee_debut + 1, 8, 31)
+    # Note: on ne bascule plus automatiquement à l'année précédente avant le 1er septembre.
+    # La période par défaut 2025-2026 est maintenue même si today < 1er septembre 2025.
+    # Éviter une plage inversée: si today < periode_debut, on fixe periode_fin = periode_debut.
+    # Sinon, on cape la fin de période à aujourd'hui pour éviter une fin future.
     try:
-        if periode_fin > today:
+        if today < periode_debut:
+            periode_fin = periode_debut
+        elif periode_fin > today:
             periode_fin = today
     except Exception:
         pass
@@ -2055,13 +2061,9 @@ def liste_eleves_soldes(request):
         + net_sco_du,
         output_field=DecimalField(max_digits=12, decimal_places=0),
     )
-    # Choisir le meilleur indicateur de "payé":
-    # - prioriser la somme réelle des paiements validés (puisque l'allocation peut être différée)
-    # - fallback sur les champs agrégés de l'échéancier
-    paye_effectif = Greatest(
-        Coalesce(paiements_valides_total, Value(0, output_field=DecimalField(max_digits=12, decimal_places=0))),
-        Coalesce(paye_total, Value(0, output_field=DecimalField(max_digits=12, decimal_places=0))),
-    )
+    # Total payé strictement sur la période sélectionnée (paiements validés filtrés par période)
+    # On enlève le fallback vers les champs cumulés d'échéancier (non bornés dans le temps) qui faussait l'affichage.
+    paye_effectif = Coalesce(paiements_valides_total, Value(0, output_field=DecimalField(max_digits=12, decimal_places=0)))
     solde_calc = ExpressionWrapper(net_du - paye_effectif, output_field=DecimalField(max_digits=12, decimal_places=0))
 
     qs = qs.annotate(
@@ -2111,9 +2113,19 @@ def liste_eleves_soldes(request):
         ecoles_qs = []
     classes = Classe.objects.select_related('ecole').all().order_by('ecole__nom', 'nom')
 
+    # Proposer quelques années autour de l'année active pour la sélection
+    try:
+        annees_options = [
+            f"{annee_debut - 1}-{annee_debut}",
+            f"{annee_debut}-{annee_debut + 1}",
+            f"{annee_debut + 1}-{annee_debut + 2}",
+        ]
+    except Exception:
+        annees_options = [annee]
+
     context = {
         'annee': annee,
-        'annees_options': [annee],
+        'annees_options': annees_options,
         'ecoles': ecoles_qs,
         'classes': classes,
         'ecole_id': ecole_id,
