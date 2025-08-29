@@ -2009,6 +2009,13 @@ def liste_eleves_soldes(request):
         annee_debut = today.year if today.month >= 9 else today.year - 1
         periode_debut = date(annee_debut, 9, 1)
         periode_fin = date(annee_debut + 1, 8, 31)
+    
+    # Spécifique 2025-2026: début au 14/08/2025 pour inclure les enregistrements d'août
+    try:
+        if annee == "2025-2026":
+            periode_debut = date(2025, 8, 14)
+    except Exception:
+        pass
     # Note: on ne bascule plus automatiquement à l'année précédente avant le 1er septembre.
     # La période par défaut 2025-2026 est maintenue même si today < 1er septembre 2025.
     # Éviter une plage inversée: si today < periode_debut, on fixe periode_fin = periode_debut.
