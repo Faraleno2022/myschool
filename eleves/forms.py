@@ -219,12 +219,9 @@ class EleveForm(forms.ModelForm):
     def clean_date_naissance(self):
         date_naissance = self.cleaned_data.get('date_naissance')
         if date_naissance:
-            # Vérifier que l'élève n'est pas trop jeune ou trop âgé
-            age = (date.today() - date_naissance).days // 365
-            if age < 2:
-                raise forms.ValidationError("L'élève doit avoir au moins 2 ans.")
-            if age > 25:
-                raise forms.ValidationError("L'âge de l'élève semble incorrect.")
+            # La validation détaillée d'âge dépend de la classe et est effectuée dans clean()
+            # Ici, on retourne simplement la valeur.
+            return date_naissance
         return date_naissance
 
     def clean_date_inscription(self):
@@ -237,6 +234,44 @@ class EleveForm(forms.ModelForm):
         if not valeur:
             return self.instance.date_inscription
         return valeur
+
+    def clean(self):
+        """Validation croisée tenant compte de la classe pour l'âge minimal.
+        - Garderie (niveau == 'GARDERIE'): autoriser 5 à 11 mois inclus.
+        - Autres niveaux: 2 à 25 ans.
+        """
+        cleaned = super().clean()
+        date_naissance = cleaned.get('date_naissance')
+        classe = cleaned.get('classe')
+
+        if not date_naissance:
+            return cleaned
+
+        # Calcul de l'âge en mois précis
+        today = date.today()
+        months = (today.year - date_naissance.year) * 12 + (today.month - date_naissance.month)
+        if today.day < date_naissance.day:
+            months -= 1
+
+        # Si classe sélectionnée et c'est la Garderie, appliquer règle spéciale
+        niveau = getattr(classe, 'niveau', None)
+        if niveau == 'GARDERIE':
+            # Autorisé: de 5 mois à 24 mois inclus (≤ 2 ans)
+            if months < 5 or months > 24:
+                self.add_error(
+                    'date_naissance',
+                    "Pour la Garderie, l'âge doit être compris entre 5 et 24 mois (2 ans) inclus."
+                )
+            return cleaned
+
+        # Règles générales pour les autres niveaux: 2 à 25 ans
+        age_ans = months // 12
+        if age_ans < 2:
+            self.add_error('date_naissance', "L'élève doit avoir au moins 2 ans pour ce niveau.")
+        elif age_ans > 25:
+            self.add_error('date_naissance', "L'âge de l'élève semble incorrect (supérieur à 25 ans).")
+
+        return cleaned
 
 class RechercheEleveForm(forms.Form):
     """Formulaire de recherche simple (zone unique multi-critères)."""
