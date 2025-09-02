@@ -256,11 +256,11 @@ class EleveForm(forms.ModelForm):
         # Si classe sélectionnée et c'est la Garderie, appliquer règle spéciale
         niveau = getattr(classe, 'niveau', None)
         if niveau == 'GARDERIE':
-            # Autorisé: de 5 mois à 24 mois inclus (≤ 2 ans)
-            if months < 5 or months > 24:
+            # Autorisé: de 4 mois à 36 mois inclus (≤ 3 ans)
+            if months < 4 or months > 36:
                 self.add_error(
                     'date_naissance',
-                    "Pour la Garderie, l'âge doit être compris entre 5 et 24 mois (2 ans) inclus."
+                    "Pour la Garderie, l'âge doit être compris entre 4 mois et 3 ans inclus."
                 )
             return cleaned
 
