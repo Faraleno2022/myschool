@@ -34,13 +34,14 @@ except Exception:
     A4 = (595.27, 841.89)
     ImageReader = None
 from ecole_moderne.pdf_utils import draw_logo_watermark
+from ecole_moderne.security_decorators import require_school_object
 
 from .models import Paiement, EcheancierPaiement, TypePaiement, ModePaiement, RemiseReduction, PaiementRemise, Relance, TwilioInboundMessage
 from eleves.models import Eleve, GrilleTarifaire, Classe
 from .forms import PaiementForm, EcheancierForm, RechercheForm
 from .remise_forms import PaiementRemiseForm, CalculateurRemiseForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school, user_school
-from utilisateurs.permissions import has_permission, can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports, can_apply_discounts
+from utilisateurs.permissions import has_permission, get_user_permissions, can_add_payments, can_modify_payments, can_delete_payments, can_validate_payments, can_view_reports, can_apply_discounts
 from .notifications import (
     send_payment_receipt,
     send_enrollment_confirmation,
@@ -746,6 +747,7 @@ def liste_paiements(request):
     return HttpResponse('Liste des paiements')
 
 @login_required
+@require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
 def detail_paiement(request, paiement_id:int):
     """Affiche le détail d'un paiement.
 
@@ -763,9 +765,10 @@ def detail_paiement(request, paiement_id:int):
     paiement = get_object_or_404(paiement_qs, pk=paiement_id)
 
     # Préparer les informations de permissions utilisées dans le template
-    perms_ctx = {
-        'can_validate_payments': can_validate_payments(request.user) if request.user.is_authenticated else False,
-    }
+    try:
+        perms_ctx = get_user_permissions(request.user)
+    except Exception:
+        perms_ctx = {}
 
     # Total des remises appliquées sur ce paiement
     try:
@@ -775,11 +778,19 @@ def detail_paiement(request, paiement_id:int):
     except Exception:
         remises_total = 0
 
+    # Déterminer si l'utilisateur est comptable pour l'affichage UI (les actions restent protégées côté serveur)
+    try:
+        role_user = getattr(getattr(request.user, 'profil', None), 'role', None)
+        is_comptable_flag = (role_user == 'COMPTABLE')
+    except Exception:
+        is_comptable_flag = False
+
     context = {
         'titre_page': f"Détail du paiement #{paiement.id}",
         'paiement': paiement,
         'is_admin': user_is_admin(request.user) if request.user.is_authenticated else False,
         'user_permissions': perms_ctx,
+        'is_comptable': is_comptable_flag,
         'remises_total': int(remises_total or 0),
     }
     return render(request, 'paiements/detail_paiement.html', context)
@@ -977,6 +988,7 @@ def ajouter_paiement(request, eleve_id:int=None):
     return render(request, 'paiements/form_paiement.html', context)
 
 @login_required
+@require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
 def valider_paiement(request, paiement_id:int):
     """Valide un paiement en le passant au statut VALIDE.
 
@@ -988,7 +1000,8 @@ def valider_paiement(request, paiement_id:int):
     paiement_qs = filter_by_user_school(Paiement.objects.all(), request.user, 'eleve__classe__ecole')
     paiement = get_object_or_404(paiement_qs, pk=paiement_id)
 
-    if not request.user.is_authenticated or not (user_is_admin(request.user) or can_validate_payments(request.user)):
+    # Contrôle serveur strict: seuls admin ou détenteurs de la permission explicite peuvent valider
+    if not request.user.is_authenticated or not (user_is_admin(request.user) or has_permission(request.user, 'peut_valider_paiements')):
         messages.error(request, "Vous n'avez pas l'autorisation de valider ce paiement.")
         return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
@@ -1038,6 +1051,7 @@ def valider_paiement(request, paiement_id:int):
     return redirect('paiements:detail_paiement', paiement_id=paiement.id)
 
 @login_required
+@require_school_object(Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def relancer_eleve(request, eleve_id:int):
     """Crée une relance et envoie la notification (WhatsApp/SMS) au responsable.
     GET params optionnels:
@@ -1204,6 +1218,7 @@ def liste_relances(request):
     return HttpResponse('Liste des relances')
 
 @login_required
+@require_school_object(Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def echeancier_eleve(request, eleve_id:int):
     """Affiche l'échéancier et l'historique des paiements d'un élève.
 
@@ -1250,6 +1265,7 @@ def echeancier_eleve(request, eleve_id:int):
     return render(request, 'paiements/echeancier_eleve.html', context)
 
 @login_required
+@require_school_object(Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def creer_echeancier(request, eleve_id:int):
     """Créer ou éditer l'échéancier d'un élève.
 
@@ -1350,6 +1366,7 @@ def creer_echeancier(request, eleve_id:int):
     return render(request, 'paiements/form_echeancier.html', context)
 
 @login_required
+@require_school_object(Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def assurer_echeancier(request, eleve_id: int):
     """Assure la création automatique de l'échéancier si manquant, puis redirige vers la page échéancier.
 
@@ -1370,6 +1387,7 @@ def assurer_echeancier(request, eleve_id: int):
     return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
 
 @login_required
+@require_school_object(Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def valider_echeancier(request, eleve_id: int):
     """Valide/synchronise l'échéancier d'un élève sur la base des paiements validés.
 
@@ -1425,6 +1443,7 @@ def valider_echeancier(request, eleve_id: int):
     return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
 
 @login_required
+@require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
 def generer_recu_pdf(request, paiement_id:int):
     """Génère un reçu PDF téléchargeable pour un paiement validé.
 
@@ -2317,6 +2336,7 @@ def ajax_calculer_remise(request):
 
 @login_required
 @can_apply_discounts
+@require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
 def appliquer_remise_paiement(request, paiement_id:int):
     """Affiche et traite le formulaire d'application de remises pour un paiement."""
     paiement = get_object_or_404(
@@ -2469,6 +2489,7 @@ def calculateur_remise(request):
 
 @login_required
 @can_apply_discounts
+@require_school_object(Paiement, pk_kwarg='paiement_id', field_path='eleve__classe__ecole')
 def annuler_remise_paiement(request, paiement_id:int, remise_id:int=None):
     """Annule les remises appliquées à un paiement.
 

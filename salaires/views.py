@@ -26,7 +26,7 @@ from .forms import EnseignantForm, AffectationClasseForm
 from eleves.models import Ecole, Classe
 from utilisateurs.utils import user_is_admin, user_school
 from utilisateurs.permissions import can_add_teachers
-from ecole_moderne.security_decorators import delete_permission_required
+from ecole_moderne.security_decorators import delete_permission_required, require_school_object
 
 def _ecole_utilisateur(request):
     """Compat: utiliser l'utilitaire centralisé"""
@@ -414,6 +414,7 @@ def export_enseignants_pdf(request):
 
 
 @login_required
+@require_school_object(model=Enseignant, pk_kwarg='enseignant_id', field_path='ecole')
 def detail_enseignant(request, enseignant_id):
     """Détail d'un enseignant"""
     ecole_user = _ecole_utilisateur(request)
@@ -468,6 +469,7 @@ def detail_enseignant(request, enseignant_id):
 
 
 @login_required
+@require_school_object(model=Enseignant, pk_kwarg='enseignant_id', field_path='ecole')
 def ajouter_affectation(request, enseignant_id):
     """Créer une affectation de classe pour un enseignant"""
     ecole_user = _ecole_utilisateur(request)
@@ -495,6 +497,7 @@ def ajouter_affectation(request, enseignant_id):
 
 
 @login_required
+@require_school_object(model=AffectationClasse, pk_kwarg='affectation_id', field_path='enseignant__ecole')
 def clore_affectation(request, affectation_id):
     """Clore (désactiver) une affectation en mettant une date de fin à aujourd'hui"""
     affectation = get_object_or_404(
@@ -518,6 +521,7 @@ def clore_affectation(request, affectation_id):
 
 @login_required
 @delete_permission_required()
+@require_school_object(model=AffectationClasse, pk_kwarg='affectation_id', field_path='enseignant__ecole')
 def supprimer_affectation(request, affectation_id):
     """Supprimer une affectation (si besoin)"""
     affectation = get_object_or_404(
@@ -821,6 +825,7 @@ def export_etats_salaire_pdf(request):
 
 
 @login_required
+@require_school_object(model=PeriodeSalaire, pk_kwarg='periode_id', field_path='ecole')
 def calculer_salaires(request, periode_id):
     """Calculer les salaires pour une période"""
     

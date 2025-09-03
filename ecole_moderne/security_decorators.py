@@ -28,6 +28,54 @@ def admin_required(view_func):
         return view_func(request, *args, **kwargs)
     return wrapper
 
+def require_school_object(model, pk_kwarg: str = 'pk', field_path: str = 'ecole'):
+    """Décorateur qui impose que l'objet ciblé appartienne à l'école de l'utilisateur.
+
+    - model: le modèle Django ciblé (ex: Paiement, Eleve, Classe)
+    - pk_kwarg: nom du paramètre kwarg qui contient la clé primaire (ex: 'paiement_id', 'eleve_id')
+    - field_path: chemin vers le champ `Ecole` depuis le modèle (ex: 'eleve__classe__ecole', 'classe__ecole')
+
+    Comportement:
+      - Les administrateurs sont exemptés (accès total)
+      - Pour les autres, on filtre le queryset via `filter_by_user_school` et on vérifie que l'objet existe
+      - Si l'objet n'est pas dans l'école de l'utilisateur ou n'existe pas -> Http404
+    """
+    from django.shortcuts import get_object_or_404
+    from django.http import Http404
+    from utilisateurs.utils import user_is_admin, filter_by_user_school
+
+    def decorator(view_func):
+        @functools.wraps(view_func)
+        @login_required
+        def wrapper(request, *args, **kwargs):
+            obj_pk = kwargs.get(pk_kwarg)
+            # Si aucune clé, laisser la vue gérer l'erreur
+            if obj_pk is None:
+                return view_func(request, *args, **kwargs)
+
+            # Admin: accès complet
+            if user_is_admin(request.user):
+                return view_func(request, *args, **kwargs)
+
+            # Restreindre le queryset de l'objet à l'école de l'utilisateur
+            qs = filter_by_user_school(model.objects.all(), request.user, field_path)
+            try:
+                # Déclenchera 404 si l'objet n'appartient pas à l'école ou n'existe pas
+                get_object_or_404(qs, pk=obj_pk)
+            except Http404:
+                client_ip = get_client_ip(request)
+                logger.warning(
+                    f"Accès cross-école refusé: user={getattr(request.user, 'id', None)} path={request.path} "
+                    f"model={model.__name__} pk={obj_pk} field_path={field_path} ip={client_ip}"
+                )
+                raise
+
+            return view_func(request, *args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
 def delete_permission_required(allowed_username="FELIXSUZANELENO", confirm_value="FELIXSUZANELENO", confirm_field="confirm_name"):
     """
     Décorateur pour restreindre toute opération de suppression à un seul utilisateur

@@ -134,3 +134,29 @@ class SchoolFilteringTests(TestCase):
         url = reverse("paiements:annuler_remise_paiement_unique", kwargs={"paiement_id": self.paiement2.id, "remise_id": 999})
         resp = self.client.post(url)
         self.assertEqual(resp.status_code, 404)
+
+    # --- Nouvelles vérifications des vues HTML protégées par require_school_object ---
+    def test_detail_paiement_other_school_is_404(self):
+        self.login1()
+        url = reverse("paiements:detail_paiement", kwargs={"paiement_id": self.paiement2.id})
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_generer_recu_pdf_other_school_is_404(self):
+        self.login1()
+        url = reverse("paiements:generer_recu_pdf", kwargs={"paiement_id": self.paiement2.id})
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_echeancier_eleve_other_school_is_404(self):
+        self.login1()
+        url = reverse("paiements:echeancier_eleve", kwargs={"eleve_id": self.eleve2.id})
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_relancer_eleve_other_school_is_404(self):
+        self.login1()
+        url = reverse("paiements:relancer_eleve", kwargs={"eleve_id": self.eleve2.id})
+        # GET simple, on ne vérifie que la protection d'accès (pas les side-effects)
+        resp = self.client.get(url)
+        self.assertEqual(resp.status_code, 404)

@@ -18,6 +18,7 @@ from .forms import (
 )
 from utilisateurs.utils import user_is_admin, user_school
 from utilisateurs.permissions import can_add_expenses, can_modify_expenses, can_delete_expenses, can_validate_expenses
+from ecole_moderne.security_decorators import require_school_object
 
 @login_required
 def tableau_bord(request):
@@ -143,6 +144,7 @@ def liste_depenses(request):
     return render(request, 'depenses/liste_depenses.html', context)
 
 @login_required
+@require_school_object(model=Depense, pk_kwarg='depense_id', field_path='cree_par__profil__ecole')
 def detail_depense(request, depense_id):
     """Détail d'une dépense"""
     qs = Depense.objects.select_related(
@@ -192,6 +194,7 @@ def ajouter_depense(request):
 
 @login_required
 @can_modify_expenses
+@require_school_object(model=Depense, pk_kwarg='depense_id', field_path='cree_par__profil__ecole')
 def modifier_depense(request, depense_id):
     """Modifier une dépense existante"""
     qs = Depense.objects.all()
@@ -235,6 +238,7 @@ def modifier_depense(request, depense_id):
 
 @login_required
 @can_validate_expenses
+@require_school_object(model=Depense, pk_kwarg='depense_id', field_path='cree_par__profil__ecole')
 def valider_depense(request, depense_id):
     """Valider une dépense"""
     if request.method == 'POST':
@@ -267,6 +271,7 @@ def valider_depense(request, depense_id):
     return redirect('depenses:detail_depense', depense_id=depense_id)
 
 @login_required
+@require_school_object(model=Depense, pk_kwarg='depense_id', field_path='cree_par__profil__ecole')
 def marquer_payee(request, depense_id):
     """Marquer une dépense comme payée"""
     if request.method == 'POST':

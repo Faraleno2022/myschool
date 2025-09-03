@@ -16,6 +16,7 @@ from eleves.models import Eleve
 from .models import AbonnementBus
 from .forms import AbonnementBusForm
 from utilisateurs.utils import user_is_admin, filter_by_user_school
+from ecole_moderne.security_decorators import require_school_object
 from ecole_moderne.pdf_utils import draw_logo_watermark
 from paiements.twilio_utils import send_message_async
 
@@ -165,6 +166,7 @@ def abonnement_create(request):
 
 
 @login_required
+@require_school_object(model=AbonnementBus, pk_kwarg='abo_id', field_path='eleve__classe__ecole')
 def abonnement_edit(request, abo_id):
     abo = get_object_or_404(AbonnementBus, id=abo_id)
     if request.method == 'POST':
@@ -233,6 +235,7 @@ def export_relances_excel(request):
 @login_required
 @vary_on_cookie
 @cache_page(60 * 10)
+@require_school_object(model=AbonnementBus, pk_kwarg='abo_id', field_path='eleve__classe__ecole')
 def generer_recu_abonnement_pdf(request, abo_id):
     """Génère un reçu simple pour un abonnement bus"""
     abo = get_object_or_404(AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole'), id=abo_id)
@@ -308,6 +311,8 @@ def envoyer_relances_bus(request):
     envoyes = 0
 
     abonnements = AbonnementBus.objects.select_related('eleve', 'eleve__classe', 'eleve__classe__ecole').filter(id__in=ids)
+    if not user_is_admin(request.user):
+        abonnements = filter_by_user_school(abonnements, request.user, 'eleve__classe__ecole')
 
     for abo in abonnements:
         el = abo.eleve
