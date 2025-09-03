@@ -5,6 +5,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
+from django.utils.translation import gettext as _
 from django.core.cache import cache
 from django.http import HttpResponseForbidden
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
@@ -262,6 +263,45 @@ def security_dashboard(request):
     
     return render(request, 'administration/security_dashboard.html', {
         'stats': stats
+    })
+
+@login_required
+@csrf_protect
+@never_cache
+def verify_phone(request):
+    """
+    Étape de vérification du numéro de téléphone après connexion.
+    L'utilisateur doit saisir le numéro exactement tel qu'enregistré dans son profil.
+    Exemple de format attendu (validé par le modèle Profil): +224XXXXXXXXX
+    """
+    profil = getattr(request.user, 'profil', None)
+    if not profil or not profil.telephone:
+        messages.error(request, _("Aucun numéro de téléphone n'est enregistré sur votre profil. Veuillez contacter un administrateur."))
+        return redirect('utilisateurs:logout')
+
+    # Si déjà vérifié pour la session courante, on passe
+    if request.session.get('phone_verified'):
+        next_url = request.GET.get('next')
+        if next_url and next_url.startswith('/'):
+            return redirect(next_url)
+        return redirect('eleves:liste_eleves')
+
+    if request.method == 'POST':
+        numero = (request.POST.get('telephone') or '').strip()
+        # On compare strictement au numéro du profil
+        if numero == profil.telephone:
+            request.session['phone_verified'] = True
+            messages.success(request, _('Vérification du téléphone réussie.'))
+            next_url = request.GET.get('next') or request.POST.get('next')
+            if next_url and next_url.startswith('/'):
+                return redirect(next_url)
+            return redirect('eleves:liste_eleves')
+        else:
+            messages.error(request, _("Le numéro saisi ne correspond pas à celui enregistré."))
+
+    return render(request, 'utilisateurs/verify_phone.html', {
+        'telephone_masque': profil.telephone[:-3] + '***' if profil.telephone and len(profil.telephone) > 3 else '***',
+        'next': request.GET.get('next', ''),
     })
 
 def check_session_security(request):

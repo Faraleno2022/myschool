@@ -1,7 +1,7 @@
 from django.urls import path
 from django.contrib.auth import views as auth_views
 from .views import comptable_create_view, comptable_list_view
-from .security_views import secure_login, secure_logout, SecurePasswordChangeView
+from .security_views import secure_login, secure_logout, SecurePasswordChangeView, verify_phone
 from .permission_views import (
     gestion_permissions, update_permissions, ajax_toggle_permission,
     bulk_update_permissions, ajax_user_permissions, export_permissions_csv
@@ -14,6 +14,7 @@ urlpatterns = [
     path('login/', secure_login, name='login'),
     path('logout/', secure_logout, name='logout'),
     path('password/change/', SecurePasswordChangeView.as_view(), name='password_change'),
+    path('verify-phone/', verify_phone, name='verify_phone'),
     path('comptables/ajouter/', comptable_create_view, name='comptable_create'),
     path('comptables/', comptable_list_view, name='comptable_list'),
     

@@ -243,6 +243,26 @@ class SessionSecurityMiddleware(MiddlewareMixin):
         """
         # Vérifier que l'utilisateur est disponible (après AuthenticationMiddleware)
         if hasattr(request, 'user') and request.user.is_authenticated:
+            # Enforcer la vérification du téléphone pour la session
+            try:
+                path = request.path or ''
+                # Routes exemptées
+                exempt = (
+                    path.startswith('/utilisateurs/login/') or
+                    path.startswith('/utilisateurs/logout/') or
+                    path.startswith('/utilisateurs/verify-phone/') or
+                    path.startswith('/admin/') or
+                    path.startswith('/static/') or
+                    path.startswith('/media/')
+                )
+                if not exempt and not request.session.get('phone_verified', False):
+                    # Préserver la destination initiale
+                    from django.urls import reverse
+                    verify_url = reverse('utilisateurs:verify_phone')
+                    return redirect(f"{verify_url}?next={path}")
+            except Exception:
+                # En cas d'erreur, ne pas bloquer l'utilisateur, continuer les autres contrôles
+                pass
             # Vérifier l'inactivité de session
             if self.is_session_expired(request):
                 logout(request)
