@@ -255,7 +255,26 @@ class SessionSecurityMiddleware(MiddlewareMixin):
                     path.startswith('/static/') or
                     path.startswith('/media/')
                 )
-                if not exempt and not request.session.get('phone_verified', False):
+                # TTL de re-vérification (8h)
+                PHONE_VERIFY_TTL_SECONDS = 8 * 3600
+                verified = request.session.get('phone_verified', False)
+                verified_at = request.session.get('phone_verified_at')
+                # Vérifier expiration si déjà vérifié
+                if verified and verified_at:
+                    try:
+                        age = time.time() - float(verified_at)
+                        if age > PHONE_VERIFY_TTL_SECONDS:
+                            # Expire la vérification
+                            request.session['phone_verified'] = False
+                            request.session['phone_verified_at'] = None
+                            verified = False
+                    except Exception:
+                        # En cas de valeur inattendue, forcer une nouvelle vérification
+                        request.session['phone_verified'] = False
+                        request.session['phone_verified_at'] = None
+                        verified = False
+
+                if not exempt and not verified:
                     # Préserver la destination initiale
                     from django.urls import reverse
                     verify_url = reverse('utilisateurs:verify_phone')

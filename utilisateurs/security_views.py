@@ -291,6 +291,7 @@ def verify_phone(request):
         # On compare strictement au numéro du profil
         if numero == profil.telephone:
             request.session['phone_verified'] = True
+            request.session['phone_verified_at'] = time.time()
             messages.success(request, _('Vérification du téléphone réussie.'))
             next_url = request.GET.get('next') or request.POST.get('next')
             if next_url and next_url.startswith('/'):
