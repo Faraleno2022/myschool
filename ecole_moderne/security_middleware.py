@@ -255,8 +255,8 @@ class SessionSecurityMiddleware(MiddlewareMixin):
                     path.startswith('/static/') or
                     path.startswith('/media/')
                 )
-                # TTL de re-vérification (8h)
-                PHONE_VERIFY_TTL_SECONDS = 8 * 3600
+                # TTL de re-vérification (configurable via settings)
+                PHONE_VERIFY_TTL_SECONDS = getattr(settings, 'PHONE_VERIFY_TTL_SECONDS', 8 * 3600)
                 verified = request.session.get('phone_verified', False)
                 verified_at = request.session.get('phone_verified_at')
                 # Vérifier expiration si déjà vérifié
