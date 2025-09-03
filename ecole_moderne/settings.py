@@ -71,9 +71,9 @@ SESSION_SAVE_EVERY_REQUEST = False
 # Protection contre les attaques de timing
 USE_TZ = True
 
-# Durée avant re-vérification du téléphone (par défaut 8 heures)
+# Durée avant re-vérification du téléphone (par défaut 4 heures)
 # Peut être surchargée via la variable d'environnement PHONE_VERIFY_TTL_SECONDS
-PHONE_VERIFY_TTL_SECONDS = int(os.environ.get('PHONE_VERIFY_TTL_SECONDS', 8 * 3600))
+PHONE_VERIFY_TTL_SECONDS = int(os.environ.get('PHONE_VERIFY_TTL_SECONDS', 4 * 3600))
 
 # Limitation des uploads
 FILE_UPLOAD_MAX_MEMORY_SIZE = 5242880  # 5MB
