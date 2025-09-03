@@ -360,8 +360,8 @@ def twilio_status_callback(request):
 # Tableau de bord Paiements – statistiques réelles + listes
 # ---------------------------------------------------------------
 
-def _compute_stats():
-    """Calcule les statistiques affichées sur le tableau de bord.
+def _compute_stats(user):
+    """Calcule les statistiques affichées sur le tableau de bord en respectant l'école de l'utilisateur (sauf admin).
     Retourne un dict: total_paiements_mois, nombre_paiements_mois, eleves_en_retard, paiements_en_attente.
     """
     try:
@@ -378,19 +378,21 @@ def _compute_stats():
         month_start = date(today.year, today.month, 1)
 
     # Somme des paiements validés sur le mois (DateField -> filtre inclusif par bornes)
-    total_mois = (
-        Paiement.objects.filter(
-            statut='VALIDE',
-            date_paiement__gte=month_start,
-            date_paiement__lte=today,
-        ).aggregate(total=Sum('montant'))['total'] or 0
-    )
-
-    # Nombre de paiements (tous statuts) ce mois
-    nb_paiements_mois = Paiement.objects.filter(
+    _qs_total_mois = Paiement.objects.filter(
+        statut='VALIDE',
         date_paiement__gte=month_start,
         date_paiement__lte=today,
-    ).count()
+    )
+    _qs_total_mois = filter_by_user_school(_qs_total_mois, user, 'eleve__classe__ecole')
+    total_mois = (_qs_total_mois.aggregate(total=Sum('montant'))['total'] or 0)
+
+    # Nombre de paiements (tous statuts) ce mois
+    _qs_nb = Paiement.objects.filter(
+        date_paiement__gte=month_start,
+        date_paiement__lte=today,
+    )
+    _qs_nb = filter_by_user_school(_qs_nb, user, 'eleve__classe__ecole')
+    nb_paiements_mois = _qs_nb.count()
 
     # Élèves en retard: montants exigibles (échéances dépassées) > payés + remises
     exigible_expr = (
@@ -427,15 +429,18 @@ def _compute_stats():
         + remises_applicables
     )
     retard_expr = ExpressionWrapper(exigible_expr - paye_effectif_expr, output_field=DecimalField(max_digits=10, decimal_places=0))
-    eleves_retard_count = (
+    _qs_retard = (
         EcheancierPaiement.objects
         .annotate(retard=retard_expr)
         .filter(retard__gt=0)
-        .count()
     )
+    _qs_retard = filter_by_user_school(_qs_retard, user, 'eleve__classe__ecole')
+    eleves_retard_count = _qs_retard.count()
 
     # Paiements en attente
-    en_attente_count = Paiement.objects.filter(statut='EN_ATTENTE').count()
+    _qs_attente = Paiement.objects.filter(statut='EN_ATTENTE')
+    _qs_attente = filter_by_user_school(_qs_attente, user, 'eleve__classe__ecole')
+    en_attente_count = _qs_attente.count()
 
     return {
         'total_paiements_mois': int(total_mois or 0),
@@ -451,7 +456,7 @@ def tableau_bord_paiements(request):
     if not _template_exists('paiements/tableau_bord.html'):
         return HttpResponse('Tableau de bord paiements (template manquant)')
 
-    stats = _compute_stats()
+    stats = _compute_stats(request.user)
 
     # Paiements récents: derniers validés d'abord, sinon tout, sur 30 jours sinon fallback 20 derniers
     try:
@@ -472,12 +477,14 @@ def tableau_bord_paiements(request):
         .filter(date_paiement__gte=last_30)
         .order_by('-date_paiement', '-date_creation')
     )
+    paiements_recents_qs = filter_by_user_school(paiements_recents_qs, request.user, 'eleve__classe__ecole')
     if paiements_recents_qs.count() == 0:
         paiements_recents_qs = (
             Paiement.objects
             .select_related('eleve', 'type_paiement', 'mode_paiement')
             .order_by('-date_paiement', '-date_creation')
         )
+        paiements_recents_qs = filter_by_user_school(paiements_recents_qs, request.user, 'eleve__classe__ecole')
     paiements_recents = list(paiements_recents_qs[:20])
 
     # Top élèves en retard (montant de retard décroissant)
@@ -520,8 +527,8 @@ def tableau_bord_paiements(request):
         .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
         .annotate(retard_db=retard_expr)
         .filter(retard_db__gt=0)
-        .order_by('-retard_db')[:10]
     )
+    eleves_en_retard = filter_by_user_school(eleves_en_retard, request.user, 'eleve__classe__ecole').order_by('-retard_db')[:10]
 
     context = {
         'titre_page': 'Tableau de bord des paiements',
@@ -548,6 +555,8 @@ def liste_paiements(request):
     qs = (
         Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement')
     )
+    # Restreindre par école de l'utilisateur (sauf admin)
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
     # Filtre recherche plein texte simple
     if q:
@@ -591,7 +600,8 @@ def liste_paiements(request):
     montant_ce_mois = int(ce_mois_qs.aggregate(total=Sum('montant'))['total'] or 0)
 
     # Calculs supplémentaires: Dû scolarité net après remises + frais d'inscription (réels depuis l'échéancier)
-    eleves_qs = Eleve.objects.all()
+    eleves_qs = Eleve.objects.select_related('classe', 'classe__ecole').all()
+    eleves_qs = filter_by_user_school(eleves_qs, request.user, 'classe__ecole')
     if q:
         eleves_qs = eleves_qs.filter(
             Q(nom__icontains=q) | Q(prenom__icontains=q) | Q(matricule__icontains=q)
@@ -600,7 +610,8 @@ def liste_paiements(request):
             | Q(paiements__observations__icontains=q)
         ).distinct()
 
-    eleves_count = eleves_qs.count() if q else Eleve.objects.count()
+    # Toujours compter les élèves restreints à l'école de l'utilisateur
+    eleves_count = eleves_qs.count()
 
     eche_qs = EcheancierPaiement.objects.filter(eleve__in=eleves_qs)
     dues_sco_expr = (
@@ -717,8 +728,8 @@ def liste_paiements(request):
             'du_global_net': int(du_global_net or 0),
         },
         'totaux_du_detail_classes': totaux_du_detail_classes,
-        # Alerte relance en haut du fragment (compte global des élèves en retard)
-        'eleves_en_retard': _compute_stats().get('eleves_en_retard', 0),
+        # Alerte relance: compte global des élèves en retard (filtré par école)
+        'eleves_en_retard': _compute_stats(request.user).get('eleves_en_retard', 0),
     }
 
     # Réponse partielle pour les requêtes AJAX (utilisé par la recherche/pagination dynamique)
@@ -744,13 +755,12 @@ def detail_paiement(request, paiement_id:int):
       - is_admin: bool
       - user_permissions: dict avec `can_validate_payments`
     """
-    paiement = get_object_or_404(
-        Paiement.objects.select_related(
-            'eleve', 'type_paiement', 'mode_paiement',
-            'eleve__classe', 'eleve__classe__ecole',
-        ),
-        pk=paiement_id,
+    paiement_qs = Paiement.objects.select_related(
+        'eleve', 'type_paiement', 'mode_paiement',
+        'eleve__classe', 'eleve__classe__ecole',
     )
+    paiement_qs = filter_by_user_school(paiement_qs, request.user, 'eleve__classe__ecole')
+    paiement = get_object_or_404(paiement_qs, pk=paiement_id)
 
     # Préparer les informations de permissions utilisées dans le template
     perms_ctx = {
@@ -786,7 +796,9 @@ def ajouter_paiement(request, eleve_id:int=None):
     eleve = None
     initial = {}
     if eleve_id:
-        eleve = get_object_or_404(Eleve.objects.select_related('classe', 'classe__ecole'), pk=eleve_id)
+        eleve_qs = Eleve.objects.select_related('classe', 'classe__ecole')
+        eleve_qs = filter_by_user_school(eleve_qs, request.user, 'classe__ecole')
+        eleve = get_object_or_404(eleve_qs, pk=eleve_id)
         initial['eleve'] = eleve
 
     if request.method == 'POST':
@@ -794,6 +806,18 @@ def ajouter_paiement(request, eleve_id:int=None):
         if form.is_valid():
             # Pré-valider la cohérence métier avant d'enregistrer
             paiement: Paiement = form.save(commit=False)
+
+            # Vérifier que l'élève du paiement est bien dans l'école de l'utilisateur (sauf admin)
+            if not user_is_admin(request.user):
+                try:
+                    ecole_user = user_school(request.user)
+                    ecole_pmt = getattr(getattr(getattr(paiement.eleve, 'classe', None), 'ecole', None), 'id', None)
+                    if ecole_user is None or (getattr(ecole_user, 'id', None) != ecole_pmt):
+                        messages.error(request, "Accès refusé: cet élève n'appartient pas à votre école.")
+                        return redirect('paiements:liste_paiements')
+                except Exception:
+                    messages.error(request, "Accès refusé: impossible de valider l'appartenance de l'élève à votre école.")
+                    return redirect('paiements:liste_paiements')
 
             # Récupérer/assurer l'échéancier de l'élève pour les contrôles
             try:
@@ -961,7 +985,8 @@ def valider_paiement(request, paiement_id:int):
     - Optionnel: tente d'allouer le paiement à l'échéancier si une fonction utilitaire existe
     - Notifie le responsable (WhatsApp/SMS) avec le reçu
     """
-    paiement = get_object_or_404(Paiement, pk=paiement_id)
+    paiement_qs = filter_by_user_school(Paiement.objects.all(), request.user, 'eleve__classe__ecole')
+    paiement = get_object_or_404(paiement_qs, pk=paiement_id)
 
     if not request.user.is_authenticated or not (user_is_admin(request.user) or can_validate_payments(request.user)):
         messages.error(request, "Vous n'avez pas l'autorisation de valider ce paiement.")
@@ -1019,7 +1044,9 @@ def relancer_eleve(request, eleve_id:int):
       - canal: SMS | WHATSAPP (par défaut WHATSAPP)
       - message: texte personnalisé
     """
-    eleve = get_object_or_404(Eleve.objects.select_related('classe'), pk=eleve_id)
+    eleve_qs = Eleve.objects.select_related('classe')
+    eleve_qs = filter_by_user_school(eleve_qs, request.user, 'classe__ecole')
+    eleve = get_object_or_404(eleve_qs, pk=eleve_id)
     canal = (request.GET.get('canal') or 'WHATSAPP').upper()
     message_txt = (request.GET.get('message') or '').strip()
 
@@ -1114,6 +1141,7 @@ def envoyer_notifs_retards(request):
         .annotate(retard=retard_expr)
         .filter(retard__gt=0)
     )
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     envoyes = 0
     for ech in qs[:500]:  # sécurité: batch max 500
         try:
@@ -1140,6 +1168,7 @@ def liste_relances(request):
         Relance.objects.select_related('eleve', 'eleve__classe')
         .order_by('-date_creation')
     )
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     if q:
         qs = qs.filter(
             Q(eleve__nom__icontains=q)
@@ -1185,8 +1214,10 @@ def echeancier_eleve(request, eleve_id:int):
       - paiements: queryset des `Paiement` liés à l'élève (ordonnés récents d'abord)
       - today: date du jour (timezone-aware localdate si dispo)
     """
-    # Récupération de l'élève avec sa classe/école pour l'en-tête
-    eleve = get_object_or_404(Eleve.objects.select_related('classe', 'classe__ecole'), pk=eleve_id)
+    # Récupération de l'élève avec sa classe/école pour l'en-tête (restreint par école)
+    eleve_qs = Eleve.objects.select_related('classe', 'classe__ecole')
+    eleve_qs = filter_by_user_school(eleve_qs, request.user, 'classe__ecole')
+    eleve = get_object_or_404(eleve_qs, pk=eleve_id)
 
     # Échéancier (peut ne pas exister encore)
     try:
@@ -1218,6 +1249,7 @@ def echeancier_eleve(request, eleve_id:int):
     }
     return render(request, 'paiements/echeancier_eleve.html', context)
 
+@login_required
 def creer_echeancier(request, eleve_id:int):
     """Créer ou éditer l'échéancier d'un élève.
 
@@ -1225,7 +1257,9 @@ def creer_echeancier(request, eleve_id:int):
     - GET: affiche `templates/paiements/form_echeancier.html` pré-rempli si possible par la grille tarifaire.
     - POST: valide et enregistre l'échéancier puis redirige vers la page d'échéancier de l'élève.
     """
-    eleve = get_object_or_404(Eleve.objects.select_related('classe', 'classe__ecole'), pk=eleve_id)
+    eleve_qs = Eleve.objects.select_related('classe', 'classe__ecole')
+    eleve_qs = filter_by_user_school(eleve_qs, request.user, 'classe__ecole')
+    eleve = get_object_or_404(eleve_qs, pk=eleve_id)
 
     # Si un échéancier existe déjà, on informe et on redirige
     if getattr(eleve, 'echeancier', None):
@@ -1390,6 +1424,7 @@ def valider_echeancier(request, eleve_id: int):
 
     return redirect('paiements:echeancier_eleve', eleve_id=eleve.id)
 
+@login_required
 def generer_recu_pdf(request, paiement_id:int):
     """Génère un reçu PDF téléchargeable pour un paiement validé.
 
@@ -1397,10 +1432,9 @@ def generer_recu_pdf(request, paiement_id:int):
     - Inclut les informations clés du paiement et de l'élève
     - Liste les remises appliquées et affiche le total des remises
     """
-    paiement = get_object_or_404(
-        Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement', 'eleve__classe', 'eleve__classe__ecole'),
-        pk=paiement_id,
-    )
+    paiement_qs = Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement', 'eleve__classe', 'eleve__classe__ecole')
+    paiement_qs = filter_by_user_school(paiement_qs, request.user, 'eleve__classe__ecole')
+    paiement = get_object_or_404(paiement_qs, pk=paiement_id)
 
     # Optionnel: n'autoriser le reçu que pour les paiements validés
     if getattr(paiement, 'statut', 'EN_ATTENTE') != 'VALIDE':
@@ -1750,6 +1784,7 @@ def generer_recu_pdf(request, paiement_id:int):
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
 
+@login_required
 def export_liste_paiements_excel(request):
     """Exporte en Excel la liste des paiements selon les filtres (q, statut).
     Colonnes: Élève, Classe, École, Type, Montant, Mode, Date, Statut, N° Reçu, Observations
@@ -1764,6 +1799,8 @@ def export_liste_paiements_excel(request):
         .exclude(statut='ANNULE')
         .order_by('-date_paiement', '-date_creation')
     )
+    # Sécurité: restreindre aux paiements de l'école de l'utilisateur (sauf admin)
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     if q:
         qs = qs.filter(
             Q(numero_recu__icontains=q)
@@ -1854,6 +1891,7 @@ def export_liste_paiements_excel(request):
     wb.save(response)
     return response
 
+@login_required
 def rapport_remises(request):
     """Rapport des remises avec agrégations par élève et filtres période/recherche.
 
@@ -1870,6 +1908,8 @@ def rapport_remises(request):
     # Base queryset sur les remises liées à des paiements validés
     rem_qs = PaiementRemise.objects.select_related('paiement', 'paiement__eleve')
     rem_qs = rem_qs.filter(paiement__statut='VALIDE')
+    # Sécurité: restreindre aux remises liées aux paiements de l'école de l'utilisateur
+    rem_qs = filter_by_user_school(rem_qs, request.user, 'paiement__eleve__classe__ecole')
 
     # Filtre période sur la date du paiement si fournie
     try:
@@ -1957,6 +1997,9 @@ def liste_eleves_soldes(request):
         qs = qs.filter(annee_scolaire=annee)
     except Exception:
         pass
+
+    # Sécurité: restreindre aux élèves de l'école de l'utilisateur (sauf admin)
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
 
     # Filtres école/classe
     if ecole_id:
@@ -2125,9 +2168,17 @@ def liste_eleves_soldes(request):
     try:
         from eleves.models import Ecole
         ecoles_qs = Ecole.objects.all().order_by('nom')
+        # Restreindre la liste des écoles pour les non-admins
+        if not (getattr(request.user, 'is_superuser', False) or getattr(request.user, 'is_staff', False)):
+            ecole_id_user = getattr(getattr(request.user, 'profil', None), 'ecole_id', None)
+            if ecole_id_user:
+                ecoles_qs = ecoles_qs.filter(pk=ecole_id_user)
+            else:
+                ecoles_qs = ecoles_qs.none()
     except Exception:
         ecoles_qs = []
     classes = Classe.objects.select_related('ecole').all().order_by('ecole__nom', 'nom')
+    classes = filter_by_user_school(classes, request.user, 'ecole')
 
     # Proposer quelques années autour de l'année active pour la sélection
     try:
@@ -2172,7 +2223,10 @@ def ajax_eleve_info(request):
         return JsonResponse({'success': False, 'error': 'Matricule requis.'}, status=400)
 
     try:
-        eleve = Eleve.objects.select_related('classe', 'classe__ecole').get(matricule__iexact=matricule)
+        eleve_qs = Eleve.objects.select_related('classe', 'classe__ecole')
+        # Sécurité: restreindre aux élèves de l'école de l'utilisateur
+        eleve_qs = filter_by_user_school(eleve_qs, request.user, 'classe__ecole')
+        eleve = eleve_qs.get(matricule__iexact=matricule)
     except Eleve.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Élève introuvable.'}, status=404)
 
@@ -2235,8 +2289,9 @@ def ajax_statistiques_paiements(request):
     Fourni pour satisfaire le routage; peut être enrichi ultérieurement.
     """
     try:
-        total = Paiement.objects.count()
-        montant_total = int(Paiement.objects.aggregate(total=Sum('montant'))['total'] or 0)
+        base = filter_by_user_school(Paiement.objects.all(), request.user, 'eleve__classe__ecole')
+        total = base.count()
+        montant_total = int(base.aggregate(total=Sum('montant'))['total'] or 0)
     except Exception:
         total = 0
         montant_total = 0
@@ -2420,7 +2475,15 @@ def annuler_remise_paiement(request, paiement_id:int, remise_id:int=None):
     - Si remise_id est fourni: supprime uniquement cette remise
     - Sinon: supprime toutes les remises du paiement
     """
-    paiement = get_object_or_404(Paiement, pk=paiement_id)
+    # Sécurité: restreindre l'accès au paiement à l'école de l'utilisateur
+    paiement = get_object_or_404(
+        filter_by_user_school(
+            Paiement.objects.select_related('eleve', 'eleve__classe'),
+            request.user,
+            'eleve__classe__ecole'
+        ),
+        pk=paiement_id,
+    )
     try:
         if remise_id:
             PaiementRemise.objects.filter(paiement=paiement, id=remise_id).delete()
@@ -2442,6 +2505,8 @@ def export_paiements_periode_excel(request):
     statut = (request.GET.get('statut') or '').strip()
 
     qs = Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement')
+    # Sécurité: restreindre aux paiements de l'école de l'utilisateur
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     # Filtres période
     try:
         if du:
@@ -2516,9 +2581,10 @@ def rapport_retards(request):
 
     qs = (EcheancierPaiement.objects
           .select_related('eleve', 'eleve__classe', 'eleve__classe__ecole')
-          .annotate(retard=retard_expr)
-          .filter(retard__gt=0)
-          .order_by('-retard'))
+          .annotate(retard=retard_expr))
+    # Sécurité: restreindre aux échéanciers de l'école de l'utilisateur
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
+    qs = qs.filter(retard__gt=0).order_by('-retard')
 
     context = {'titre_page': 'Rapport des retards', 'items': qs}
     if _template_exists('rapports/liste_rapports.html'):
@@ -2531,6 +2597,8 @@ def rapport_encaissements(request):
     du = request.GET.get('du')
     au = request.GET.get('au')
     qs = Paiement.objects.all()
+    # Sécurité: restreindre aux paiements de l'école de l'utilisateur
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     try:
         if du:
             qs = qs.filter(date_paiement__gte=du)
@@ -2555,6 +2623,8 @@ def api_paiements_list(request):
     except Exception:
         limit = 50
     qs = Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement')
+    # Sécurité: restreindre aux paiements de l'école de l'utilisateur
+    qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
     if q:
         qs = qs.filter(
             Q(numero_recu__icontains=q) | Q(reference_externe__icontains=q) | Q(observations__icontains=q)
@@ -2584,7 +2654,14 @@ def api_paiements_list(request):
 @login_required
 def api_paiement_detail(request, pk:int):
     """API JSON: détail d'un paiement"""
-    p = get_object_or_404(Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement'), pk=pk)
+    p = get_object_or_404(
+        filter_by_user_school(
+            Paiement.objects.select_related('eleve', 'type_paiement', 'mode_paiement'),
+            request.user,
+            'eleve__classe__ecole'
+        ),
+        pk=pk,
+    )
     data = {
         'id': p.id,
         'eleve': {

@@ -119,3 +119,18 @@ class SchoolFilteringTests(TestCase):
         data = resp.json()
         self.assertTrue(data.get("success"))
         self.assertEqual(data.get("eleve", {}).get("id"), self.eleve1.id)
+
+    def test_annuler_remise_paiement_other_school_is_404(self):
+        """Un comptable ne peut pas annuler les remises d'un paiement d'une autre école."""
+        self.login1()  # user1 -> ecole1
+        url = reverse("paiements:annuler_remise_paiement", kwargs={"paiement_id": self.paiement2.id})
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 404)
+
+    def test_annuler_remise_paiement_unique_other_school_is_404(self):
+        """Même avec un remise_id arbitraire, l'accès à un paiement d'une autre école doit renvoyer 404."""
+        self.login1()  # user1 -> ecole1
+        # Pas besoin de créer une remise réelle: la vue vérifie d'abord l'accès au paiement
+        url = reverse("paiements:annuler_remise_paiement_unique", kwargs={"paiement_id": self.paiement2.id, "remise_id": 999})
+        resp = self.client.post(url)
+        self.assertEqual(resp.status_code, 404)
