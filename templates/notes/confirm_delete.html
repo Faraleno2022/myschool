@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+{% block title %}Confirmation de suppression{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'notes:tableau_bord' %}">Notes</a></li>
+<li class="breadcrumb-item active">Confirmation</li>
+{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-8 col-lg-6">
+    <div class="card border-danger">
+      <div class="card-header bg-danger text-white">
+        <i class="fas fa-exclamation-triangle me-2"></i>Confirmer la suppression
+      </div>
+      <div class="card-body">
+        <p class="mb-3">{{ message }}</p>
+        <div class="alert alert-warning">
+          <i class="fas fa-info-circle me-2"></i>Cette action est irréversible.
+        </div>
+        <form method="post" action="{{ action_url }}">
+          {% csrf_token %}
+          <div class="d-flex gap-2">
+            <a href="{% url 'notes:tableau_bord' %}" class="btn btn-outline-secondary">Annuler</a>
+            <button type="submit" class="btn btn-danger">Supprimer</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

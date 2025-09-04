@@ -7,46 +7,99 @@
 <li class="breadcrumb-item active" aria-current="page">Notes</li>
 {% endblock %}
 
-{% block page_actions %}
-<a href="#" class="btn btn-outline-secondary disabled" title="Bientôt"><i class="fas fa-cog me-1"></i>Paramètres</a>
-{% endblock %}
-
 {% block content %}
 <div class="row g-4">
   <div class="col-12">
     <div class="alert alert-info">
       <i class="fas fa-info-circle me-2"></i>
-      Tableau de bord de gestion des notes de l'établissement. Choisissez un niveau ci-dessous.
+      Gérez les classes et matières par niveau. Les matières sont spécifiques à chaque classe.
     </div>
   </div>
 
   <div class="col-md-4">
     <div class="card h-100">
-      <div class="card-body">
-        <h5 class="card-title"><i class="fas fa-child me-2 text-primary"></i>Primaire</h5>
-        <p class="card-text">Saisir et gérer les notes du Primaire.</p>
-        <a href="#" class="btn btn-primary disabled" title="À venir"><i class="fas fa-arrow-right me-1"></i>Ouvrir</a>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-child me-2 text-primary"></i>Primaire</span>
+        {% if user.is_superuser or user.is_staff %}
+          <a href="{% url 'notes:creer_classe' 'PRIMAIRE_1' %}" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus"></i> Classe</a>
+        {% endif %}
       </div>
+      <ul class="list-group list-group-flush">
+        {% for c in classes_primaire %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+              <strong>{{ c.nom }}</strong>
+              <small class="text-muted">— {{ c.get_niveau_display }} · {{ c.annee_scolaire }}</small>
+            </div>
+            <div class="btn-group">
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'notes:matieres_classe' c.id %}"><i class="fas fa-book me-1"></i>Matières</a>
+              {% if user.is_superuser or user.is_staff %}
+                <a class="btn btn-sm btn-outline-danger" href="{% url 'notes:supprimer_classe' c.id %}"><i class="fas fa-trash"></i></a>
+              {% endif %}
+            </div>
+          </li>
+        {% empty %}
+          <li class="list-group-item text-muted">Aucune classe au Primaire.</li>
+        {% endfor %}
+      </ul>
     </div>
   </div>
 
   <div class="col-md-4">
     <div class="card h-100">
-      <div class="card-body">
-        <h5 class="card-title"><i class="fas fa-user-graduate me-2 text-success"></i>Collège</h5>
-        <p class="card-text">Saisir et gérer les notes du Collège.</p>
-        <a href="#" class="btn btn-success disabled" title="À venir"><i class="fas fa-arrow-right me-1"></i>Ouvrir</a>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-user-graduate me-2 text-success"></i>Collège</span>
+        {% if user.is_superuser or user.is_staff %}
+          <a href="{% url 'notes:creer_classe' 'COLLEGE_7' %}" class="btn btn-sm btn-outline-success"><i class="fas fa-plus"></i> Classe</a>
+        {% endif %}
       </div>
+      <ul class="list-group list-group-flush">
+        {% for c in classes_college %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+              <strong>{{ c.nom }}</strong>
+              <small class="text-muted">— {{ c.get_niveau_display }} · {{ c.annee_scolaire }}</small>
+            </div>
+            <div class="btn-group">
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'notes:matieres_classe' c.id %}"><i class="fas fa-book me-1"></i>Matières</a>
+              {% if user.is_superuser or user.is_staff %}
+                <a class="btn btn-sm btn-outline-danger" href="{% url 'notes:supprimer_classe' c.id %}"><i class="fas fa-trash"></i></a>
+              {% endif %}
+            </div>
+          </li>
+        {% empty %}
+          <li class="list-group-item text-muted">Aucune classe au Collège.</li>
+        {% endfor %}
+      </ul>
     </div>
   </div>
 
   <div class="col-md-4">
     <div class="card h-100">
-      <div class="card-body">
-        <h5 class="card-title"><i class="fas fa-university me-2 text-warning"></i>Lycée</h5>
-        <p class="card-text">Saisir et gérer les notes du Lycée.</p>
-        <a href="#" class="btn btn-warning disabled" title="À venir"><i class="fas fa-arrow-right me-1"></i>Ouvrir</a>
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-university me-2 text-warning"></i>Lycée</span>
+        {% if user.is_superuser or user.is_staff %}
+          <a href="{% url 'notes:creer_classe' 'LYCEE_11' %}" class="btn btn-sm btn-outline-warning"><i class="fas fa-plus"></i> Classe</a>
+        {% endif %}
       </div>
+      <ul class="list-group list-group-flush">
+        {% for c in classes_lycee %}
+          <li class="list-group-item d-flex justify-content-between align-items-center">
+            <div>
+              <strong>{{ c.nom }}</strong>
+              <small class="text-muted">— {{ c.get_niveau_display }} · {{ c.annee_scolaire }}</small>
+            </div>
+            <div class="btn-group">
+              <a class="btn btn-sm btn-outline-secondary" href="{% url 'notes:matieres_classe' c.id %}"><i class="fas fa-book me-1"></i>Matières</a>
+              {% if user.is_superuser or user.is_staff %}
+                <a class="btn btn-sm btn-outline-danger" href="{% url 'notes:supprimer_classe' c.id %}"><i class="fas fa-trash"></i></a>
+              {% endif %}
+            </div>
+          </li>
+        {% empty %}
+          <li class="list-group-item text-muted">Aucune classe au Lycée.</li>
+        {% endfor %}
+      </ul>
     </div>
   </div>
 </div>

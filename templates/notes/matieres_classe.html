@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Matières — {{ classe.nom }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'notes:tableau_bord' %}">Notes</a></li>
+<li class="breadcrumb-item active">Matières — {{ classe.nom }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <h5 class="mb-0"><i class="fas fa-book me-2"></i>Matières de {{ classe.nom }} <small class="text-muted">({{ classe.get_niveau_display }} — {{ classe.annee_scolaire }})</small></h5>
+  {% if user.is_superuser or user.is_staff %}
+    <a href="{% url 'notes:creer_matiere' classe.id %}" class="btn btn-primary"><i class="fas fa-plus me-1"></i>Nouvelle matière</a>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Nom</th>
+          <th>Coefficient</th>
+          <th>Statut</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for m in matieres %}
+          <tr>
+            <td>{{ m.nom }}</td>
+            <td>{{ m.coefficient }}</td>
+            <td>
+              {% if m.actif %}
+                <span class="badge bg-success">Active</span>
+              {% else %}
+                <span class="badge bg-secondary">Inactive</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              {% if user.is_superuser or user.is_staff %}
+                <a href="{% url 'notes:supprimer_matiere' m.id %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></a>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="4" class="text-muted">Aucune matière définie pour cette classe.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="mt-3">
+  <a href="{% url 'notes:tableau_bord' %}" class="btn btn-outline-secondary"><i class="fas fa-arrow-left me-1"></i>Retour</a>
+</div>
+{% endblock %}
