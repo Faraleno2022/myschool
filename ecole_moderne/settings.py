@@ -115,7 +115,8 @@ INSTALLED_APPS = [
     'utilisateurs',
     'rapports',
     'administration',
-    'bus'
+    'bus',
+    'notes'
 ]
 
 

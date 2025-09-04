@@ -32,6 +32,7 @@ urlpatterns = [
     path('utilisateurs/', include('utilisateurs.urls')),
     path('rapports/', include('rapports.urls')),
     path('bus/', include('bus.urls')),
+    path('notes/', include('notes.urls')),
 ]
 
 # Servir les fichiers STATIC et MEDIA en développement

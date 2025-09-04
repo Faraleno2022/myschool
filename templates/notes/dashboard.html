@@ -1,0 +1,53 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Gestion des notes - Tableau de bord{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item active" aria-current="page">Notes</li>
+{% endblock %}
+
+{% block page_actions %}
+<a href="#" class="btn btn-outline-secondary disabled" title="Bientôt"><i class="fas fa-cog me-1"></i>Paramètres</a>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+  <div class="col-12">
+    <div class="alert alert-info">
+      <i class="fas fa-info-circle me-2"></i>
+      Tableau de bord de gestion des notes de l'établissement. Choisissez un niveau ci-dessous.
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-child me-2 text-primary"></i>Primaire</h5>
+        <p class="card-text">Saisir et gérer les notes du Primaire.</p>
+        <a href="#" class="btn btn-primary disabled" title="À venir"><i class="fas fa-arrow-right me-1"></i>Ouvrir</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-user-graduate me-2 text-success"></i>Collège</h5>
+        <p class="card-text">Saisir et gérer les notes du Collège.</p>
+        <a href="#" class="btn btn-success disabled" title="À venir"><i class="fas fa-arrow-right me-1"></i>Ouvrir</a>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card h-100">
+      <div class="card-body">
+        <h5 class="card-title"><i class="fas fa-university me-2 text-warning"></i>Lycée</h5>
+        <p class="card-text">Saisir et gérer les notes du Lycée.</p>
+        <a href="#" class="btn btn-warning disabled" title="À venir"><i class="fas fa-arrow-right me-1"></i>Ouvrir</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
