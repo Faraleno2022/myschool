@@ -281,6 +281,11 @@ def generer_recu_abonnement_pdf(request, abo_id):
     line('Montant', f"{int(abo.montant):,}".replace(',', ' ') + ' GNF')
     line('Début', abo.date_debut.strftime('%d/%m/%Y') if abo.date_debut else '')
     line('Expiration', abo.date_expiration.strftime('%d/%m/%Y') if abo.date_expiration else '')
+    
+    # Calcul et affichage de la durée en jours
+    if abo.date_debut and abo.date_expiration:
+        duree_jours = (abo.date_expiration - abo.date_debut).days
+        line('Durée', f"{duree_jours} jours")
     line('Zone', abo.zone)
     line("Point d'arrêt", abo.point_arret)
     line('Contact parent', abo.contact_parent)

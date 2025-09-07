@@ -5,13 +5,14 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 from eleves.models import Classe
 from utilisateurs.utils import filter_by_user_school, user_school
-from ecole_moderne.security_decorators import admin_required
+from ecole_moderne.security_decorators import admin_required, require_school_object
 from .forms import ClasseNotesForm, MatiereClasseForm, EvaluationForm, NotesBulkForm
 from .models import MatiereClasse, Evaluation, Note
 from eleves.models import Eleve
 from decimal import Decimal
 from django.http import HttpResponse
 import os
+from datetime import datetime
 
 
 # Groupes de niveaux pour l'affichage
@@ -417,7 +418,8 @@ def evaluation_detail(request, evaluation_id):
     })
 
 
-@admin_required
+@login_required
+@require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_pdf(request, classe_id: int, eleve_id: int, trimestre: str = "T1"):
     """Génère un bulletin de notes PDF pour un élève donné et un trimestre (T1/T2/T3).
     Calcule la moyenne par matière (pondérée par coefficient d'évaluation) et la moyenne générale (pondérée par coefficient de matière).
@@ -929,7 +931,8 @@ def _collect_evals_all_trimestres(classe, matieres):
     return evals_by_matiere
 
 
-@admin_required
+@login_required
+@require_school_object(model=Eleve, pk_kwarg='eleve_id', field_path='classe__ecole')
 def bulletin_annuel_pdf(request, classe_id: int, eleve_id: int):
     """Bulletin annuel PDF (T1+T2+T3 cumulés) avec moyennes par matière, moyenne générale, rang, mention, signatures."""
     classe = get_object_or_404(filter_by_user_school(Classe.objects.select_related('ecole'), request.user, 'ecole'), pk=classe_id)
@@ -1536,4 +1539,564 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     response['Content-Disposition'] = f'attachment; filename="classement_{classe.nom}_{trimestre}.xlsx"'
     
     wb.save(response)
+    return response
+
+
+@login_required
+@require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
+def cartes_scolaires_classe(request, classe_id):
+    """Interface pour générer les cartes scolaires d'une classe"""
+    classe = get_object_or_404(Classe, id=classe_id)
+    
+    # Filtrage par école pour non-admin
+    if not request.user.is_superuser:
+        ecole_user = user_school(request.user)
+        if ecole_user and classe.ecole != ecole_user:
+            messages.error(request, "Accès non autorisé à cette classe.")
+            return redirect('notes:tableau_bord')
+    
+    # Récupérer tous les élèves de la classe
+    eleves = classe.eleves.filter(statut='ACTIF').order_by('nom', 'prenom')
+    
+    context = {
+        'classe': classe,
+        'eleves': eleves,
+        'nb_eleves': eleves.count(),
+    }
+    
+    return render(request, 'notes/cartes_scolaires.html', context)
+
+
+@login_required
+@require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
+def cartes_scolaires_pdf(request, classe_id):
+    """Génère les cartes scolaires PDF pour une classe"""
+    classe = get_object_or_404(Classe, id=classe_id)
+    
+    # Filtrage par école pour non-admin
+    if not request.user.is_superuser:
+        ecole_user = user_school(request.user)
+        if ecole_user and classe.ecole != ecole_user:
+            messages.error(request, "Accès non autorisé à cette classe.")
+            return redirect('notes:tableau_bord')
+    
+    try:
+        from reportlab.pdfgen import canvas
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib import colors
+        from reportlab.lib.units import cm
+        import io
+    except ImportError:
+        messages.error(request, "ReportLab requis pour générer le PDF")
+        return redirect('notes:cartes_scolaires_classe', classe_id=classe_id)
+    
+    # Récupérer les élèves
+    eleves = classe.eleves.filter(statut='ACTIF').order_by('nom', 'prenom')
+    
+    if not eleves.exists():
+        messages.warning(request, "Aucun élève actif dans cette classe.")
+        return redirect('notes:cartes_scolaires_classe', classe_id=classe_id)
+    
+    # Créer le PDF
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    # Filigrane standardisé (logo centré, rotation légère, opacité 4%)
+    try:
+        from ecole_moderne.pdf_utils import draw_logo_watermark
+        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
+    except Exception:
+        pass
+    
+    # Configuration des cartes (10 cartes par page - 2x5)
+    card_width = 8.5 * cm
+    card_height = 5.4 * cm  # Format carte de crédit
+    margin = 0.3 * cm
+    spacing_x = 0.2 * cm  # Espacement horizontal réduit
+    spacing_y = 0.15 * cm  # Espacement vertical réduit
+    
+    # Position des cartes sur la page (2 colonnes x 5 lignes)
+    positions = [
+        # Colonne gauche
+        (margin, height - margin - card_height),  # Ligne 1
+        (margin, height - margin - 2 * card_height - spacing_y),  # Ligne 2
+        (margin, height - margin - 3 * card_height - 2 * spacing_y),  # Ligne 3
+        (margin, height - margin - 4 * card_height - 3 * spacing_y),  # Ligne 4
+        (margin, height - margin - 5 * card_height - 4 * spacing_y),  # Ligne 5
+        # Colonne droite
+        (margin + card_width + spacing_x, height - margin - card_height),  # Ligne 1
+        (margin + card_width + spacing_x, height - margin - 2 * card_height - spacing_y),  # Ligne 2
+        (margin + card_width + spacing_x, height - margin - 3 * card_height - 2 * spacing_y),  # Ligne 3
+        (margin + card_width + spacing_x, height - margin - 4 * card_height - 3 * spacing_y),  # Ligne 4
+        (margin + card_width + spacing_x, height - margin - 5 * card_height - 4 * spacing_y),  # Ligne 5
+    ]
+    
+    card_count = 0
+    
+    for eleve in eleves:
+        # Nouvelle page si nécessaire
+        if card_count > 0 and card_count % 10 == 0:
+            c.showPage()
+            # Filigrane standardisé sur nouvelle page
+            try:
+                from ecole_moderne.pdf_utils import draw_logo_watermark
+                draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
+            except Exception:
+                pass
+        
+        # Position de la carte actuelle
+        pos_x, pos_y = positions[card_count % 10]
+        
+        # Dessiner l'arrière-plan blanc de la carte d'abord
+        c.setFillColor(colors.white)
+        c.rect(pos_x, pos_y, card_width, card_height, fill=1, stroke=0)
+        
+        # Ajouter un filigrane sur chaque carte individuelle
+        c.saveState()
+        try:
+            from django.contrib.staticfiles import finders
+            import os
+            from django.conf import settings
+            
+            # Chercher le logo pour le filigrane
+            logo_path = finders.find('logos/logo.png')
+            if not logo_path:
+                logo_path = os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
+            
+            if logo_path and os.path.exists(logo_path):
+                # Calculer la position centrale de la carte
+                center_x = pos_x + card_width / 2
+                center_y = pos_y + card_height / 2
+                
+                # Appliquer la transformation (rotation et opacité)
+                c.translate(center_x, center_y)
+                c.rotate(30)  # Rotation de 30 degrés
+                
+                # Taille du filigrane (plus petit pour s'adapter à la carte)
+                watermark_size = min(card_width, card_height) * 0.6
+                
+                # Dessiner le logo en filigrane avec opacité réduite
+                c.setFillAlpha(0.08)  # Opacité très faible
+                c.drawImage(logo_path, -watermark_size/2, -watermark_size/2, 
+                          watermark_size, watermark_size, preserveAspectRatio=True)
+        except Exception:
+            pass
+        c.restoreState()
+        
+        # Dessiner le cadre de la carte
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(2)
+        c.rect(pos_x, pos_y, card_width, card_height, fill=0, stroke=1)
+        
+        # Logo de l'école (en haut à droite)
+        logo_size = 1.2 * cm
+        logo_x = pos_x + card_width - logo_size - 0.2 * cm
+        logo_y = pos_y + card_height - logo_size - 0.1 * cm
+        
+        try:
+            import os
+            from django.conf import settings
+            from django.contrib.staticfiles import finders
+            
+            # Le logo sera dessiné directement sur le fond blanc de la carte
+            # Pas besoin d'arrière-plan supplémentaire
+            
+            # Chercher le logo dans static/logos/
+            logo_path = finders.find('logos/logo.png')
+            
+            if logo_path and os.path.exists(logo_path):
+                # Dessiner le logo depuis static/logos/
+                c.drawImage(logo_path, logo_x, logo_y, logo_size, logo_size, preserveAspectRatio=True)
+            else:
+                # Logo static introuvable - essayer le chemin direct
+                static_logo_path = os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
+                if os.path.exists(static_logo_path):
+                    c.drawImage(static_logo_path, logo_x, logo_y, logo_size, logo_size, preserveAspectRatio=True)
+                else:
+                    # Aucun logo trouvé
+                    c.setFont('Helvetica', 6)
+                    c.setFillColor(colors.grey)
+                    c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2, "LOGO")
+        except Exception as e:
+            # En cas d'erreur, afficher simplement le texte d'erreur
+            c.setFont('Helvetica', 6)
+            c.setFillColor(colors.red)
+            c.drawCentredString(logo_x + logo_size/2, logo_y + logo_size/2, "ERREUR")
+        
+        # En-tête école (ajusté pour laisser place au logo)
+        c.setFillColor(colors.darkblue)
+        ecole_nom = classe.ecole.nom.upper() if classe.ecole else "ÉCOLE"
+        
+        # Ajuster la taille de police selon la longueur du nom
+        if len(ecole_nom) > 40:
+            c.setFont('Helvetica-Bold', 6)
+        elif len(ecole_nom) > 30:
+            c.setFont('Helvetica-Bold', 7)
+        else:
+            c.setFont('Helvetica-Bold', 8)
+        
+        # Centrer le nom en tenant compte du logo
+        text_width = card_width - logo_size - 0.4 * cm
+        c.drawCentredString(pos_x + text_width/2, pos_y + card_height - 0.8*cm, ecole_nom)
+        
+        # Titre "CARTE SCOLAIRE"
+        c.setFont('Helvetica-Bold', 8)
+        c.setFillColor(colors.red)
+        c.drawCentredString(pos_x + card_width/2, pos_y + card_height - 1.3*cm, "CARTE SCOLAIRE")
+        
+        # Année scolaire
+        annee_actuelle = datetime.now().year
+        annee_scolaire = f"{annee_actuelle}-{annee_actuelle + 1}"
+        c.setFont('Helvetica', 7)
+        c.setFillColor(colors.black)
+        c.drawCentredString(pos_x + card_width/2, pos_y + card_height - 1.7*cm, f"Année: {annee_scolaire}")
+        
+        # Photo de l'élève (côté gauche)
+        photo_size = 2.2 * cm
+        photo_x = pos_x + 0.3 * cm
+        photo_y = pos_y + 0.5 * cm
+        
+        # Dessiner le cadre de la photo
+        c.setStrokeColor(colors.grey)
+        c.setLineWidth(1)
+        c.rect(photo_x, photo_y, photo_size, photo_size)
+        
+        # Afficher la photo de l'élève si elle existe
+        if eleve.photo and hasattr(eleve.photo, 'path'):
+            try:
+                import os
+                from reportlab.lib.utils import ImageReader
+                from PIL import Image
+                
+                # Vérifier que le fichier photo existe
+                if os.path.exists(eleve.photo.path):
+                    # Ouvrir et redimensionner l'image
+                    with Image.open(eleve.photo.path) as img:
+                        # Convertir en RGB si nécessaire
+                        if img.mode != 'RGB':
+                            img = img.convert('RGB')
+                        
+                        # Calculer les dimensions pour maintenir le ratio
+                        img_width, img_height = img.size
+                        ratio = min(photo_size / (img_width * 72/96), photo_size / (img_height * 72/96))
+                        
+                        new_width = img_width * ratio * 72/96
+                        new_height = img_height * ratio * 72/96
+                        
+                        # Centrer l'image dans le cadre
+                        img_x = photo_x + (photo_size - new_width) / 2
+                        img_y = photo_y + (photo_size - new_height) / 2
+                        
+                        # Dessiner l'image
+                        c.drawImage(ImageReader(img), img_x, img_y, new_width, new_height)
+                else:
+                    # Fichier photo introuvable
+                    c.setFont('Helvetica', 7)
+                    c.setFillColor(colors.red)
+                    c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 0.1*cm, "PHOTO")
+                    c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 0.3*cm, "MANQUANTE")
+            except Exception as e:
+                # Erreur lors du traitement de l'image
+                c.setFont('Helvetica', 7)
+                c.setFillColor(colors.red)
+                c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 0.1*cm, "ERREUR")
+                c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 0.3*cm, "PHOTO")
+        else:
+            # Pas de photo définie
+            c.setFont('Helvetica', 8)
+            c.setFillColor(colors.grey)
+            c.drawCentredString(photo_x + photo_size/2, photo_y + photo_size/2 - 0.2*cm, "PHOTO")
+        
+        # Informations élève (côté droit)
+        info_x = pos_x + 3.2 * cm
+        info_y = pos_y + card_height - 2.2 * cm
+        
+        c.setFillColor(colors.black)
+        
+        # Nom et prénom
+        c.setFont('Helvetica-Bold', 9)
+        nom_complet = f"{eleve.nom} {eleve.prenom}".upper()
+        if len(nom_complet) > 25:
+            nom_complet = nom_complet[:25] + "..."
+        c.drawString(info_x, info_y, nom_complet)
+        info_y -= 0.4 * cm
+        
+        # Matricule
+        c.setFont('Helvetica', 7)
+        c.drawString(info_x, info_y, f"Matricule: {eleve.matricule}")
+        info_y -= 0.3 * cm
+        
+        # Classe
+        c.drawString(info_x, info_y, f"Classe: {classe.nom}")
+        info_y -= 0.3 * cm
+        
+        # Date de naissance
+        if eleve.date_naissance:
+            date_naiss = eleve.date_naissance.strftime('%d/%m/%Y')
+            c.drawString(info_x, info_y, f"Né(e) le: {date_naiss}")
+            info_y -= 0.3 * cm
+        
+        # Contact responsable
+        if hasattr(eleve, 'responsable_principal') and eleve.responsable_principal:
+            resp = eleve.responsable_principal
+            if resp.telephone:
+                c.drawString(info_x, info_y, f"Contact: {resp.telephone}")
+        
+        # Pied de carte
+        c.setFont('Helvetica', 6)
+        c.setFillColor(colors.grey)
+        c.drawString(pos_x + 0.2*cm, pos_y + 0.2*cm, "Cette carte est strictement personnelle")
+        
+        card_count += 1
+    
+    c.save()
+    
+    # Préparer la réponse
+    pdf = buffer.getvalue()
+    buffer.close()
+    
+    response = HttpResponse(content_type='application/pdf')
+    filename = f"cartes_scolaires_{classe.nom.replace(' ', '_')}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    response.write(pdf)
+    
+    return response
+
+
+@login_required
+@require_school_object(model=Eleve, pk_kwarg='matricule', field_path='classe__ecole')
+def carte_eleve_pdf(request, matricule):
+    """Génère la carte scolaire d'un élève spécifique par son matricule"""
+    from django.contrib import messages
+    from eleves.models import Eleve
+    
+    # Récupérer l'élève par matricule
+    try:
+        eleve = Eleve.objects.get(matricule=matricule, statut='actif')
+        
+        # Vérifier les permissions (sauf pour superuser)
+        if not request.user.is_superuser:
+            if hasattr(request.user, 'profil') and request.user.profil.ecole:
+                if eleve.classe.ecole != request.user.profil.ecole:
+                    messages.error(request, "Vous n'avez pas accès à cet élève.")
+                    return redirect('notes:tableau_bord')
+            else:
+                messages.error(request, "Accès non autorisé.")
+                return redirect('notes:tableau_bord')
+                
+    except Eleve.DoesNotExist:
+        messages.error(request, f"Aucun élève actif trouvé avec le matricule: {matricule}")
+        return redirect('notes:tableau_bord')
+    
+    # Créer le PDF avec une seule carte
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    # Filigrane standardisé (logo centré, rotation légère, opacité 4%)
+    try:
+        from ecole_moderne.pdf_utils import draw_logo_watermark
+        draw_logo_watermark(c, width, height, opacity=0.04, rotate=30, scale=1.5)
+    except Exception:
+        pass
+    
+    # Configuration de la carte (centrée sur la page)
+    card_width = 8.5 * cm
+    card_height = 5.4 * cm  # Format carte de crédit
+    
+    # Position centrée sur la page
+    pos_x = (width - card_width) / 2
+    pos_y = (height - card_height) / 2
+    
+    # Dessiner l'arrière-plan blanc de la carte d'abord
+    c.setFillColor(colors.white)
+    c.rect(pos_x, pos_y, card_width, card_height, fill=1, stroke=0)
+    
+    # Ajouter un filigrane sur la carte individuelle
+    c.saveState()
+    try:
+        from django.contrib.staticfiles import finders
+        import os
+        from django.conf import settings
+        
+        # Chercher le logo pour le filigrane
+        logo_path = finders.find('logos/logo.png')
+        if not logo_path:
+            logo_path = os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
+        
+        if logo_path and os.path.exists(logo_path):
+            # Calculer la position centrale de la carte
+            center_x = pos_x + card_width / 2
+            center_y = pos_y + card_height / 2
+            
+            # Appliquer la transformation (rotation et opacité)
+            c.translate(center_x, center_y)
+            c.rotate(30)  # Rotation de 30 degrés
+            
+            # Taille du filigrane (plus petit pour s'adapter à la carte)
+            watermark_size = min(card_width, card_height) * 0.6
+            
+            # Dessiner le logo en filigrane avec opacité réduite
+            c.setFillAlpha(0.08)  # Opacité très faible
+            c.drawImage(logo_path, -watermark_size/2, -watermark_size/2, 
+                      watermark_size, watermark_size, preserveAspectRatio=True)
+    except Exception:
+        pass
+    c.restoreState()
+    
+    # Dessiner le cadre de la carte
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(2)
+    c.rect(pos_x, pos_y, card_width, card_height, fill=0, stroke=1)
+    
+    # Logo de l'école (en haut à droite)
+    logo_size = 1.2 * cm
+    logo_x = pos_x + card_width - logo_size - 0.2 * cm
+    logo_y = pos_y + card_height - logo_size - 0.1 * cm
+    
+    # Ajouter un rectangle blanc derrière le logo pour contraste
+    c.setFillColor(colors.white)
+    c.rect(logo_x - 0.05 * cm, logo_y - 0.05 * cm, 
+           logo_size + 0.1 * cm, logo_size + 0.1 * cm, fill=1, stroke=0)
+    
+    try:
+        from django.contrib.staticfiles import finders
+        import os
+        from django.conf import settings
+        
+        # Chercher le logo
+        logo_path = finders.find('logos/logo.png')
+        if not logo_path:
+            logo_path = os.path.join(settings.BASE_DIR, 'static', 'logos', 'logo.png')
+        
+        if logo_path and os.path.exists(logo_path):
+            c.drawImage(logo_path, logo_x, logo_y, logo_size, logo_size, preserveAspectRatio=True)
+        else:
+            # Fallback: texte si pas de logo
+            c.setFont("Helvetica-Bold", 8)
+            c.setFillColor(colors.black)
+            c.drawString(logo_x, logo_y + logo_size/2, "LOGO")
+    except Exception:
+        # Fallback: texte si erreur
+        c.setFont("Helvetica-Bold", 8)
+        c.setFillColor(colors.black)
+        c.drawString(logo_x, logo_y + logo_size/2, "LOGO")
+    
+    # Nom de l'école (en haut à gauche)
+    c.setFont("Helvetica-Bold", 10)
+    c.setFillColor(colors.black)
+    school_name = eleve.classe.ecole.nom if eleve.classe.ecole else "École"
+    c.drawString(pos_x + 0.2 * cm, pos_y + card_height - 0.4 * cm, school_name[:25])
+    
+    # Année scolaire (sous le nom de l'école)
+    c.setFont("Helvetica", 8)
+    current_year = timezone.now().year
+    next_year = current_year + 1
+    annee_scolaire = f"Année {current_year}-{next_year}"
+    c.drawString(pos_x + 0.2 * cm, pos_y + card_height - 0.7 * cm, annee_scolaire)
+    
+    # Photo de l'élève (à gauche)
+    photo_size = 1.8 * cm
+    photo_x = pos_x + 0.2 * cm
+    photo_y = pos_y + 0.3 * cm
+    
+    # Cadre pour la photo
+    c.setStrokeColor(colors.gray)
+    c.setLineWidth(1)
+    c.rect(photo_x, photo_y, photo_size, photo_size, fill=0, stroke=1)
+    
+    # Afficher la photo ou placeholder
+    try:
+        if eleve.photo and hasattr(eleve.photo, 'path') and os.path.exists(eleve.photo.path):
+            from PIL import Image
+            
+            # Ouvrir et redimensionner l'image
+            img = Image.open(eleve.photo.path)
+            
+            # Convertir en RGB si nécessaire
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            
+            # Redimensionner en gardant les proportions
+            img.thumbnail((int(photo_size * 2.83), int(photo_size * 2.83)), Image.Resampling.LANCZOS)
+            
+            # Calculer la position pour centrer l'image
+            img_width, img_height = img.size
+            img_width_cm = img_width / 2.83  # Conversion pixels vers cm
+            img_height_cm = img_height / 2.83
+            
+            center_x = photo_x + (photo_size - img_width_cm) / 2
+            center_y = photo_y + (photo_size - img_height_cm) / 2
+            
+            # Sauvegarder temporairement l'image
+            temp_path = f"/tmp/temp_photo_{eleve.id}.jpg"
+            img.save(temp_path, "JPEG", quality=85)
+            
+            # Dessiner l'image redimensionnée et centrée
+            c.drawImage(temp_path, center_x, center_y, img_width_cm, img_height_cm)
+            
+            # Nettoyer le fichier temporaire
+            try:
+                os.remove(temp_path)
+            except:
+                pass
+                
+        else:
+            # Placeholder si pas de photo
+            c.setFont("Helvetica", 8)
+            c.setFillColor(colors.gray)
+            c.drawCentredText(photo_x + photo_size/2, photo_y + photo_size/2, "PHOTO")
+            
+    except Exception as e:
+        # Placeholder en cas d'erreur
+        c.setFont("Helvetica", 8)
+        c.setFillColor(colors.gray)
+        c.drawCentredText(photo_x + photo_size/2, photo_y + photo_size/2, "PHOTO")
+    
+    # Informations de l'élève (à droite de la photo)
+    info_x = photo_x + photo_size + 0.3 * cm
+    info_y_start = pos_y + card_height - 1.2 * cm
+    line_height = 0.35 * cm
+    
+    c.setFont("Helvetica-Bold", 10)
+    c.setFillColor(colors.black)
+    
+    # Nom complet (en majuscules)
+    nom_complet = f"{eleve.prenom} {eleve.nom}".upper()
+    c.drawString(info_x, info_y_start, nom_complet[:20])
+    
+    # Matricule
+    c.setFont("Helvetica", 9)
+    c.drawString(info_x, info_y_start - line_height, f"Mat: {eleve.matricule}")
+    
+    # Classe
+    c.drawString(info_x, info_y_start - 2 * line_height, f"Classe: {eleve.classe.nom}")
+    
+    # Date de naissance
+    if eleve.date_naissance:
+        date_naiss = eleve.date_naissance.strftime("%d/%m/%Y")
+        c.drawString(info_x, info_y_start - 3 * line_height, f"Né(e): {date_naiss}")
+    
+    # Téléphone responsable
+    if eleve.telephone_responsable:
+        tel = eleve.telephone_responsable[:12]  # Limiter la longueur
+        c.drawString(info_x, info_y_start - 4 * line_height, f"Tél: {tel}")
+    
+    # Note légale (en bas)
+    c.setFont("Helvetica", 7)
+    c.setFillColor(colors.gray)
+    c.drawCentredText(pos_x + card_width/2, pos_y + 0.1 * cm, 
+                     "Cette carte est strictement personnelle")
+    
+    # Finaliser le PDF
+    c.showPage()
+    c.save()
+    
+    # Préparer la réponse
+    buffer.seek(0)
+    response = HttpResponse(buffer.getvalue(), content_type='application/pdf')
+    filename = f"carte_scolaire_{eleve.matricule}.pdf"
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    
     return response

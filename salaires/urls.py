@@ -24,6 +24,7 @@ urlpatterns = [
     path('etats/', views.etats_salaire, name='etats_salaire'),
     path('etats/export/csv/', views.export_etats_salaire_csv, name='export_etats_salaire_csv'),
     path('etats/export/pdf/', views.export_etats_salaire_pdf, name='export_etats_salaire_pdf'),
+    path('etats/<int:etat_id>/fiche-paie/', views.fiche_paie_pdf, name='fiche_paie_pdf'),
     path('calculer/<int:periode_id>/', views.calculer_salaires, name='calculer_salaires'),
     path('valider/<int:etat_id>/', views.valider_etat_salaire, name='valider_etat_salaire'),
     path('marquer-paye/<int:etat_id>/', views.marquer_paye, name='marquer_paye'),

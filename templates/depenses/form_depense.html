@@ -72,215 +72,45 @@
                 <form method="post" id="depenseForm">
                     {% csrf_token %}
                     
-                    <!-- Informations générales -->
+                    <!-- Formulaire simplifié -->
                     <div class="form-section">
                         <h5 class="section-title">
-                            <i class="fas fa-info-circle"></i> Informations Générales
+                            <i class="fas fa-receipt"></i> Enregistrer une dépense
                         </h5>
                         
                         <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="{{ form.numero_facture.id_for_label }}" class="form-label">
-                                        Numéro de facture <span class="required-field">*</span>
-                                    </label>
-                                    <input type="text" name="numero_facture" class="form-control" id="{{ form.numero_facture.id_for_label }}" value="{{ form.numero_facture.value|default:'' }}" placeholder="Ex: FAC-2025-001" required>
-                                    {% if form.numero_facture.errors %}
-                                        <div class="text-danger mt-1">{{ form.numero_facture.errors.0 }}</div>
-                                    {% endif %}
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="{{ form.statut.id_for_label }}" class="form-label">
-                                        Statut <span class="required-field">*</span>
-                                    </label>
-                                    <select name="statut" class="form-control" id="{{ form.statut.id_for_label }}" required>
-                                        {% for value, label in form.statut.field.choices %}
-                                            <option value="{{ value }}" {% if form.statut.value == value %}selected{% endif %}>{{ label }}</option>
-                                        {% endfor %}
-                                    </select>
-                                    {% if form.statut.errors %}
-                                        <div class="text-danger mt-1">{{ form.statut.errors.0 }}</div>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="{{ form.categorie.id_for_label }}" class="form-label">
-                                        Catégorie <span class="required-field">*</span>
-                                    </label>
-                                    <select name="categorie" class="form-control" id="{{ form.categorie.id_for_label }}" required>
-                                        <option value="">-- Sélectionner une catégorie --</option>
-                                        {% for categorie in form.categorie.field.queryset %}
-                                            <option value="{{ categorie.id }}" {% if form.categorie.value == categorie.id %}selected{% endif %}>{{ categorie.code }} - {{ categorie.nom }}</option>
-                                        {% endfor %}
-                                    </select>
-                                    {% if form.categorie.errors %}
-                                        <div class="text-danger mt-1">{{ form.categorie.errors.0 }}</div>
-                                    {% endif %}
-                                    <div class="form-help">
-                                        <a href="{% url 'depenses:gestion_categories' %}" target="_blank">Gérer les catégories</a>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="{{ form.fournisseur.id_for_label }}" class="form-label">
-                                        Fournisseur <span class="required-field">*</span>
-                                    </label>
-                                    <select name="fournisseur" class="form-control" id="{{ form.fournisseur.id_for_label }}" required>
-                                        <option value="">-- Sélectionner un fournisseur --</option>
-                                        {% for fournisseur in form.fournisseur.field.queryset %}
-                                            <option value="{{ fournisseur.id }}" {% if form.fournisseur.value == fournisseur.id %}selected{% endif %}>{{ fournisseur.nom }}</option>
-                                        {% endfor %}
-                                    </select>
-                                    {% if form.fournisseur.errors %}
-                                        <div class="text-danger mt-1">{{ form.fournisseur.errors.0 }}</div>
-                                    {% endif %}
-                                    <div class="form-help">
-                                        <a href="{% url 'depenses:gestion_fournisseurs' %}" target="_blank">Gérer les fournisseurs</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="{{ form.libelle.id_for_label }}" class="form-label">
-                                Libellé <span class="required-field">*</span>
-                            </label>
-                            <input type="text" name="libelle" class="form-control" id="{{ form.libelle.id_for_label }}" value="{{ form.libelle.value|default:'' }}" placeholder="Libellé de la dépense" required>
-                            {% if form.libelle.errors %}
-                                <div class="text-danger mt-1">{{ form.libelle.errors.0 }}</div>
-                            {% endif %}
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="{{ form.description.id_for_label }}" class="form-label">
-                                Description
-                            </label>
-                            <textarea name="description" class="form-control" id="{{ form.description.id_for_label }}">{{ form.description.value|default:'' }}</textarea>
-                            {% if form.description.errors %}
-                                <div class="text-danger mt-1">{{ form.description.errors.0 }}</div>
-                            {% endif %}
-                        </div>
-
-                        <div class="mb-3">
-                            <label for="{{ form.type_depense.id_for_label }}" class="form-label">
-                                Type de dépense <span class="required-field">*</span>
-                            </label>
-                            <select name="type_depense" class="form-control" id="{{ form.type_depense.id_for_label }}" required>
-                                {% for value, label in form.type_depense.field.choices %}
-                                    <option value="{{ value }}" {% if form.type_depense.value == value %}selected{% endif %}>{{ label }}</option>
-                                {% endfor %}
-                            </select>
-                            {% if form.type_depense.errors %}
-                                <div class="text-danger mt-1">{{ form.type_depense.errors.0 }}</div>
-                            {% endif %}
-                        </div>
-                    </div>
-
-                    <!-- Informations financières -->
-                    <div class="form-section">
-                        <h5 class="section-title">
-                            <i class="fas fa-calculator"></i> Informations Financières
-                        </h5>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="{{ form.montant_ht.id_for_label }}" class="form-label">
-                                        Montant HT (GNF) <span class="required-field">*</span>
-                                    </label>
-                                    <input type="number" name="montant_ht" class="form-control" id="{{ form.montant_ht.id_for_label }}" value="{{ form.montant_ht.value|default:'' }}" placeholder="0" step="0.01" min="0" required>
-                                    {% if form.montant_ht.errors %}
-                                        <div class="text-danger mt-1">{{ form.montant_ht.errors.0 }}</div>
-                                    {% endif %}
-                                </div>
-                            </div>
-                            <div class="col-md-6">
-                                <div class="mb-3">
-                                    <label for="{{ form.taux_tva.id_for_label }}" class="form-label">
-                                        Taux TVA (%)
-                                    </label>
-                                    <input type="number" name="taux_tva" class="form-control" id="{{ form.taux_tva.id_for_label }}" value="{{ form.taux_tva.value|default:'18' }}" placeholder="18" step="0.01" min="0" max="100">
-                                    {% if form.taux_tva.errors %}
-                                        <div class="text-danger mt-1">{{ form.taux_tva.errors.0 }}</div>
-                                    {% endif %}
-                                    <div class="form-help">Laisser 0 si pas de TVA</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Calcul automatique des montants -->
-                        <div class="montant-display">
-                            <div class="row text-center">
-                                <div class="col-md-4">
-                                    <strong>Montant HT</strong><br>
-                                    <span id="display-ht">0</span> GNF
-                                </div>
-                                <div class="col-md-4">
-                                    <strong>Montant TVA</strong><br>
-                                    <span id="display-tva">0</span> GNF
-                                </div>
-                                <div class="col-md-4">
-                                    <strong>Montant TTC</strong><br>
-                                    <span id="display-ttc" class="text-primary fw-bold">0</span> GNF
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Dates -->
-                    <div class="form-section">
-                        <h5 class="section-title">
-                            <i class="fas fa-calendar"></i> Dates
-                        </h5>
-                        
-                        <div class="row">
-                            <div class="col-md-6">
+                            <div class="col-md-4">
                                 <div class="mb-3">
                                     <label for="{{ form.date_facture.id_for_label }}" class="form-label">
-                                        Date de facture <span class="required-field">*</span>
+                                        {{ form.date_facture.label }} <span class="required-field">*</span>
                                     </label>
-                                    <input type="date" name="date_facture" class="form-control" id="{{ form.date_facture.id_for_label }}" value="{{ form.date_facture.value|date:'Y-m-d'|default:'' }}" required>
+                                    {{ form.date_facture }}
                                     {% if form.date_facture.errors %}
                                         <div class="text-danger mt-1">{{ form.date_facture.errors.0 }}</div>
                                     {% endif %}
                                 </div>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-8">
                                 <div class="mb-3">
-                                    <label for="{{ form.date_echeance.id_for_label }}" class="form-label">
-                                        Date d'échéance <span class="required-field">*</span>
+                                    <label for="{{ form.montant_ht.id_for_label }}" class="form-label">
+                                        {{ form.montant_ht.label }} <span class="required-field">*</span>
                                     </label>
-                                    <input type="date" name="date_echeance" class="form-control" id="{{ form.date_echeance.id_for_label }}" value="{{ form.date_echeance.value|date:'Y-m-d'|default:'' }}" required>
-                                    {% if form.date_echeance.errors %}
-                                        <div class="text-danger mt-1">{{ form.date_echeance.errors.0 }}</div>
+                                    {{ form.montant_ht }}
+                                    {% if form.montant_ht.errors %}
+                                        <div class="text-danger mt-1">{{ form.montant_ht.errors.0 }}</div>
                                     {% endif %}
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <!-- Observations -->
-                    <div class="form-section">
-                        <h5 class="section-title">
-                            <i class="fas fa-comment"></i> Observations
-                        </h5>
-                        
                         <div class="mb-3">
-                            <label for="{{ form.observations.id_for_label }}" class="form-label">
-                                Observations
+                            <label for="{{ form.description.id_for_label }}" class="form-label">
+                                {{ form.description.label }} <span class="required-field">*</span>
                             </label>
-                            <textarea name="observations" class="form-control" id="{{ form.observations.id_for_label }}" rows="3" placeholder="Observations ou commentaires sur cette dépense...">{{ form.observations.value|default:'' }}</textarea>
-                            {% if form.observations.errors %}
-                                <div class="text-danger mt-1">{{ form.observations.errors.0 }}</div>
+                            {{ form.description }}
+                            {% if form.description.errors %}
+                                <div class="text-danger mt-1">{{ form.description.errors.0 }}</div>
                             {% endif %}
-                            <div class="form-help">Informations complémentaires (optionnel)</div>
                         </div>
                     </div>
 
@@ -312,29 +142,8 @@
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const montantHtField = document.getElementById('{{ form.montant_ht.id_for_label }}');
-        const tauxTvaField = document.getElementById('{{ form.taux_tva.id_for_label }}');
-        const displayHt = document.getElementById('display-ht');
-        const displayTva = document.getElementById('display-tva');
-        const displayTtc = document.getElementById('display-ttc');
-
-        function calculerMontants() {
-            const montantHt = parseFloat(montantHtField.value) || 0;
-            const tauxTva = parseFloat(tauxTvaField.value) || 0;
-            
-            const montantTva = Math.round(montantHt * tauxTva / 100);
-            const montantTtc = montantHt + montantTva;
-
-            displayHt.textContent = montantHt.toLocaleString('fr-FR');
-            displayTva.textContent = montantTva.toLocaleString('fr-FR');
-            displayTtc.textContent = montantTtc.toLocaleString('fr-FR');
-        }
-
-        // Calcul initial
-        calculerMontants();
-
-        // Recalcul en temps réel
-        montantHtField.addEventListener('input', calculerMontants);
-        tauxTvaField.addEventListener('input', calculerMontants);
+        const descriptionField = document.getElementById('{{ form.description.id_for_label }}');
+        const dateFactureField = document.getElementById('{{ form.date_facture.id_for_label }}');
 
         // Animation du formulaire
         const formSections = document.querySelectorAll('.form-section');
@@ -351,35 +160,53 @@
         // Validation côté client
         const form = document.getElementById('depenseForm');
         form.addEventListener('submit', function(e) {
-            const montantHt = parseFloat(montantHtField.value);
-            if (!montantHt || montantHt <= 0) {
+            const montant = parseFloat(montantHtField.value);
+            if (!montant || montant <= 0) {
                 e.preventDefault();
-                alert('Le montant HT doit être supérieur à 0.');
+                alert('Le montant doit être supérieur à 0.');
                 montantHtField.focus();
                 return;
             }
 
-            const dateFacture = new Date(document.getElementById('{{ form.date_facture.id_for_label }}').value);
-            const dateEcheance = new Date(document.getElementById('{{ form.date_echeance.id_for_label }}').value);
-            
-            if (dateEcheance < dateFacture) {
+            const description = descriptionField.value.trim();
+            if (!description) {
                 e.preventDefault();
-                alert('La date d\'échéance ne peut pas être antérieure à la date de facture.');
-                document.getElementById('{{ form.date_echeance.id_for_label }}').focus();
+                alert('La description est obligatoire.');
+                descriptionField.focus();
+                return;
+            }
+
+            const dateFacture = dateFactureField.value;
+            if (!dateFacture) {
+                e.preventDefault();
+                alert('La date est obligatoire.');
+                dateFactureField.focus();
                 return;
             }
         });
 
-        // Auto-complétion du numéro de facture
-        const numeroFactureField = document.getElementById('{{ form.numero_facture.id_for_label }}');
-        if (!numeroFactureField.value) {
+        // Définir la date d'aujourd'hui par défaut
+        if (!dateFactureField.value) {
             const today = new Date();
             const year = today.getFullYear();
             const month = String(today.getMonth() + 1).padStart(2, '0');
             const day = String(today.getDate()).padStart(2, '0');
-            const suggestion = `FAC-${year}${month}${day}-`;
-            numeroFactureField.placeholder = `Ex: ${suggestion}001`;
+            dateFactureField.value = `${year}-${month}-${day}`;
         }
+
+        // Focus automatique sur la description après sélection de la date
+        dateFactureField.addEventListener('change', function() {
+            if (this.value) {
+                descriptionField.focus();
+            }
+        });
+
+        // Focus automatique sur le montant après saisie de la description
+        descriptionField.addEventListener('blur', function() {
+            if (this.value.trim()) {
+                montantHtField.focus();
+            }
+        });
     });
 </script>
 {% endblock %}

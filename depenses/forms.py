@@ -7,101 +7,95 @@ from .models import (
 )
 
 class DepenseForm(forms.ModelForm):
-    """Formulaire pour les dépenses"""
+    """Formulaire simplifié pour les dépenses"""
     
     class Meta:
         model = Depense
-        fields = [
-            'numero_facture', 'categorie', 'fournisseur', 'libelle', 
-            'description', 'type_depense', 'montant_ht', 'taux_tva',
-            'date_facture', 'date_echeance', 'statut', 'observations'
-        ]
+        fields = ['date_facture', 'description', 'montant_ht']
         widgets = {
-            'numero_facture': forms.TextInput(attrs={
+            'date_facture': forms.DateInput(attrs={
                 'class': 'form-control',
-                'placeholder': 'Ex: FAC-2025-001'
-            }),
-            'categorie': forms.Select(attrs={'class': 'form-control'}),
-            'fournisseur': forms.Select(attrs={'class': 'form-control'}),
-            'libelle': forms.TextInput(attrs={
-                'class': 'form-control',
-                'placeholder': 'Libellé de la dépense'
+                'type': 'date',
+                'placeholder': 'Date de la dépense'
             }),
             'description': forms.Textarea(attrs={
                 'class': 'form-control',
                 'rows': 3,
-                'placeholder': 'Description détaillée de la dépense'
+                'placeholder': 'Description de la dépense'
             }),
-            'type_depense': forms.Select(attrs={'class': 'form-control'}),
             'montant_ht': forms.NumberInput(attrs={
                 'class': 'form-control',
                 'step': '1',
                 'min': '0',
-                'placeholder': 'Montant HT en GNF'
+                'placeholder': 'Montant en GNF'
             }),
-            'taux_tva': forms.NumberInput(attrs={
-                'class': 'form-control',
-                'step': '0.01',
-                'min': '0',
-                'max': '100',
-                'placeholder': 'Taux TVA en %'
-            }),
-            'date_facture': forms.DateInput(attrs={
-                'class': 'form-control',
-                'type': 'date'
-            }),
-            'date_echeance': forms.DateInput(attrs={
-                'class': 'form-control',
-                'type': 'date'
-            }),
-            'statut': forms.Select(attrs={'class': 'form-control'}),
-            'observations': forms.Textarea(attrs={
-                'class': 'form-control',
-                'rows': 2,
-                'placeholder': 'Observations (optionnel)'
-            }),
+        }
+        labels = {
+            'date_facture': 'Date',
+            'description': 'Description',
+            'montant_ht': 'Montant (GNF)',
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # Filtrer les catégories et fournisseurs actifs
-        self.fields['categorie'].queryset = CategorieDepense.objects.filter(actif=True)
-        self.fields['fournisseur'].queryset = Fournisseur.objects.filter(actif=True)
-        
-        # Rendre certains champs obligatoires
-        self.fields['numero_facture'].required = True
-        self.fields['libelle'].required = True
-        self.fields['montant_ht'].required = True
+        # Rendre tous les champs obligatoires
         self.fields['date_facture'].required = True
-        self.fields['date_echeance'].required = True
-        # Champs optionnels (permet d'enregistrer sans bloquer la soumission)
-        self.fields['description'].required = False
-        self.fields['taux_tva'].required = False
+        self.fields['description'].required = True
+        self.fields['montant_ht'].required = True
 
     def clean_montant_ht(self):
         montant_ht = self.cleaned_data.get('montant_ht')
         if montant_ht and montant_ht <= 0:
-            raise ValidationError("Le montant HT doit être supérieur à 0.")
+            raise ValidationError("Le montant doit être supérieur à 0.")
         return montant_ht
 
-    def clean_taux_tva(self):
-        taux_tva = self.cleaned_data.get('taux_tva')
-        if taux_tva is None:
-            return Decimal('0')
-        if taux_tva and (taux_tva < 0 or taux_tva > 100):
-            raise ValidationError("Le taux TVA doit être entre 0 et 100%.")
-        return taux_tva
-
-    def clean(self):
-        cleaned_data = super().clean()
-        date_facture = cleaned_data.get('date_facture')
-        date_echeance = cleaned_data.get('date_echeance')
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        # Définir des valeurs par défaut pour les champs non inclus dans le formulaire
+        if not instance.numero_facture:
+            # Générer un numéro de facture automatique
+            from datetime import datetime
+            now = datetime.now()
+            instance.numero_facture = f"DEP-{now.strftime('%Y%m%d-%H%M%S')}"
         
-        if date_facture and date_echeance:
-            if date_echeance < date_facture:
-                raise ValidationError("La date d'échéance ne peut pas être antérieure à la date de facture.")
+        if not instance.libelle:
+            # Utiliser les 50 premiers caractères de la description comme libellé
+            instance.libelle = instance.description[:50] if instance.description else "Dépense"
         
-        return cleaned_data
+        # Créer ou récupérer une catégorie par défaut
+        if not hasattr(instance, 'categorie') or not instance.categorie_id:
+            categorie_defaut, created = CategorieDepense.objects.get_or_create(
+                code='GENERAL',
+                defaults={
+                    'nom': 'Dépenses générales',
+                    'description': 'Catégorie par défaut pour les dépenses',
+                    'actif': True
+                }
+            )
+            instance.categorie = categorie_defaut
+        
+        # Créer ou récupérer un fournisseur par défaut
+        if not hasattr(instance, 'fournisseur') or not instance.fournisseur_id:
+            fournisseur_defaut, created = Fournisseur.objects.get_or_create(
+                nom='Fournisseur général',
+                defaults={
+                    'type_fournisseur': 'ENTREPRISE',
+                    'adresse': 'Adresse non spécifiée',
+                    'telephone': '000000000',
+                    'actif': True
+                }
+            )
+            instance.fournisseur = fournisseur_defaut
+        
+        # Valeurs par défaut
+        instance.statut = 'VALIDEE'  # Statut par défaut
+        instance.taux_tva = Decimal('0')  # Pas de TVA par défaut
+        instance.date_echeance = instance.date_facture  # Même date que la facture
+        instance.type_depense = 'FONCTIONNEMENT'  # Type par défaut
+        
+        if commit:
+            instance.save()
+        return instance
 
 class CategorieDepenseForm(forms.ModelForm):
     """Formulaire pour les catégories de dépenses"""

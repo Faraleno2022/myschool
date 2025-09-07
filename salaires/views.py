@@ -552,6 +552,7 @@ def etats_salaire(request):
     # Récupération des paramètres de filtrage
     periode_id = request.GET.get('periode', '')
     ecole_id = request.GET.get('ecole', '')
+    enseignant_id = request.GET.get('enseignant', '')
     statut = request.GET.get('statut', '')
     search = request.GET.get('search', '')
     
@@ -565,6 +566,9 @@ def etats_salaire(request):
     
     if ecole_id:
         etats = etats.filter(periode__ecole_id=ecole_id)
+    
+    if enseignant_id:
+        etats = etats.filter(enseignant_id=enseignant_id)
     
     if statut == 'valide':
         etats = etats.filter(valide=True)
@@ -586,7 +590,7 @@ def etats_salaire(request):
 
     # Fallback intelligent: si aucun filtre n'est appliqué et que la requête est vide,
     # afficher les états des 3 dernières périodes disponibles (par école si restreint)
-    filters_applied = any([periode_id, ecole_id, statut, search])
+    filters_applied = any([periode_id, ecole_id, enseignant_id, statut, search])
     if not filters_applied and not etats.exists():
         periodes_recent = PeriodeSalaire.objects.order_by('-annee', '-mois')
         if restreindre:
@@ -598,6 +602,24 @@ def etats_salaire(request):
                 .filter(periode_id__in=recent_ids)
                 .order_by('-periode__annee', '-periode__mois', 'enseignant__nom')
             )
+    
+    # Si toujours aucun résultat, vérifier s'il y a des périodes créées
+    no_periods_exist = False
+    periode_selected_exists = False
+    if not etats.exists():
+        periodes_count = PeriodeSalaire.objects.all()
+        if restreindre:
+            periodes_count = periodes_count.filter(ecole=ecole_user)
+        no_periods_exist = periodes_count.count() == 0
+        
+        # Vérifier si une période spécifique est sélectionnée et existe
+        if periode_id:
+            try:
+                periode_selected = PeriodeSalaire.objects.get(id=periode_id)
+                if not restreindre or periode_selected.ecole == ecole_user:
+                    periode_selected_exists = True
+            except PeriodeSalaire.DoesNotExist:
+                pass
     
     # Pagination
     paginator = Paginator(etats, 15)
@@ -627,6 +649,8 @@ def etats_salaire(request):
         'ecoles': ecoles,
         'totaux': totaux,
         'is_paginated': page_obj.has_other_pages(),
+        'no_periods_exist': no_periods_exist,
+        'periode_selected_exists': periode_selected_exists,
         # Conserver les filtres sélectionnés
         'periode_selectionnee': periode_id,
         'ecole_selectionnee': ecole_id,
@@ -835,7 +859,8 @@ def calculer_salaires(request, periode_id):
         messages.error(request, "Impossible de calculer les salaires d'une période clôturée.")
         return redirect('salaires:etats_salaire')
     
-    if request.method == 'POST':
+    # Accepter GET et POST pour le calcul
+    if request.method in ['GET', 'POST']:
         try:
             # Récupérer tous les enseignants actifs de l'école
             enseignants = Enseignant.objects.filter(
@@ -960,6 +985,187 @@ def marquer_paye(request, etat_id):
         messages.success(request, f"État de salaire de {etat.enseignant.nom_complet} marqué comme payé.")
     
     return redirect('salaires:etats_salaire')
+
+
+@login_required
+def fiche_paie_pdf(request, etat_id):
+    """Génère une fiche de paie PDF pour un état de salaire"""
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import cm
+    from reportlab.lib import colors
+    from reportlab.platypus import Table, TableStyle
+    from django.http import HttpResponse
+    from datetime import datetime
+    
+    etat = get_object_or_404(EtatSalaire, id=etat_id)
+    
+    # Vérifier les permissions
+    ecole_user = _ecole_utilisateur(request)
+    if not user_is_admin(request.user) and ecole_user and etat.periode.ecole != ecole_user:
+        raise Http404("État de salaire non trouvé")
+    
+    # Créer la réponse HTTP
+    response = HttpResponse(content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="fiche_paie_{etat.enseignant.nom}_{etat.periode.mois}_{etat.periode.annee}.pdf"'
+    
+    # Créer le PDF
+    p = canvas.Canvas(response, pagesize=A4)
+    width, height = A4
+    
+    # Ajouter le logo en filigrane
+    from ecole_moderne.pdf_utils import draw_logo_watermark
+    draw_logo_watermark(p, width, height, opacity=0.06, rotate=30, scale=1.2)
+    
+    # En-tête avec logo
+    try:
+        logo_path = os.path.join(settings.STATIC_ROOT or settings.STATICFILES_DIRS[0], 'logos', 'logo.png')
+        if os.path.exists(logo_path):
+            p.drawImage(logo_path, 2*cm, height-4*cm, width=3*cm, height=2*cm)
+    except:
+        pass
+    
+    # Titre - Nom de l'école centré avec police réduite
+    p.setFont("Helvetica-Bold", 14)
+    text_width = p.stringWidth(etat.periode.ecole.nom, "Helvetica-Bold", 14)
+    p.drawString((width - text_width) / 2, height-2.5*cm, f"{etat.periode.ecole.nom}")
+    
+    # Sous-titre FICHE DE PAIE centré
+    p.setFont("Helvetica-Bold", 16)
+    fiche_text = "FICHE DE PAIE"
+    fiche_width = p.stringWidth(fiche_text, "Helvetica-Bold", 16)
+    p.drawString((width - fiche_width) / 2, height-3*cm, fiche_text)
+    
+    # Informations période
+    p.setFont("Helvetica", 12)
+    p.drawString(6*cm, height-3.5*cm, f"Période: {etat.periode.mois}/{etat.periode.annee}")
+    p.drawString(6*cm, height-4*cm, f"Date d'édition: {datetime.now().strftime('%d/%m/%Y')}")
+    
+    # Informations enseignant
+    y_pos = height - 6*cm
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(2*cm, y_pos, "INFORMATIONS ENSEIGNANT")
+    
+    y_pos -= 0.8*cm
+    p.setFont("Helvetica", 10)
+    p.drawString(2*cm, y_pos, f"Nom: {etat.enseignant.nom} {etat.enseignant.prenoms}")
+    y_pos -= 0.5*cm
+    p.drawString(2*cm, y_pos, f"Téléphone: {etat.enseignant.telephone or 'Non renseigné'}")
+    y_pos -= 0.5*cm
+    p.drawString(2*cm, y_pos, f"Email: {etat.enseignant.email or 'Non renseigné'}")
+    y_pos -= 0.5*cm
+    p.drawString(2*cm, y_pos, f"Type: {'Salaire fixe' if etat.enseignant.est_salaire_fixe else 'Taux horaire'}")
+    
+    # Détails du salaire
+    y_pos -= 1.5*cm
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(2*cm, y_pos, "DÉTAILS DU SALAIRE")
+    
+    # Tableau des montants
+    data = [
+        ['Élément', 'Montant (GNF)'],
+        ['Salaire de base', f"{etat.salaire_base:,.0f}".replace(',', ' ')],
+    ]
+    
+    if etat.total_heures:
+        data.append(['Heures travaillées', f"{etat.total_heures}h"])
+        data.append(['Taux horaire', f"{etat.enseignant.taux_horaire or 0:,.0f}".replace(',', ' ')])
+    
+    if etat.primes:
+        data.append(['Primes', f"{etat.primes:,.0f}".replace(',', ' ')])
+    
+    if etat.deductions:
+        data.append(['Déductions', f"-{etat.deductions:,.0f}".replace(',', ' ')])
+    
+    data.append(['SALAIRE NET', f"{etat.salaire_net:,.0f}".replace(',', ' ')])
+    
+    # Créer le tableau
+    y_pos -= 0.8*cm
+    table = Table(data, colWidths=[8*cm, 4*cm])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'RIGHT'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 10),
+        ('FONTNAME', (0, 1), (-1, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+        ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+        ('FONTNAME', (0, -1), (-1, -1), 'Helvetica-Bold'),
+        ('GRID', (0, 0), (-1, -1), 1, colors.black)
+    ]))
+    
+    table.wrapOn(p, width, height)
+    table.drawOn(p, 2*cm, y_pos - len(data) * 0.6*cm)
+    
+    # Statut
+    y_pos -= (len(data) + 2) * 0.6*cm
+    p.setFont("Helvetica-Bold", 10)
+    statut_text = "VALIDÉ" if etat.valide else "EN ATTENTE DE VALIDATION"
+    if etat.paye:
+        statut_text += " - PAYÉ"
+    p.drawString(2*cm, y_pos, f"Statut: {statut_text}")
+    
+    if etat.valide and etat.date_validation:
+        y_pos -= 0.5*cm
+        p.setFont("Helvetica", 9)
+        p.drawString(2*cm, y_pos, f"Validé le {etat.date_validation.strftime('%d/%m/%Y')} par {etat.valide_par}")
+    
+    if etat.paye and etat.date_paiement:
+        y_pos -= 0.5*cm
+        p.drawString(2*cm, y_pos, f"Payé le {etat.date_paiement.strftime('%d/%m/%Y')}")
+    
+    # Section signatures
+    y_pos -= 3*cm
+    p.setFont("Helvetica-Bold", 12)
+    p.drawString(2*cm, y_pos, "SIGNATURES")
+    
+    # Ligne de séparation
+    y_pos -= 0.5*cm
+    p.line(2*cm, y_pos, width-2*cm, y_pos)
+    
+    # Signatures côte à côte
+    y_pos -= 1*cm
+    
+    # Signature enseignant (gauche)
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(2*cm, y_pos, "L'ENSEIGNANT")
+    p.setFont("Helvetica", 9)
+    p.drawString(2*cm, y_pos-0.4*cm, f"Nom: {etat.enseignant.nom} {etat.enseignant.prenoms}")
+    
+    # Cadre pour signature enseignant
+    signature_width = 6*cm
+    signature_height = 2*cm
+    p.rect(2*cm, y_pos-3*cm, signature_width, signature_height)
+    p.setFont("Helvetica", 8)
+    p.drawString(2*cm + 0.2*cm, y_pos-3.2*cm, "Signature et date:")
+    
+    # Signature comptable (droite)
+    comptable_x = width - 8*cm
+    p.setFont("Helvetica-Bold", 10)
+    p.drawString(comptable_x, y_pos, "LE COMPTABLE")
+    p.setFont("Helvetica", 9)
+    if etat.calcule_par:
+        p.drawString(comptable_x, y_pos-0.4*cm, f"Nom: {etat.calcule_par.get_full_name() or etat.calcule_par.username}")
+    else:
+        p.drawString(comptable_x, y_pos-0.4*cm, "Nom: _________________")
+    
+    # Cadre pour signature comptable
+    p.rect(comptable_x, y_pos-3*cm, signature_width, signature_height)
+    p.setFont("Helvetica", 8)
+    p.drawString(comptable_x + 0.2*cm, y_pos-3.2*cm, "Signature et date:")
+    
+    # Pied de page
+    p.setFont("Helvetica", 8)
+    p.drawString(2*cm, 2*cm, f"Document généré le {datetime.now().strftime('%d/%m/%Y à %H:%M')}")
+    p.drawString(2*cm, 1.5*cm, "Ce document est confidentiel et ne doit pas être divulgué à des tiers.")
+    
+    p.showPage()
+    p.save()
+    
+    return response
 
 
 @login_required

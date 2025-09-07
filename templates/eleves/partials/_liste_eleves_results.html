@@ -75,6 +75,9 @@
                                         <a href="{% url 'eleves:modifier_eleve' eleve.id %}" class="btn btn-outline-warning" title="Modifier">
                                             <i class="fas fa-edit"></i>
                                         </a>
+                                        <button type="button" class="btn btn-outline-success" title="Carte scolaire" onclick="imprimerCarte('{{ eleve.matricule }}')">
+                                            <i class="fas fa-id-card"></i>
+                                        </button>
                                         {% if eleve.statut != 'EXCLU' %}
                                         <button type="button" class="btn btn-outline-danger" title="Supprimer" 
                                                 data-bs-toggle="modal" data-bs-target="#confirmDeleteModal{{ eleve.id }}">
@@ -183,3 +186,30 @@
     </div>
     {% endif %}
 {% endfor %}
+
+<script>
+// Fonction pour imprimer la carte scolaire (définie globalement)
+function imprimerCarte(matricule) {
+    const url = `{% url 'notes:carte_eleve_pdf' 'MATRICULE_PLACEHOLDER' %}`.replace('MATRICULE_PLACEHOLDER', matricule);
+    
+    // Créer un iframe invisible pour télécharger et imprimer
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = url;
+    
+    // Ajouter l'iframe au document
+    document.body.appendChild(iframe);
+    
+    // Supprimer l'iframe après un délai
+    setTimeout(() => {
+        document.body.removeChild(iframe);
+    }, 3000);
+    
+    // Afficher un message de confirmation si la fonction existe
+    if (typeof showMessage === 'function') {
+        showMessage('Génération de la carte scolaire en cours...', 'info');
+    } else {
+        console.log('Génération de la carte scolaire pour le matricule:', matricule);
+    }
+}
+</script>

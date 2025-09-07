@@ -1,0 +1,206 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Cartes Scolaires - {{ classe.nom }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <!-- En-tête -->
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-id-card text-primary"></i> Cartes Scolaires</h2>
+                    <p class="text-muted mb-0">Classe: <strong>{{ classe.nom }}</strong> - École: <strong>{{ classe.ecole.nom }}</strong></p>
+                </div>
+                <div>
+                    <a href="{% url 'notes:tableau_bord' %}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Retour
+                    </a>
+                </div>
+            </div>
+
+            <!-- Statistiques -->
+            <div class="row mb-4">
+                <div class="col-md-4">
+                    <div class="card bg-primary text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h4 class="mb-0">{{ nb_eleves }}</h4>
+                                    <p class="mb-0">Élèves actifs</p>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-users fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-success text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h4 class="mb-0">{{ classe.nom }}</h4>
+                                    <p class="mb-0">Classe sélectionnée</p>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-chalkboard fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card bg-info text-white">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between">
+                                <div>
+                                    <h4 class="mb-0">PDF</h4>
+                                    <p class="mb-0">Format de génération</p>
+                                </div>
+                                <div class="align-self-center">
+                                    <i class="fas fa-file-pdf fa-2x"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-cogs"></i> Actions</h5>
+                </div>
+                <div class="card-body">
+                    {% if nb_eleves > 0 %}
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="d-grid">
+                                    <a href="{% url 'notes:cartes_scolaires_pdf' classe.id %}" 
+                                       class="btn btn-primary btn-lg" target="_blank">
+                                        <i class="fas fa-download"></i> Générer toutes les cartes (PDF)
+                                    </a>
+                                </div>
+                                <small class="text-muted mt-2 d-block">
+                                    <i class="fas fa-info-circle"></i> 
+                                    Génère un fichier PDF avec toutes les cartes scolaires de la classe (2 cartes par page)
+                                </small>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="alert alert-info mb-0">
+                                    <h6><i class="fas fa-lightbulb"></i> Informations sur les cartes</h6>
+                                    <ul class="mb-0 small">
+                                        <li>Format carte de crédit (8.5 x 5.4 cm)</li>
+                                        <li>Nom, prénom, matricule de l'élève</li>
+                                        <li>Classe et école</li>
+                                        <li>Date de naissance</li>
+                                        <li>Contact du responsable</li>
+                                        <li>Emplacement pour photo</li>
+                                        <li>Année scolaire actuelle</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-warning">
+                            <i class="fas fa-exclamation-triangle"></i>
+                            Aucun élève actif dans cette classe. Impossible de générer les cartes scolaires.
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Liste des élèves -->
+            {% if eleves %}
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-list"></i> Élèves de la classe ({{ nb_eleves }})</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>#</th>
+                                    <th>Matricule</th>
+                                    <th>Nom complet</th>
+                                    <th>Date de naissance</th>
+                                    <th>Contact responsable</th>
+                                    <th>Statut</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for eleve in eleves %}
+                                <tr>
+                                    <td>{{ forloop.counter }}</td>
+                                    <td><code>{{ eleve.matricule }}</code></td>
+                                    <td>
+                                        <strong>{{ eleve.nom }} {{ eleve.prenom }}</strong>
+                                    </td>
+                                    <td>
+                                        {% if eleve.date_naissance %}
+                                            {{ eleve.date_naissance|date:"d/m/Y" }}
+                                        {% else %}
+                                            <span class="text-muted">Non renseignée</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if eleve.responsable_principal and eleve.responsable_principal.telephone %}
+                                            <i class="fas fa-phone text-success"></i> {{ eleve.responsable_principal.telephone }}
+                                        {% else %}
+                                            <span class="text-muted">Non renseigné</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-success">{{ eleve.get_statut_display }}</span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+.card {
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border-radius: 0.5rem;
+}
+
+.card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+    border-radius: 0.5rem 0.5rem 0 0 !important;
+}
+
+.btn-lg {
+    padding: 0.75rem 1.5rem;
+    font-size: 1.1rem;
+}
+
+.table th {
+    border-top: none;
+    font-weight: 600;
+}
+
+.badge {
+    font-size: 0.75em;
+}
+
+code {
+    background-color: #f8f9fa;
+    color: #e83e8c;
+    padding: 0.2rem 0.4rem;
+    border-radius: 0.25rem;
+}
+</style>
+{% endblock %}

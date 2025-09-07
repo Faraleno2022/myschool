@@ -30,4 +30,9 @@ urlpatterns = [
     path('classes/<int:classe_id>/classement/<str:trimestre>/', views.classement_classe, name='classement_classe'),
     path('classes/<int:classe_id>/classement/<str:trimestre>/pdf/', views.classement_classe_pdf, name='classement_classe_pdf'),
     path('classes/<int:classe_id>/classement/<str:trimestre>/excel/', views.classement_classe_excel, name='classement_classe_excel'),
+    # Cartes scolaires
+    path('classes/<int:classe_id>/cartes-scolaires/', views.cartes_scolaires_classe, name='cartes_scolaires_classe'),
+    path('classes/<int:classe_id>/cartes-scolaires/pdf/', views.cartes_scolaires_pdf, name='cartes_scolaires_pdf'),
+    # Carte individuelle par matricule
+    path('carte-eleve/<str:matricule>/', views.carte_eleve_pdf, name='carte_eleve_pdf'),
 ]

@@ -127,6 +127,25 @@
 
             newBtnPdf.addEventListener('click', () => exportData('pdf'));
             newBtnExcel.addEventListener('click', () => exportData('excel'));
+            
+            // Gestion du bouton Cartes Scolaires
+            const btnCartes = zone.querySelector('#btn-cartes-scolaires');
+            if (btnCartes) {
+                const newBtnCartes = btnCartes.cloneNode(true);
+                btnCartes.parentNode.replaceChild(newBtnCartes, btnCartes);
+                
+                newBtnCartes.addEventListener('click', () => {
+                    const classeId = select.value;
+                    if (!classeId) {
+                        showMessage('Veuillez sélectionner une classe pour générer les cartes scolaires.', 'error');
+                        return;
+                    }
+                    
+                    // Rediriger vers la page des cartes scolaires
+                    const url = `{% url 'notes:cartes_scolaires_classe' 0 %}`.replace('0', classeId);
+                    window.open(url, '_blank');
+                });
+            }
         }
 
         const debounce = (fn, delay = 300) => {
@@ -205,6 +224,27 @@
         }
         bindClasseChange();
     })();
+
+    // Fonction pour imprimer la carte scolaire
+    function imprimerCarte(matricule) {
+        const url = `{% url 'notes:carte_eleve_pdf' 'MATRICULE_PLACEHOLDER' %}`.replace('MATRICULE_PLACEHOLDER', matricule);
+        
+        // Créer un iframe invisible pour télécharger et imprimer
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = url;
+        
+        // Ajouter l'iframe au document
+        document.body.appendChild(iframe);
+        
+        // Supprimer l'iframe après un délai
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+        }, 3000);
+        
+        // Optionnel: afficher un message de confirmation
+        showMessage('Génération de la carte scolaire en cours...', 'info');
+    }
     </script>
 {% endblock %}
 

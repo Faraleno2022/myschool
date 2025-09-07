@@ -249,6 +249,57 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  // Calcul automatique de la date d'expiration
+  const periodiciteSelect = document.getElementById('id_periodicite');
+  const dateDebutInput = document.getElementById('id_date_debut');
+  const dateExpirationInput = document.getElementById('id_date_expiration');
+
+  function calculateExpirationDate() {
+    if (!periodiciteSelect || !dateDebutInput || !dateExpirationInput) return;
+    
+    const periodicite = periodiciteSelect.value;
+    const dateDebut = dateDebutInput.value;
+    
+    if (!periodicite || !dateDebut) return;
+    
+    const debut = new Date(dateDebut);
+    if (isNaN(debut.getTime())) return;
+    
+    let expiration = new Date(debut);
+    
+    switch(periodicite) {
+      case 'MENSUEL':
+        expiration.setMonth(expiration.getMonth() + 1);
+        break;
+      case 'TRIMESTRIEL':
+        expiration.setMonth(expiration.getMonth() + 3);
+        break;
+      case 'SEMESTRIEL':
+        expiration.setMonth(expiration.getMonth() + 6);
+        break;
+      case 'ANNUEL':
+        expiration.setFullYear(expiration.getFullYear() + 1);
+        break;
+      default:
+        return;
+    }
+    
+    // Format YYYY-MM-DD pour l'input date
+    const year = expiration.getFullYear();
+    const month = String(expiration.getMonth() + 1).padStart(2, '0');
+    const day = String(expiration.getDate()).padStart(2, '0');
+    
+    dateExpirationInput.value = `${year}-${month}-${day}`;
+  }
+
+  // Écouter les changements de périodicité et date de début
+  if (periodiciteSelect) {
+    periodiciteSelect.addEventListener('change', calculateExpirationDate);
+  }
+  if (dateDebutInput) {
+    dateDebutInput.addEventListener('change', calculateExpirationDate);
+  }
+
   // Affichage du montant formaté
   if (montantInput) {
     const updateMontant = () => {

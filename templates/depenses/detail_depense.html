@@ -81,7 +81,7 @@
     <div class="d-flex justify-content-between align-items-center mb-4">
         <div>
             <h1 class="h3 mb-0">Dépense {{ depense.numero_facture }}</h1>
-            <p class="text-muted mb-0">{{ depense.libelle }}</p>
+            <p class="text-muted mb-0">{{ depense.description }}</p>
         </div>
         <div>
             <a href="{% url 'depenses:liste_depenses' %}" class="btn btn-outline-secondary">
@@ -113,52 +113,12 @@
                     <span class="info-value fw-bold">{{ depense.numero_facture }}</span>
                 </div>
                 
-                <div class="info-row">
-                    <span class="info-label">Libellé</span>
-                    <span class="info-value">{{ depense.libelle }}</span>
-                </div>
                 
                 <div class="info-row">
                     <span class="info-label">Description</span>
                     <span class="info-value">{{ depense.description|default:"Aucune description" }}</span>
                 </div>
                 
-                <div class="info-row">
-                    <span class="info-label">Catégorie</span>
-                    <span class="info-value">
-                        <span class="badge bg-light text-dark">{{ depense.categorie.code }}</span>
-                        {{ depense.categorie.nom }}
-                    </span>
-                </div>
-                
-                <div class="info-row">
-                    <span class="info-label">Fournisseur</span>
-                    <span class="info-value">{{ depense.fournisseur.nom }}</span>
-                </div>
-                
-                <div class="info-row">
-                    <span class="info-label">Type de dépense</span>
-                    <span class="info-value">{{ depense.get_type_depense_display }}</span>
-                </div>
-                
-                <div class="info-row">
-                    <span class="info-label">Statut</span>
-                    <span class="info-value">
-                        {% if depense.statut == 'BROUILLON' %}
-                            <span class="badge bg-secondary badge-status">Brouillon</span>
-                        {% elif depense.statut == 'EN_ATTENTE' %}
-                            <span class="badge bg-warning badge-status">En attente</span>
-                        {% elif depense.statut == 'VALIDEE' %}
-                            <span class="badge bg-info badge-status">Validée</span>
-                        {% elif depense.statut == 'PAYEE' %}
-                            <span class="badge bg-success badge-status">Payée</span>
-                        {% elif depense.statut == 'REJETEE' %}
-                            <span class="badge bg-danger badge-status">Rejetée</span>
-                        {% elif depense.statut == 'ANNULEE' %}
-                            <span class="badge bg-dark badge-status">Annulée</span>
-                        {% endif %}
-                    </span>
-                </div>
             </div>
 
             <!-- Informations financières -->
@@ -168,23 +128,8 @@
                 </h5>
                 
                 <div class="info-row">
-                    <span class="info-label">Montant HT</span>
-                    <span class="info-value">{{ depense.montant_ht|intcomma }} GNF</span>
-                </div>
-                
-                <div class="info-row">
-                    <span class="info-label">Taux TVA</span>
-                    <span class="info-value">{{ depense.taux_tva }}%</span>
-                </div>
-                
-                <div class="info-row">
-                    <span class="info-label">Montant TVA</span>
-                    <span class="info-value">{{ depense.montant_tva|intcomma }} GNF</span>
-                </div>
-                
-                <div class="info-row">
-                    <span class="info-label">Montant TTC</span>
-                    <span class="info-value fw-bold text-primary fs-5">{{ depense.montant_ttc|intcomma }} GNF</span>
+                    <span class="info-label">Montant</span>
+                    <span class="info-value fw-bold text-primary fs-5">{{ depense.montant_ht|intcomma }} GNF</span>
                 </div>
             </div>
 
@@ -200,35 +145,9 @@
                 </div>
                 
                 <div class="info-row">
-                    <span class="info-label">Date d'échéance</span>
-                    <span class="info-value">
-                        {{ depense.date_echeance|date:"d/m/Y" }}
-                        {% if depense.est_en_retard %}
-                        <span class="text-danger ms-2">
-                            <i class="fas fa-exclamation-triangle"></i> En retard
-                        </span>
-                        {% endif %}
-                    </span>
-                </div>
-                
-                {% if depense.date_paiement %}
-                <div class="info-row">
-                    <span class="info-label">Date de paiement</span>
-                    <span class="info-value">{{ depense.date_paiement|date:"d/m/Y" }}</span>
-                </div>
-                {% endif %}
-                
-                <div class="info-row">
                     <span class="info-label">Date de création</span>
                     <span class="info-value">{{ depense.date_creation|date:"d/m/Y H:i" }}</span>
                 </div>
-                
-                {% if depense.date_validation %}
-                <div class="info-row">
-                    <span class="info-label">Date de validation</span>
-                    <span class="info-value">{{ depense.date_validation|date:"d/m/Y H:i" }}</span>
-                </div>
-                {% endif %}
             </div>
 
             <!-- Observations -->
@@ -241,31 +160,6 @@
             </div>
             {% endif %}
 
-            <!-- Historique -->
-            {% if depense.historique.all %}
-            <div class="detail-card">
-                <h5 class="section-title">
-                    <i class="fas fa-history"></i> Historique
-                </h5>
-                
-                {% for historique in depense.historique.all %}
-                <div class="timeline-item timeline-{{ historique.action|lower }}">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <strong>{{ historique.get_action_display }}</strong>
-                            <p class="mb-1">{{ historique.description }}</p>
-                            {% if historique.utilisateur %}
-                            <small class="text-muted">
-                                Par {{ historique.utilisateur.get_full_name|default:historique.utilisateur.username }}
-                            </small>
-                            {% endif %}
-                        </div>
-                        <small class="text-muted">{{ historique.date_action|date:"d/m/Y H:i" }}</small>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
         </div>
 
         <!-- Actions et informations complémentaires -->
@@ -309,63 +203,6 @@
                 </div>
             </div>
 
-            <!-- Informations sur les utilisateurs -->
-            <div class="detail-card">
-                <h5 class="section-title">
-                    <i class="fas fa-users"></i> Utilisateurs
-                </h5>
-                
-                {% if depense.cree_par %}
-                <div class="info-row">
-                    <span class="info-label">Créée par</span>
-                    <span class="info-value">
-                        {{ depense.cree_par.get_full_name|default:depense.cree_par.username }}
-                    </span>
-                </div>
-                {% endif %}
-                
-                {% if depense.valide_par %}
-                <div class="info-row">
-                    <span class="info-label">Validée par</span>
-                    <span class="info-value">
-                        {{ depense.valide_par.get_full_name|default:depense.valide_par.username }}
-                    </span>
-                </div>
-                {% endif %}
-            </div>
-
-            <!-- Informations sur le fournisseur -->
-            <div class="detail-card">
-                <h5 class="section-title">
-                    <i class="fas fa-truck"></i> Fournisseur
-                </h5>
-                
-                <div class="info-row">
-                    <span class="info-label">Nom</span>
-                    <span class="info-value">{{ depense.fournisseur.nom }}</span>
-                </div>
-                
-                <div class="info-row">
-                    <span class="info-label">Type</span>
-                    <span class="info-value">{{ depense.fournisseur.get_type_fournisseur_display }}</span>
-                </div>
-                
-                {% if depense.fournisseur.telephone %}
-                <div class="info-row">
-                    <span class="info-label">Téléphone</span>
-                    <span class="info-value">{{ depense.fournisseur.telephone }}</span>
-                </div>
-                {% endif %}
-                
-                {% if depense.fournisseur.email %}
-                <div class="info-row">
-                    <span class="info-label">Email</span>
-                    <span class="info-value">
-                        <a href="mailto:{{ depense.fournisseur.email }}">{{ depense.fournisseur.email }}</a>
-                    </span>
-                </div>
-                {% endif %}
-            </div>
 
             <!-- Pièces justificatives -->
             {% if depense.pieces_justificatives.all %}

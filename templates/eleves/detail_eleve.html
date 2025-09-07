@@ -298,6 +298,9 @@
                     <a href="{% url 'notes:bulletin_annuel_pdf' eleve.classe.id eleve.id %}" class="btn btn-outline-primary" target="_blank">
                         <i class="fas fa-file-pdf me-1"></i> Bulletin annuel
                     </a>
+                    <a href="{% url 'notes:carte_eleve_pdf' eleve.matricule %}" class="btn btn-outline-success" target="_blank">
+                        <i class="fas fa-id-card me-1"></i> Carte scolaire
+                    </a>
                     {% with paiements_eleve=eleve.paiement_set.all %}
                     {% if paiements_eleve %}
                     <div class="card p-2">
