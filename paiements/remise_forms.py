@@ -24,7 +24,7 @@ class PaiementRemiseForm(forms.Form):
     )
 
     # Nouveau: pourcentage scolarité sélectionnable par l'utilisateur (1 à 10%)
-    POURCENT_CHOICES = [("", "— Choisir —")] + [(str(i), f"{i}%") for i in range(1, 11)]
+    POURCENT_CHOICES = [("", "— Choisir —")] + [(str(i), f"{i}%") for i in range(1, 101)]
     pourcentage_scolarite = forms.ChoiceField(
         choices=POURCENT_CHOICES,
         required=False,

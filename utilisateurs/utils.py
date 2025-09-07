@@ -20,7 +20,9 @@ def filter_by_user_school(qs: QuerySet, user: User, field_path: str = 'ecole') -
     """Filter a queryset by the user's school unless the user is admin.
     field_path can be like 'classe__ecole' or 'enseignant__ecole'.
     """
-    if user_is_admin(user):
+    # Seul le superutilisateur voit toutes les écoles.
+    # Les utilisateurs staff et rôle ADMIN sont filtrés par leur école.
+    if getattr(user, 'is_superuser', False):
         return qs
     ecole = user_school(user)
     if ecole is None:

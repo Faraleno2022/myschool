@@ -17,6 +17,7 @@ from django.utils import timezone
 import logging
 import json
 from ecole_moderne.security_decorators import delete_permission_required
+from utilisateurs.utils import filter_by_user_school
 
 # Imports des modèles à réinitialiser
 from eleves.models import Eleve, Responsable, Classe, HistoriqueEleve, Ecole, GrilleTarifaire
@@ -644,6 +645,11 @@ def eleves_retard_paiement(request):
         .filter(annee_scolaire=annee)
     )
 
+    # Restreindre la vue aux données de l'école de l'utilisateur.
+    # Seul le superuser voit toutes les écoles; le staff et les rôles ADMIN sont filtrés.
+    if not getattr(request.user, 'is_superuser', False):
+        qs = filter_by_user_school(qs, request.user, 'eleve__classe__ecole')
+
     # Exigible à date (inscription + tranches échues)
     exigible_expr = (
         Case(When(date_echeance_inscription__lte=today, then=F('frais_inscription_du')), default=Value(0), output_field=DecimalField(max_digits=12, decimal_places=0))
@@ -796,10 +802,15 @@ def envoyer_rappel_paiement(request):
 
         from paiements.notifications import send_relance_notification
 
+        # Restreindre la portée aux élèves de l'école de l'utilisateur (sauf superuser)
+        base_qs = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal')
+        if not getattr(request.user, 'is_superuser', False):
+            base_qs = filter_by_user_school(base_qs, request.user, 'classe__ecole')
+
         envoyes = 0
         for eleve_id in eleve_ids:
             try:
-                eleve = Eleve.objects.select_related('classe', 'classe__ecole', 'responsable_principal').get(id=eleve_id)
+                eleve = base_qs.get(id=eleve_id)
             except Eleve.DoesNotExist:
                 continue
 

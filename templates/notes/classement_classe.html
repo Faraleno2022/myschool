@@ -1,0 +1,231 @@
+{% extends 'base.html' %}
+{% load custom_filters %}
+
+{% block title %}Classement - {{ classe.nom }} - {{ trimestre }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h4 class="mb-0">
+                        <i class="fas fa-trophy text-warning"></i>
+                        Classement de la classe {{ classe.nom }} - {{ trimestre }}
+                    </h4>
+                    <div class="btn-group">
+                        <a href="{% url 'notes:classement_classe_pdf' classe.id trimestre %}" class="btn btn-danger btn-sm">
+                            <i class="fas fa-file-pdf"></i> Export PDF
+                        </a>
+                        <a href="{% url 'notes:classement_classe_excel' classe.id trimestre %}" class="btn btn-success btn-sm">
+                            <i class="fas fa-file-excel"></i> Export Excel
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="card-body">
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <p><strong>Année scolaire:</strong> {{ classe.annee_scolaire|default:"-" }}</p>
+                            <p><strong>Total d'élèves classés:</strong> {{ total_eleves }}</p>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-group">
+                                <label for="trimestre-select">Changer de trimestre:</label>
+                                <select id="trimestre-select" class="form-control" onchange="changeTrimestre()">
+                                    <option value="T1" {% if trimestre == 'T1' %}selected{% endif %}>1er Trimestre</option>
+                                    <option value="T2" {% if trimestre == 'T2' %}selected{% endif %}>2ème Trimestre</option>
+                                    <option value="T3" {% if trimestre == 'T3' %}selected{% endif %}>3ème Trimestre</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% if classement %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="thead-dark">
+                                <tr>
+                                    <th width="8%">
+                                        <i class="fas fa-medal"></i> Rang
+                                    </th>
+                                    <th width="25%">
+                                        <i class="fas fa-user"></i> Nom et Prénom
+                                    </th>
+                                    <th width="15%">
+                                        <i class="fas fa-id-card"></i> Matricule
+                                    </th>
+                                    <th width="12%">
+                                        <i class="fas fa-chart-line"></i> Moyenne
+                                    </th>
+                                    <th width="15%">
+                                        <i class="fas fa-award"></i> Mention
+                                    </th>
+                                    <th width="25%">
+                                        <i class="fas fa-cog"></i> Actions
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in classement %}
+                                <tr class="{% if item.rang == 1 %}table-warning{% elif item.rang == 2 %}table-info{% elif item.rang == 3 %}table-light{% endif %}">
+                                    <td>
+                                        <span class="badge badge-{% if item.rang == 1 %}warning{% elif item.rang == 2 %}info{% elif item.rang == 3 %}secondary{% else %}light{% endif %} badge-lg">
+                                            {% if item.rang == 1 %}
+                                                <i class="fas fa-crown"></i>
+                                            {% elif item.rang == 2 %}
+                                                <i class="fas fa-medal"></i>
+                                            {% elif item.rang == 3 %}
+                                                <i class="fas fa-award"></i>
+                                            {% endif %}
+                                            {{ item.rang }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <strong>{{ item.eleve.nom }} {{ item.eleve.prenom }}</strong>
+                                    </td>
+                                    <td>
+                                        <code>{{ item.eleve.matricule|default:"-" }}</code>
+                                    </td>
+                                    <td>
+                                        <span class="badge badge-{% if item.moyenne >= 16 %}success{% elif item.moyenne >= 14 %}primary{% elif item.moyenne >= 12 %}warning{% elif item.moyenne >= 10 %}info{% else %}danger{% endif %}">
+                                            {{ item.moyenne }}/20
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if item.mention %}
+                                            <span class="badge badge-{% if item.mention == 'Excellent' %}success{% elif item.mention == 'Très bien' %}primary{% elif item.mention == 'Bien' %}info{% elif item.mention == 'Assez bien' %}warning{% else %}secondary{% endif %}">
+                                                {{ item.mention }}
+                                            </span>
+                                        {% else %}
+                                            <span class="text-muted">-</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <a href="{% url 'notes:bulletin_pdf' classe.id item.eleve.id trimestre %}" 
+                                               class="btn btn-outline-primary" title="Bulletin PDF">
+                                                <i class="fas fa-file-pdf"></i>
+                                            </a>
+                                            <a href="{% url 'eleves:detail_eleve' item.eleve.id %}" 
+                                               class="btn btn-outline-info" title="Profil élève">
+                                                <i class="fas fa-user"></i>
+                                            </a>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Statistiques -->
+                    <div class="row mt-4">
+                        <div class="col-md-12">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6 class="card-title">
+                                        <i class="fas fa-chart-bar"></i> Statistiques du classement
+                                    </h6>
+                                    <div class="row">
+                                        <div class="col-md-3">
+                                            <div class="text-center">
+                                                <h4 class="text-success">{{ classement|length }}</h4>
+                                                <small class="text-muted">Élèves classés</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-center">
+                                                <h4 class="text-warning">{{ classement.0.moyenne|default:"-" }}</h4>
+                                                <small class="text-muted">Meilleure moyenne</small>
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-center">
+                                                {% with classement|last as dernier %}
+                                                <h4 class="text-info">{{ dernier.moyenne|default:"-" }}</h4>
+                                                <small class="text-muted">Moyenne la plus basse</small>
+                                                {% endwith %}
+                                            </div>
+                                        </div>
+                                        <div class="col-md-3">
+                                            <div class="text-center">
+                                                {% with classement as c %}
+                                                {% if c %}
+                                                    {% with c|length as total %}
+                                                    {% with c|slice:":"|add:c|slice:"1:"|add:c|slice:"2:" as somme_moyennes %}
+                                                    <h4 class="text-primary">
+                                                        {% widthratio classement|map_attr:"moyenne"|sum:0 classement|length 1 %}
+                                                    </h4>
+                                                    {% endwith %}
+                                                    {% endwith %}
+                                                {% else %}
+                                                    <h4 class="text-primary">-</h4>
+                                                {% endif %}
+                                                {% endwith %}
+                                                <small class="text-muted">Moyenne de classe</small>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {% else %}
+                    <div class="alert alert-warning text-center">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        Aucun élève n'a de notes pour ce trimestre dans cette classe.
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="card-footer">
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'notes:tableau_bord' %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Retour au tableau de bord
+                        </a>
+                        <small class="text-muted">
+                            <i class="fas fa-clock"></i> Dernière mise à jour: {{ "now"|date:"d/m/Y H:i" }}
+                        </small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function changeTrimestre() {
+    const select = document.getElementById('trimestre-select');
+    const newTrimestre = select.value;
+    const currentUrl = window.location.pathname;
+    const baseUrl = currentUrl.replace(/\/(T[1-3])?\/?$/, '');
+    window.location.href = baseUrl + '/' + newTrimestre + '/';
+}
+</script>
+
+<style>
+.badge-lg {
+    font-size: 1.1em;
+    padding: 0.5em 0.8em;
+}
+
+.table-responsive {
+    border-radius: 0.5rem;
+    overflow: hidden;
+}
+
+.thead-dark th {
+    border: none;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0,123,255,.075);
+}
+
+.btn-group-sm > .btn {
+    padding: 0.25rem 0.5rem;
+}
+</style>
+{% endblock %}

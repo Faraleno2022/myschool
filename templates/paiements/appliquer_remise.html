@@ -117,7 +117,7 @@
                                     <div class="card-body">
                                         {{ form.montant_original.as_hidden }}
                                         <input type="hidden" id="id_base_scolarite" name="base_scolarite" value="{{ base_scolarite }}">
-                                        <!-- Sélecteur de remise scolarité (%) 1-10 -->
+                                        <!-- Sélecteur de remise scolarité (%) 1-100 -->
                                         <div class="mb-3">
                                             <label class="form-label" for="id_pourcentage_scolarite">
                                                 <i class="fas fa-percent me-1"></i>Remise scolarité (%)
@@ -126,6 +126,11 @@
                                             <small class="text-muted d-block mt-1">
                                                 Le pourcentage choisi s'applique sur la base scolarité (T1+T2+T3). L'aperçu utilise cette base scolarité, pas le montant saisi.
                                             </small>
+                                            <!-- Avertissement 100% -->
+                                            <div id="pct100Warning" class="alert alert-warning mt-2 d-none" role="alert">
+                                                <i class="fas fa-exclamation-triangle me-1"></i>
+                                                Attention: vous avez sélectionné <strong>100%</strong> de remise scolarité. Cela annulera entièrement la scolarité (base T1+T2+T3) pour l'année en cours. Cette règle est applicable à <strong>toutes les classes</strong>. Vérifiez que vous avez l'autorisation nécessaire avant de confirmer.
+                                            </div>
                                         </div>
                                         
                                         {% if form.remises.field.queryset %}
@@ -275,6 +280,15 @@ document.addEventListener('DOMContentLoaded', function() {
                     nom: `Remise scolarité ${pct}%`,
                     montant: montantPct
                 });
+                // Afficher/masquer l'avertissement 100%
+                const warn = document.getElementById('pct100Warning');
+                if (warn) {
+                    if (pct === 100) {
+                        warn.classList.remove('d-none');
+                    } else {
+                        warn.classList.add('d-none');
+                    }
+                }
             }
         }
         
@@ -323,13 +337,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const totalRemises = parseFloat(document.getElementById('totalRemises').textContent.replace(/[^\d]/g, ''));
         const montantFinal = parseFloat(document.getElementById('montantFinal').textContent.replace(/[^\d]/g, ''));
         
-        const confirmation = confirm(
+        let message = (
             `Confirmer l'application des remises ?\n\n` +
             `Montant original: ${montantOriginal.toLocaleString('fr-FR')} GNF\n` +
             `Total des remises: ${totalRemises.toLocaleString('fr-FR')} GNF\n` +
             `Nouveau montant: ${montantFinal.toLocaleString('fr-FR')} GNF`
         );
-        
+        // Alerte spécifique 100%
+        if (pctValue && parseFloat(pctValue) === 100) {
+            message += `\n\nATTENTION: Vous appliquez 100% de remise scolarité (applicable à toutes les classes).`;
+        }
+        const confirmation = confirm(message);
+
         if (!confirmation) {
             e.preventDefault();
         }

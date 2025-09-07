@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+{% block title %}Notes — {{ evaluation.classe.nom }} / {{ evaluation.matiere.nom }}{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item"><a href="{% url 'notes:tableau_bord' %}">Notes</a></li>
+<li class="breadcrumb-item"><a href="{% url 'notes:matieres_classe' evaluation.classe.id %}">Matières — {{ evaluation.classe.nom }}</a></li>
+<li class="breadcrumb-item"><a href="{% url 'notes:evaluations_matiere' evaluation.classe.id evaluation.matiere.id %}">Évaluations</a></li>
+<li class="breadcrumb-item active">{{ evaluation.titre }}</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between mb-3">
+  <h5 class="mb-0">
+    <i class="fas fa-list-ol me-2"></i>Notes — {{ evaluation.titre }}
+    <small class="text-muted d-block">{{ evaluation.classe.nom }} — {{ evaluation.matiere.nom }}</small>
+  </h5>
+  <div>
+    <a class="btn btn-success" href="{% url 'notes:saisie_notes' evaluation.id %}"><i class="fas fa-pen me-1"></i> Saisir / Modifier</a>
+    <a class="btn btn-outline-secondary ms-1" href="{% url 'notes:evaluations_matiere' evaluation.classe.id evaluation.matiere.id %}">Retour</a>
+  </div>
+</div>
+
+<div class="card">
+  <div class="table-responsive">
+    <table class="table align-middle mb-0">
+      <thead>
+        <tr>
+          <th>Élève</th>
+          <th>Matricule</th>
+          <th class="text-end">Note /20</th>
+          <th>Observation</th>
+          <th class="text-end">Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            <td>{{ r.eleve.nom }} {{ r.eleve.prenom }}</td>
+            <td class="text-muted">{{ r.matricule }}</td>
+            <td class="text-end">{% if r.note is not None %}<strong>{{ r.note }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            <td class="text-muted">{{ r.observation }}</td>
+            <td class="text-end">
+              <a class="btn btn-sm btn-outline-primary me-1" href="{% url 'notes:bulletin_pdf' evaluation.classe.id r.eleve.id evaluation.trimestre %}">
+                <i class="fas fa-file-pdf"></i> Bulletin {{ evaluation.trimestre }}
+              </a>
+              <a class="btn btn-sm btn-outline-primary" href="{% url 'notes:bulletin_annuel_pdf' evaluation.classe.id r.eleve.id %}">
+                <i class="fas fa-file-pdf"></i> Annuel
+              </a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr>
+            <td colspan="5" class="text-muted">Aucun élève trouvé pour cette classe.</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

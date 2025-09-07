@@ -2399,6 +2399,13 @@ def appliquer_remise_paiement(request, paiement_id:int):
                 }
                 return render(request, 'paiements/appliquer_remise.html', context)
 
+            # Avertissement serveur quand 100% est sélectionné (affiché même sans JS)
+            if pct_value == 100:
+                messages.warning(
+                    request,
+                    "Attention: vous appliquez 100% de remise scolarité. Cela annulera entièrement la scolarité (T1+T2+T3) pour l'année en cours. Cette règle est applicable à toutes les classes. Vérifiez l'autorisation avant de confirmer."
+                )
+
             # pourcentage_scolarite est un aperçu UI, on ne le persiste pas ici faute de modèle dédié
             with transaction.atomic():
                 # Remplacer les remises existantes par la sélection

@@ -1,6 +1,6 @@
 from django import forms
 from eleves.models import Classe
-from .models import MatiereClasse
+from .models import MatiereClasse, Evaluation
 from datetime import date
 
 
@@ -49,3 +49,26 @@ class MatiereClasseForm(forms.ModelForm):
         if not nom:
             raise forms.ValidationError("Le nom de la matière est requis.")
         return nom
+
+
+class EvaluationForm(forms.ModelForm):
+    class Meta:
+        model = Evaluation
+        fields = ['titre', 'date', 'trimestre', 'coefficient']
+        widgets = {
+            'titre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Ex: Devoir n°1'}),
+            'date': forms.DateInput(attrs={'class': 'form-control', 'type': 'date'}),
+            'trimestre': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'T1 / T2 / T3'}),
+            'coefficient': forms.NumberInput(attrs={'class': 'form-control', 'min': '1', 'max': '20'}),
+        }
+
+
+class NotesBulkForm(forms.Form):
+    """Saisie rapide des notes par matricule.
+    Format par ligne: MATRICULE;NOTE[;OBSERVATION]
+    Exemple: PN3-042;14.5;Bon travail
+    """
+    donnees = forms.CharField(
+        widget=forms.Textarea(attrs={'class': 'form-control', 'rows': 10, 'placeholder': 'MATRICULE;NOTE;OBS (optionnel)\n...'}),
+        label="Coller les lignes matricule;note;obs (optionnel)",
+    )

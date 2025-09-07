@@ -7,11 +7,21 @@
 {% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between mb-3">
+<div class="d-flex justify-content-between mb-3 align-items-center">
   <h5 class="mb-0"><i class="fas fa-book me-2"></i>Matières de {{ classe.nom }} <small class="text-muted">({{ classe.get_niveau_display }} — {{ classe.annee_scolaire }})</small></h5>
-  {% if user.is_superuser or user.is_staff %}
-    <a href="{% url 'notes:creer_matiere' classe.id %}" class="btn btn-primary"><i class="fas fa-plus me-1"></i>Nouvelle matière</a>
-  {% endif %}
+  <div class="d-flex gap-2">
+    <div class="btn-group" role="group" aria-label="Bulletins">
+      <a class="btn btn-outline-secondary" href="{% url 'notes:bulletins_classe_pdf' classe.id 'T1' %}"><i class="fas fa-file-pdf me-1"></i>Bulletins T1</a>
+      <a class="btn btn-outline-secondary" href="{% url 'notes:bulletins_classe_pdf' classe.id 'T2' %}">T2</a>
+      <a class="btn btn-outline-secondary" href="{% url 'notes:bulletins_classe_pdf' classe.id 'T3' %}">T3</a>
+    </div>
+    <div class="btn-group" role="group" aria-label="Bulletins annuels">
+      <a class="btn btn-outline-primary" href="{% url 'notes:bulletins_annuels_classe_pdf' classe.id %}"><i class="fas fa-file-pdf me-1"></i>Bulletins annuels</a>
+    </div>
+    {% if user.is_superuser or user.is_staff %}
+      <a href="{% url 'notes:creer_matiere' classe.id %}" class="btn btn-primary"><i class="fas fa-plus me-1"></i>Nouvelle matière</a>
+    {% endif %}
+  </div>
 </div>
 
 <div class="card">
@@ -39,7 +49,15 @@
             </td>
             <td class="text-end">
               {% if user.is_superuser or user.is_staff %}
-                <a href="{% url 'notes:supprimer_matiere' m.id %}" class="btn btn-sm btn-outline-danger"><i class="fas fa-trash"></i></a>
+                <a href="{% url 'notes:evaluations_matiere' classe.id m.id %}" class="btn btn-sm btn-outline-secondary me-1">
+                  <i class="fas fa-list"></i> Évaluations
+                </a>
+                <a href="{% url 'notes:creer_evaluation' classe.id m.id %}" class="btn btn-sm btn-primary me-1">
+                  <i class="fas fa-clipboard-list"></i> Évaluation
+                </a>
+                <a href="{% url 'notes:supprimer_matiere' m.id %}" class="btn btn-sm btn-outline-danger">
+                  <i class="fas fa-trash"></i>
+                </a>
               {% endif %}
             </td>
           </tr>

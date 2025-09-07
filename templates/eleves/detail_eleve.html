@@ -288,6 +288,16 @@
                     <a href="{% url 'eleves:fiche_inscription_pdf' eleve.pk %}" class="btn btn-info" target="_blank">
                         <i class="fas fa-file-pdf"></i> Fiche d'inscription PDF
                     </a>
+                    <div class="btn-group" role="group" aria-label="Bulletin PDF">
+                        <a href="{% url 'notes:bulletin_pdf' eleve.classe.id eleve.id 'T1' %}" class="btn btn-outline-secondary" target="_blank">
+                            <i class="fas fa-file-pdf me-1"></i> Bulletin T1
+                        </a>
+                        <a href="{% url 'notes:bulletin_pdf' eleve.classe.id eleve.id 'T2' %}" class="btn btn-outline-secondary" target="_blank">T2</a>
+                        <a href="{% url 'notes:bulletin_pdf' eleve.classe.id eleve.id 'T3' %}" class="btn btn-outline-secondary" target="_blank">T3</a>
+                    </div>
+                    <a href="{% url 'notes:bulletin_annuel_pdf' eleve.classe.id eleve.id %}" class="btn btn-outline-primary" target="_blank">
+                        <i class="fas fa-file-pdf me-1"></i> Bulletin annuel
+                    </a>
                     {% with paiements_eleve=eleve.paiement_set.all %}
                     {% if paiements_eleve %}
                     <div class="card p-2">

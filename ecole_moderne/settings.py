@@ -12,9 +12,17 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+try:
+    from dotenv import load_dotenv
+except Exception:
+    load_dotenv = None
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Charger les variables d'environnement depuis un fichier .env si disponible
+if load_dotenv:
+    load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
@@ -335,3 +343,8 @@ MAX_LOGIN_ATTEMPTS = 5
 
 # Durée de blocage après échec de connexion (en secondes)
 LOGIN_BLOCK_DURATION = 300  # 5 minutes
+
+# ===== Intégrations externes (Twilio, etc.) =====
+# Pilotées par variables d'environnement; voir .env.example
+# TWILIO_ENABLED=false par défaut pour éviter l'envoi en développement
+TWILIO_ENABLED = os.getenv("TWILIO_ENABLED", "false").lower() in {"1", "true", "yes"}
