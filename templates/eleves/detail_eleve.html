@@ -2,7 +2,7 @@
 {% load static %}
 {% load humanize %}
 
-{% block title %}{{ eleve.nom_complet }} - École Moderne HADJA KANFING DIANÉ{% endblock %}
+{% block title %}{{ eleve.nom_complet }} - myschool{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -86,7 +86,7 @@
         <div class="row align-items-center">
             <div class="col-md-2 text-center">
                 {% if eleve.photo %}
-                    <img src="{{ eleve.photo.url }}" alt="Photo de {{ eleve.nom_complet }}" class="profile-photo">
+                    <img src="{{ eleve.photo.url }}" alt="Photo de {{ eleve.nom_complet }}" class="profile-photo" loading="lazy" decoding="async">
                 {% else %}
                     <div class="profile-photo d-flex align-items-center justify-content-center" style="background: rgba(255,255,255,0.2);">
                         <i class="fas fa-user fa-3x"></i>

@@ -44,7 +44,7 @@ def build_payment_receipt_message(paiement: Paiement) -> str:
         parts.append(f"Reçu N°: {paiement.numero_recu}")
     if paiement.reference_externe:
         parts.append(f"Réf: {paiement.reference_externe}")
-    parts.append("Merci pour votre confiance – École Moderne HADJA KANFING DIANÉ")
+    parts.append("Merci pour votre confiance – École Moderne myschool")
     return "\n".join(parts)
 
 
@@ -61,7 +61,7 @@ def build_enrollment_receipt_message(eleve: Eleve, paiement: Optional[Paiement] 
         parts.append(f"Frais d'inscription: {_format_amount(paiement.montant)}")
         if paiement.numero_recu:
             parts.append(f"Reçu N°: {paiement.numero_recu}")
-    parts.append("Bienvenue à l'École Moderne HADJA KANFING DIANÉ")
+    parts.append("Bienvenue à l'École Moderne myschool")
     return "\n".join(parts)
 
 

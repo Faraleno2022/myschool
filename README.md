@@ -1,4 +1,4 @@
-# École Moderne HADJA KANFING DIANÉ – Système de Gestion
+# École Moderne myschool – Système de Gestion
 
 Application Django pour la gestion scolaire (élèves, paiements, salaires, rapports) avec séparation par école (Sonfonia/Somayah), contrôles d'accès, et exports (PDF/CSV).
 

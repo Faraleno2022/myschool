@@ -311,7 +311,7 @@ def export_enseignants_pdf(request):
         elif 'sonfonia' in low:
             campus = 'Sonfonia'
         base_is_hk = (
-            'hadja kanfing' in low or 'h.k' in low or 'h k' in low or 'hk' in low or 'diané' in low or 'diane' in low
+            'myschool' in low or 'h.k' in low or 'h k' in low or 'hk' in low or 'diané' in low or 'diane' in low
         )
         if base_is_hk and campus:
             return f"H. K DIANÉ – {campus}"
@@ -373,7 +373,7 @@ def export_enseignants_pdf(request):
         except Exception:
             pass
         canvas.setFont('Helvetica-Bold', 8)
-        canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne HADJA KANFING DIANÉ')
+        canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne myschool')
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, title_text)
 
@@ -808,7 +808,7 @@ def export_etats_salaire_pdf(request):
         except Exception:
             pass
         canvas.setFont('Helvetica-Bold', 8)
-        canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne HADJA KANFING DIANÉ')
+        canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne myschool')
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, title_text)
 
@@ -1419,7 +1419,7 @@ def export_rapport_paiements_pdf(request):
         except Exception:
             pass
         canvas.setFont('Helvetica-Bold', 8)
-        canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne HADJA KANFING DIANÉ')
+        canvas.drawString(doc_.leftMargin + 40, doc_.pagesize[1]-25, 'École Moderne myschool')
         canvas.setFont('Helvetica', 8)
         canvas.drawRightString(doc_.pagesize[0]-doc_.rightMargin, doc_.pagesize[1]-25, titre)
 

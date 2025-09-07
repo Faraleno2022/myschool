@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Script pour ajouter l'École Moderne HADJA KANFING DIANÉ - Somayah
+Script pour ajouter l'École Moderne myschool - Somayah
 avec ses grilles tarifaires spécifiques
 """
 import os
@@ -17,10 +17,10 @@ from eleves.models import Ecole, Classe, GrilleTarifaire
 
 def ajouter_ecole_somayah():
     """Ajouter l'école de Somayah"""
-    print("🏫 Ajout de l'École Moderne HADJA KANFING DIANÉ - Somayah...")
+    print("🏫 Ajout de l'École Moderne myschool - Somayah...")
     
     ecole_somayah, created = Ecole.objects.get_or_create(
-        nom="École Moderne HADJA KANFING DIANÉ - Somayah",
+        nom="École Moderne myschool - Somayah",
         defaults={
             'adresse': "Somayah, Conakry, Guinée",
             'telephone': "+22462200001",
@@ -147,7 +147,7 @@ def ajouter_grilles_tarifaires_somayah(ecole):
 
 def main():
     """Fonction principale"""
-    print("🚀 Ajout de l'École Moderne HADJA KANFING DIANÉ - Somayah")
+    print("🚀 Ajout de l'École Moderne myschool - Somayah")
     print("=" * 80)
     
     try:

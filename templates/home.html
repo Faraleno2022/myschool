@@ -6,13 +6,20 @@
 {% block extra_css %}
 <style>
   .hero-wrapper {
-    margin-top: -40px; /* léger ajustement supplémentaire vers le haut */
+    margin-top: -40px; /* remonter encore plus l'image vers le menu */
+    position: relative;
+    left: 50%;
+    right: 50%;
+    margin-left: -50vw;
+    margin-right: -50vw;
+    width: 100vw;
   }
   .hero-image {
     width: 100%;
-    height: 440px; /* hauteur légèrement augmentée */
-    object-fit: cover;
+    height: 600px; /* hauteur augmentée pour voir l'image entière */
+    object-fit: cover; /* remis en cover pour plein écran */
     border-radius: 0; /* pleine largeur sans arrondis */
+    display: block;
   }
   .presentation-card {
     border: 1px solid #e9ecef;
@@ -42,11 +49,13 @@
 
 {% block content %}
 <!-- Section image pleine largeur -->
-<div class="container-fluid px-0 mb-3 hero-wrapper">
+<div class="container-fluid px-0 mb-5 hero-wrapper">
   <img
-    src="{% static 'images/ecole.jpg' %}"
+    src="{% static 'images/ecole.jpg' %}?v=2025090702"
     alt="Image de l'école"
     class="hero-image w-100"
+    loading="lazy"
+    decoding="async"
     onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1511634829096-045a111727eb?q=80&w=2400&auto=format&fit=crop';"
   />
 </div>
@@ -57,7 +66,7 @@
     <div class="card-body p-5 presentation-body">
       <h1 class="h3 mb-3 presentation-title"><i class="fas fa-school me-2"></i>Présentation de l'école</h1>
       <p class="mb-2">
-        Bienvenue à l'École Moderne Hadja Kanfing Diané. Notre établissement offre un cadre d'apprentissage
+        Bienvenue à myschool. Notre établissement offre un cadre d'apprentissage
         moderne et bienveillant, avec une équipe pédagogique engagée pour l'excellence académique et le
         développement personnel des élèves.
       </p>
@@ -73,14 +82,16 @@
 </div>
 
 <!-- Deux cards d'images -->
-<div class="container pb-4">
+<div class="container pb-4" style="margin-top: 30px;">
   <div class="row g-4">
     <div class="col-md-6">
       <div class="card shadow-sm image-card">
         <img
-          src="{% static 'images/carte1.jpg' %}"
+          src="{% static 'images/carte1.jpg' %}?v=2025090702"
           alt="Image présentation 1"
           class="card-img-top"
+          loading="lazy"
+          decoding="async"
           onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1523050854058-8df90110c9f1?q=80&w=1200&auto=format&fit=crop';"
         />
       </div>
@@ -88,9 +99,11 @@
     <div class="col-md-6">
       <div class="card shadow-sm image-card">
         <img
-          src="{% static 'images/carte2.jpg' %}"
+          src="{% static 'images/carte2.jpg' %}?v=2025090702"
           alt="Image présentation 2"
           class="card-img-top"
+          loading="lazy"
+          decoding="async"
           onerror="this.onerror=null;this.src='https://images.unsplash.com/photo-1496307042754-b4aa456c4a2d?q=80&w=1200&auto=format&fit=crop';"
         />
       </div>

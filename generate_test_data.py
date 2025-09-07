@@ -89,8 +89,8 @@ def create_schools():
     
     # Écoles
     ecoles_data = [
-        ('GROUPE SCOLAIRE HADJA KANFING DIANÉ-SONFONIA', 'Sonfonia, Conakry'),
-        ('GROUPE SCOLAIRE HADJA KANFING DIANÉ-SOMAYAH', 'Somayah, Conakry')
+        ('GROUPE SCOLAIRE myschool-SONFONIA', 'Sonfonia, Conakry'),
+        ('GROUPE SCOLAIRE myschool-SOMAYAH', 'Somayah, Conakry')
     ]
     
     for nom, adresse in ecoles_data:

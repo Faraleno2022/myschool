@@ -26,7 +26,7 @@ from paiements.models import ModePaiement, TypePaiement  # noqa: E402
 
 
 ANNEE_SCOLAIRE = os.environ.get("ANNEE_SCOLAIRE", "2025-2026")
-ECOLE_NOM = os.environ.get("ECOLE_NOM", "GROUPE SCOLAIRE HADJA KANFING DIANÉ-SONFONIA")
+ECOLE_NOM = os.environ.get("ECOLE_NOM", "GROUPE SCOLAIRE myschool-SONFONIA")
 
 # Montants par défaut (reprennent l'exemple de l'UI total 1 730 000 GNF)
 FRAIS_INSCRIPTION = Decimal("30000")

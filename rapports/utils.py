@@ -85,7 +85,7 @@ def _draw_header_and_watermark(c, doc):
         # Titre à droite du logo avec taille réduite
         c.setFillColor(colors.HexColor('#0d47a1'))
         c.setFont('Helvetica-Bold', 12)
-        c.drawString(margin_x + 70, height - margin_y - 10, "École Moderne HADJA KANFING DIANÉ")
+        c.drawString(margin_x + 70, height - margin_y - 10, "École Moderne myschool")
 
         # Ligne de séparation
         c.setStrokeColor(colors.HexColor('#0d47a1'))
@@ -135,7 +135,7 @@ def collecter_donnees_periode(debut, fin, type_periode, user=None):
         _nom_affiche = ecole.nom
         _nom_upper = (ecole.nom or '').upper()
         if any(key in _nom_upper for key in ['SONFONIA', 'SONFONIE']):
-            _nom_affiche = "GROUPE SCOLAIRE HADJA KANFING DIANÉ-SONFONIA"
+            _nom_affiche = "GROUPE SCOLAIRE myschool-SONFONIA"
 
         donnees_ecole = {
             'nom': _nom_affiche,

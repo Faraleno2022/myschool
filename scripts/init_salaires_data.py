@@ -56,7 +56,7 @@ def creer_enseignants():
             'type_enseignant': 'garderie',
             'mode_salaire': 'fixe',
             'salaire_fixe': Decimal('800000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Sonfonia'
+            'ecole': 'École Moderne myschool - Sonfonia'
         },
         {
             'nom': 'BARRY',
@@ -67,7 +67,7 @@ def creer_enseignants():
             'type_enseignant': 'maternelle',
             'mode_salaire': 'fixe',
             'salaire_fixe': Decimal('900000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Sonfonia'
+            'ecole': 'École Moderne myschool - Sonfonia'
         },
         {
             'nom': 'CAMARA',
@@ -78,7 +78,7 @@ def creer_enseignants():
             'type_enseignant': 'primaire',
             'mode_salaire': 'fixe',
             'salaire_fixe': Decimal('1200000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Sonfonia'
+            'ecole': 'École Moderne myschool - Sonfonia'
         },
         {
             'nom': 'TOURE',
@@ -89,7 +89,7 @@ def creer_enseignants():
             'type_enseignant': 'secondaire',
             'mode_salaire': 'horaire',
             'taux_horaire': Decimal('15000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Sonfonia'
+            'ecole': 'École Moderne myschool - Sonfonia'
         },
         {
             'nom': 'CONDE',
@@ -100,7 +100,7 @@ def creer_enseignants():
             'type_enseignant': 'administrateur',
             'mode_salaire': 'fixe',
             'salaire_fixe': Decimal('1500000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Sonfonia'
+            'ecole': 'École Moderne myschool - Sonfonia'
         },
         
         # École Somayah
@@ -113,7 +113,7 @@ def creer_enseignants():
             'type_enseignant': 'garderie',
             'mode_salaire': 'fixe',
             'salaire_fixe': Decimal('750000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Somayah'
+            'ecole': 'École Moderne myschool - Somayah'
         },
         {
             'nom': 'KABA',
@@ -124,7 +124,7 @@ def creer_enseignants():
             'type_enseignant': 'maternelle',
             'mode_salaire': 'fixe',
             'salaire_fixe': Decimal('850000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Somayah'
+            'ecole': 'École Moderne myschool - Somayah'
         },
         {
             'nom': 'SOUMAH',
@@ -135,7 +135,7 @@ def creer_enseignants():
             'type_enseignant': 'primaire',
             'mode_salaire': 'fixe',
             'salaire_fixe': Decimal('1100000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Somayah'
+            'ecole': 'École Moderne myschool - Somayah'
         },
         {
             'nom': 'BANGOURA',
@@ -146,7 +146,7 @@ def creer_enseignants():
             'type_enseignant': 'secondaire',
             'mode_salaire': 'horaire',
             'taux_horaire': Decimal('12000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Somayah'
+            'ecole': 'École Moderne myschool - Somayah'
         },
         {
             'nom': 'KEITA',
@@ -157,7 +157,7 @@ def creer_enseignants():
             'type_enseignant': 'administrateur',
             'mode_salaire': 'fixe',
             'salaire_fixe': Decimal('1400000'),
-            'ecole': 'École Moderne HADJA KANFING DIANÉ - Somayah'
+            'ecole': 'École Moderne myschool - Somayah'
         }
     ]
     

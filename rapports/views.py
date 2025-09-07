@@ -549,7 +549,7 @@ def collecter_donnees_journalieres(date_rapport, user=None):
         _nom_affiche = ecole.nom
         _nom_upper = (ecole.nom or '').upper()
         if any(key in _nom_upper for key in ['SONFONIA', 'SONFONIE']):
-            _nom_affiche = "GROUPE SCOLAIRE HADJA KANFING DIANÉ-SONFONIA"
+            _nom_affiche = "GROUPE SCOLAIRE myschool-SONFONIA"
 
         donnees_ecole = {
             'nom': _nom_affiche,

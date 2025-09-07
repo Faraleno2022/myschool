@@ -2,7 +2,7 @@
 """
 Script pour mettre à jour les frais d'inscription dans les grilles tarifaires
 - École Somayah : 30 000 GNF
-- École Sonfonia (HADJA KANFING DIANÉ) : 50 000 GNF
+- École Sonfonia (myschool) : 50 000 GNF
 """
 
 import os
@@ -26,7 +26,7 @@ def update_frais_inscription():
     # Définition des frais par école
     frais_par_ecole = {
         'Somayah': Decimal('30000'),
-        'HADJA KANFING DIANÉ': Decimal('50000')
+        'myschool': Decimal('50000')
     }
     
     # Mise à jour pour chaque école

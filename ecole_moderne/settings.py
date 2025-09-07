@@ -238,13 +238,41 @@ LOGOUT_REDIRECT_URL = '/utilisateurs/login/'  # Redirection après déconnexion
 
 
 # Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/5.2/howto/static-files/
+# https://docs.djangoproject.com/en/4.2/howto/static-files/
 
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
 STATICFILES_DIRS = [
-    BASE_DIR / 'static',
+    BASE_DIR / "static",
 ]
+
+# Configuration pour l'optimisation des images
+STATICFILES_FINDERS = [
+    'django.contrib.staticfiles.finders.FileSystemFinder',
+    'django.contrib.staticfiles.finders.AppDirectoriesFinder',
+]
+
+# Cache pour les fichiers statiques (améliore les performances)
+STATICFILES_STORAGE = 'django.contrib.staticfiles.storage.StaticFilesStorage'
+
+# Configuration du cache pour les images
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
+        'TIMEOUT': 300,  # 5 minutes
+        'OPTIONS': {
+            'MAX_ENTRIES': 1000,
+        }
+    },
+    'images': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'image-cache',
+        'TIMEOUT': 3600,  # 1 heure pour les images
+        'OPTIONS': {
+            'MAX_ENTRIES': 500,
+        }
+    }
+}
 
 # Media files (user-uploaded)
 MEDIA_URL = '/media/'

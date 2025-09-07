@@ -24,14 +24,14 @@ NIVEAUX = [
 
 ECOLES = [
     {
-        "nom": "GROUPE SCOLAIRE HADJA KANFING DIANÉ-SOMAYAH",
+        "nom": "GROUPE SCOLAIRE myschool-SOMAYAH",
         "adresse": "Somayah, Conakry",
         "telephone": "+224622000001",
         "email": "contact@somayah.school",
         "directeur": "Direction Somayah",
     },
     {
-        "nom": "École Moderne HADJA KANFING DIANÉ",
+        "nom": "École Moderne myschool",
         "adresse": "Conakry",
         "telephone": "+224622000002",
         "email": "contact@moderne-hkd.gn",

@@ -54,7 +54,7 @@ def main():
 
     # Try to find or create schools by name
     sonfonia, _ = Ecole.objects.get_or_create(
-        nom='GROUPE SCOLAIRE HADJA KANFING DIANÉ DE SONFONIA',
+        nom='GROUPE SCOLAIRE myschool DE SONFONIA',
         defaults={
             'adresse': 'Sonfonia',
             'telephone': '+224000000000',
@@ -62,7 +62,7 @@ def main():
         }
     )
     somayah, _ = Ecole.objects.get_or_create(
-        nom='GROUPE SCOLAIRE HADJA KANFING DIANÉ DE SOMAYAH',
+        nom='GROUPE SCOLAIRE myschool DE SOMAYAH',
         defaults={
             'adresse': 'Somayah',
             'telephone': '+224000000001',

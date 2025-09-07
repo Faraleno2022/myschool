@@ -1544,7 +1544,7 @@ def fiche_inscription_pdf(request, eleve_id):
     c.drawString((width - text_width) / 2, y, text)
     y -= 0.5*cm
     
-    text = "Système de Gestion Scolaire - École Moderne HADJA KANFING DIANÉ"
+    text = "Système de Gestion Scolaire - École Moderne myschool"
     text_width = c.stringWidth(text, "MainFont", 10) if "MainFont" in c.getAvailableFonts() else c.stringWidth(text, "Helvetica", 10)
     c.drawString((width - text_width) / 2, y, text)
     
