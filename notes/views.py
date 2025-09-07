@@ -1239,14 +1239,10 @@ def bulletins_annuels_classe_pdf(request, classe_id: int):
 
 
 @login_required
+@require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
 def classement_classe(request, classe_id: int, trimestre: str = "T1"):
     """Affiche le classement des élèves d'une classe pour un trimestre donné."""
-    classe = get_object_or_404(Classe, id=classe_id)
-    
-    # Vérifier les permissions
-    if not request.user.is_superuser and hasattr(request.user, 'profil'):
-        if classe.ecole != request.user.profil.ecole:
-            raise PermissionDenied("Accès non autorisé à cette classe.")
+    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Calculer le classement
     eleves = classe.eleves.filter(statut='actif').order_by('nom', 'prenom')
@@ -1310,7 +1306,7 @@ def classement_classe(request, classe_id: int, trimestre: str = "T1"):
 @admin_required
 def classement_classe_pdf(request, classe_id: int, trimestre: str = "T1"):
     """Export PDF du classement d'une classe."""
-    classe = get_object_or_404(Classe, id=classe_id)
+    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Récupérer le classement (même logique que la vue HTML)
     eleves = classe.eleves.filter(statut='actif').order_by('nom', 'prenom')
@@ -1445,7 +1441,7 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
     from openpyxl.styles import Font, Alignment, PatternFill
     from django.http import HttpResponse
     
-    classe = get_object_or_404(Classe, id=classe_id)
+    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Récupérer le classement (même logique que les autres vues)
     eleves = classe.eleves.filter(statut='actif').order_by('nom', 'prenom')
@@ -1546,7 +1542,7 @@ def classement_classe_excel(request, classe_id: int, trimestre: str = "T1"):
 @require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
 def cartes_scolaires_classe(request, classe_id):
     """Interface pour générer les cartes scolaires d'une classe"""
-    classe = get_object_or_404(Classe, id=classe_id)
+    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Filtrage par école pour non-admin
     if not request.user.is_superuser:
@@ -1571,7 +1567,7 @@ def cartes_scolaires_classe(request, classe_id):
 @require_school_object(model=Classe, pk_kwarg='classe_id', field_path='ecole')
 def cartes_scolaires_pdf(request, classe_id):
     """Génère les cartes scolaires PDF pour une classe"""
-    classe = get_object_or_404(Classe, id=classe_id)
+    classe = get_object_or_404(filter_by_user_school(Classe.objects.all(), request.user, 'ecole'), pk=classe_id)
     
     # Filtrage par école pour non-admin
     if not request.user.is_superuser:
