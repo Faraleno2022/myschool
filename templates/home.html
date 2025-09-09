@@ -48,6 +48,9 @@
 {% block breadcrumb %}{% endblock %}
 
 {% block content %}
+<!-- Sélecteur d'école pour super admins -->
+{% include 'components/ecole_selector.html' %}
+
 <!-- Section image pleine largeur -->
 <div class="container-fluid px-0 mb-5 hero-wrapper">
   <img
@@ -64,19 +67,60 @@
 <div class="container py-3">
   <div class="card presentation-card mb-4">
     <div class="card-body p-5 presentation-body">
-      <h1 class="h3 mb-3 presentation-title"><i class="fas fa-school me-2"></i>Présentation de l'école</h1>
-      <p class="mb-2">
-        Bienvenue à myschool. Notre établissement offre un cadre d'apprentissage
-        moderne et bienveillant, avec une équipe pédagogique engagée pour l'excellence académique et le
-        développement personnel des élèves.
-      </p>
-      <p class="mb-2">
-        Nous proposons des programmes adaptés de la maternelle au secondaire, des activités parascolaires
-        enrichissantes, ainsi qu'un suivi individualisé favorisant la réussite et l'épanouissement.
-      </p>
+      <h1 class="h3 mb-3 presentation-title">
+        <i class="fas fa-school me-2"></i>
+        {% if ecole_courante %}
+          Bienvenue à {{ ecole_courante.nom }}
+        {% else %}
+          Système de Gestion Scolaire Multi-Écoles
+        {% endif %}
+      </h1>
+      
+      {% if ecole_courante %}
+        <p class="mb-2">
+          Bienvenue à {{ ecole_courante.nom }}. Notre établissement {{ ecole_courante.get_type_ecole_display|lower }} 
+          offre un cadre d'apprentissage moderne et bienveillant, avec une équipe pédagogique engagée pour 
+          l'excellence académique et le développement personnel des élèves.
+        </p>
+        <p class="mb-2">
+          <strong>Adresse :</strong> {{ ecole_courante.adresse }}<br>
+          <strong>Téléphone :</strong> {{ ecole_courante.telephone }}<br>
+          <strong>Email :</strong> {{ ecole_courante.email }}
+        </p>
+        {% if ecole_courante.directeur %}
+        <p class="mb-2">
+          <strong>Direction :</strong> {{ ecole_courante.directeur }}
+        </p>
+        {% endif %}
+      {% else %}
+        <p class="mb-2">
+          Bienvenue sur le système de gestion scolaire multi-écoles. Cette plateforme permet à plusieurs 
+          établissements scolaires de gérer leurs élèves, paiements, dépenses et rapports de manière 
+          centralisée et sécurisée.
+        </p>
+        <p class="mb-2">
+          Chaque école dispose de son propre espace personnalisé avec ses utilisateurs, ses données 
+          et ses configurations spécifiques.
+        </p>
+      {% endif %}
+      
       <p class="mb-0">
         Pour plus d'informations, veuillez contacter l'administration ou visiter les sections du site via le menu ci-dessus.
       </p>
+      
+      {% if not user.is_authenticated %}
+      <div class="mt-4">
+        <a href="{% url 'utilisateurs:login' %}" class="btn btn-primary me-3">
+          <i class="fas fa-sign-in-alt me-1"></i>Se connecter
+        </a>
+        <a href="{% url 'inscription_ecoles:inscription_ecole_complete' %}" class="btn btn-outline-success me-2">
+          <i class="fas fa-plus me-1"></i>Inscrire votre école (Complet)
+        </a>
+        <a href="{% url 'inscription_ecoles:inscription_ecole' %}" class="btn btn-outline-secondary">
+          <i class="fas fa-plus me-1"></i>Inscription simple
+        </a>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>

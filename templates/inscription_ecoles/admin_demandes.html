@@ -1,0 +1,340 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Administration - Demandes d'inscription{% endblock %}
+
+{% block extra_css %}
+<style>
+    .demande-card {
+        transition: transform 0.2s;
+    }
+    .demande-card:hover {
+        transform: translateY(-2px);
+    }
+    .statut-badge {
+        font-size: 0.9rem;
+        padding: 0.5rem 1rem;
+    }
+    .documents-list {
+        max-height: 200px;
+        overflow-y: auto;
+    }
+    .action-buttons {
+        gap: 0.5rem;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item">Administration</li>
+<li class="breadcrumb-item active">Demandes d'inscription</li>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3">
+        <i class="fas fa-school me-2"></i>Demandes d'inscription des écoles
+    </h1>
+    <div>
+        <span class="badge bg-primary fs-6">{{ demandes|length }} demande{{ demandes|length|pluralize }}</span>
+    </div>
+</div>
+
+<!-- Filtres rapides -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <button class="btn btn-outline-warning w-100" onclick="filtrerParStatut('EN_ATTENTE')">
+                    <i class="fas fa-clock me-1"></i>En attente
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-outline-info w-100" onclick="filtrerParStatut('EN_COURS')">
+                    <i class="fas fa-spinner me-1"></i>En cours
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-outline-success w-100" onclick="filtrerParStatut('APPROUVEE')">
+                    <i class="fas fa-check me-1"></i>Approuvées
+                </button>
+            </div>
+            <div class="col-md-3">
+                <button class="btn btn-outline-danger w-100" onclick="filtrerParStatut('REJETEE')">
+                    <i class="fas fa-times me-1"></i>Rejetées
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Liste des demandes -->
+{% if demandes %}
+    <div class="row" id="demandes-container">
+        {% for demande in demandes %}
+        <div class="col-lg-6 mb-4 demande-item" data-statut="{{ demande.statut }}">
+            <div class="card demande-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">{{ demande.nom_ecole }}</h5>
+                    <span class="badge statut-badge bg-{% if demande.statut == 'EN_ATTENTE' %}warning{% elif demande.statut == 'EN_COURS' %}info{% elif demande.statut == 'APPROUVEE' %}success{% elif demande.statut == 'REJETEE' %}danger{% else %}secondary{% endif %}">
+                        {{ demande.get_statut_display }}
+                    </span>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Informations de base -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <strong>Demandeur :</strong><br>
+                            {{ demande.prenom_demandeur }} {{ demande.nom_demandeur }}<br>
+                            <small class="text-muted">{{ demande.fonction_demandeur }}</small>
+                        </div>
+                        <div class="col-md-6">
+                            <strong>Contact :</strong><br>
+                            <i class="fas fa-envelope me-1"></i>{{ demande.email_demandeur }}<br>
+                            <i class="fas fa-phone me-1"></i>{{ demande.telephone_demandeur }}
+                        </div>
+                    </div>
+                    
+                    <!-- Informations école -->
+                    <div class="mb-3">
+                        <strong>Type :</strong> {{ demande.get_type_ecole_display }}<br>
+                        <strong>Localisation :</strong> {{ demande.ville }}, {{ demande.prefecture }}<br>
+                        <strong>Directeur :</strong> {{ demande.nom_directeur }}
+                    </div>
+                    
+                    <!-- Statistiques -->
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <strong>{{ demande.nombre_eleves_estime }}</strong><br>
+                                <small>Élèves estimés</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="text-center p-2 bg-light rounded">
+                                <strong>{{ demande.nombre_enseignants }}</strong><br>
+                                <small>Enseignants</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Documents -->
+                    {% if demande.logo_ecole or demande.document_autorisation or demande.autres_documents %}
+                    <div class="mb-3">
+                        <strong>Documents :</strong>
+                        <div class="documents-list">
+                            {% if demande.logo_ecole %}
+                                <div><i class="fas fa-image text-primary me-1"></i>Logo fourni</div>
+                            {% endif %}
+                            {% if demande.document_autorisation %}
+                                <div><i class="fas fa-file-alt text-info me-1"></i>Document d'autorisation</div>
+                            {% endif %}
+                            {% if demande.autres_documents %}
+                                <div><i class="fas fa-paperclip text-secondary me-1"></i>Autres documents</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Commentaire -->
+                    {% if demande.commentaire_demandeur %}
+                    <div class="mb-3">
+                        <strong>Commentaire :</strong>
+                        <p class="text-muted small">{{ demande.commentaire_demandeur|truncatewords:20 }}</p>
+                    </div>
+                    {% endif %}
+                    
+                    <!-- Date de demande -->
+                    <div class="mb-3">
+                        <small class="text-muted">
+                            <i class="fas fa-calendar me-1"></i>Demandé le {{ demande.date_demande|date:"d/m/Y à H:i" }}
+                        </small>
+                    </div>
+                    
+                    <!-- Traitement -->
+                    {% if demande.date_traitement %}
+                    <div class="mb-3 p-2 bg-light rounded">
+                        <small>
+                            <strong>Traité le :</strong> {{ demande.date_traitement|date:"d/m/Y à H:i" }}<br>
+                            <strong>Par :</strong> {{ demande.traite_par.get_full_name|default:demande.traite_par.username }}
+                            {% if demande.motif_rejet %}
+                                <br><strong>Motif :</strong> {{ demande.motif_rejet }}
+                            {% endif %}
+                        </small>
+                    </div>
+                    {% endif %}
+                </div>
+                
+                <div class="card-footer">
+                    <div class="d-flex action-buttons">
+                        <a href="{% url 'inscription_ecoles:traiter_demande_inscription' demande.id %}" 
+                           class="btn btn-primary btn-sm">
+                            <i class="fas fa-user-plus"></i> Créer compte
+                        </a>
+                        
+                        {% if demande.statut == 'EN_ATTENTE' or demande.statut == 'EN_COURS' %}
+                        <button class="btn btn-success btn-sm" onclick="approuverDemande({{ demande.id }})">
+                            <i class="fas fa-check me-1"></i>Approuver
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="rejeterDemande({{ demande.id }})">
+                            <i class="fas fa-times me-1"></i>Rejeter
+                        </button>
+                        {% endif %}
+                        
+                        {% if demande.ecole_creee %}
+                        <a href="{% url 'admin:eleves_ecole_change' demande.ecole_creee.id %}" 
+                           class="btn btn-outline-secondary btn-sm">
+                            <i class="fas fa-school me-1"></i>École
+                        </a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
+        <h5 class="text-muted">Aucune demande d'inscription</h5>
+        <p class="text-muted">Les nouvelles demandes apparaîtront ici.</p>
+    </div>
+{% endif %}
+
+<!-- Modal de confirmation pour approbation -->
+<div class="modal fade" id="modalApprobation" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Approuver la demande</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Êtes-vous sûr de vouloir approuver cette demande d'inscription ?</p>
+                <p class="text-info">
+                    <i class="fas fa-info-circle me-1"></i>
+                    Cela créera automatiquement l'école et un compte administrateur.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-success" id="confirmerApprobation">
+                    <i class="fas fa-check me-1"></i>Approuver
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de rejet -->
+<div class="modal fade" id="modalRejet" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Rejeter la demande</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="motifRejet" class="form-label">Motif du rejet *</label>
+                    <textarea class="form-control" id="motifRejet" rows="4" 
+                              placeholder="Expliquez pourquoi cette demande est rejetée..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuler</button>
+                <button type="button" class="btn btn-danger" id="confirmerRejet">
+                    <i class="fas fa-times me-1"></i>Rejeter
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let demandeIdCourante = null;
+
+function filtrerParStatut(statut) {
+    const items = document.querySelectorAll('.demande-item');
+    items.forEach(item => {
+        if (statut === 'TOUS' || item.dataset.statut === statut) {
+            item.style.display = 'block';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+function approuverDemande(demandeId) {
+    demandeIdCourante = demandeId;
+    new bootstrap.Modal(document.getElementById('modalApprobation')).show();
+}
+
+function rejeterDemande(demandeId) {
+    demandeIdCourante = demandeId;
+    document.getElementById('motifRejet').value = '';
+    new bootstrap.Modal(document.getElementById('modalRejet')).show();
+}
+
+document.getElementById('confirmerApprobation').addEventListener('click', function() {
+    if (demandeIdCourante) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/ecole/admin/demandes/${demandeIdCourante}/traiter/`;
+        
+        const csrfToken = document.createElement('input');
+        csrfToken.type = 'hidden';
+        csrfToken.name = 'csrfmiddlewaretoken';
+        csrfToken.value = window.getCsrfToken();
+        
+        const action = document.createElement('input');
+        action.type = 'hidden';
+        action.name = 'action';
+        action.value = 'approuver';
+        
+        form.appendChild(csrfToken);
+        form.appendChild(action);
+        document.body.appendChild(form);
+        form.submit();
+    }
+});
+
+document.getElementById('confirmerRejet').addEventListener('click', function() {
+    const motif = document.getElementById('motifRejet').value.trim();
+    if (!motif) {
+        alert('Veuillez saisir un motif de rejet.');
+        return;
+    }
+    
+    if (demandeIdCourante) {
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = `/ecole/admin/demandes/${demandeIdCourante}/traiter/`;
+        
+        const csrfToken = document.createElement('input');
+        csrfToken.type = 'hidden';
+        csrfToken.name = 'csrfmiddlewaretoken';
+        csrfToken.value = window.getCsrfToken();
+        
+        const action = document.createElement('input');
+        action.type = 'hidden';
+        action.name = 'action';
+        action.value = 'rejeter';
+        
+        const motifInput = document.createElement('input');
+        motifInput.type = 'hidden';
+        motifInput.name = 'motif_rejet';
+        motifInput.value = motif;
+        
+        form.appendChild(csrfToken);
+        form.appendChild(action);
+        form.appendChild(motifInput);
+        document.body.appendChild(form);
+        form.submit();
+    }
+});
+</script>
+{% endblock %}

@@ -35,7 +35,7 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
 # Piloté par la variable d'environnement DJANGO_DEBUG: 'true'/'false'
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'gshadjakanfingdiane.pythonanywhere.com']
+ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'testserver', 'gshadjakanfingdiane.pythonanywhere.com']
 
 # CSRF trusted origins: use production origin in prod, local http origins in dev
 if DEBUG:
@@ -115,6 +115,9 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.humanize',  # Pour le formatage des nombres
     
+    # Application principale
+    'ecole_moderne',
+    
     # Applications de gestion scolaire
     'eleves',
     'paiements',
@@ -124,7 +127,8 @@ INSTALLED_APPS = [
     'rapports',
     'administration',
     'bus',
-    'notes'
+    'notes',
+    'inscription_ecoles',  # Système multi-tenant pour écoles
 ]
 
 
@@ -136,7 +140,10 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'ecole_moderne.middleware.EcoleSelectionMiddleware',  # Sélection d'école multi-tenant
+    'ecole_moderne.middleware.PermissionEcoleMiddleware',  # Permissions par école
     'django.contrib.messages.middleware.MessageMiddleware',
+    'ecole_moderne.middleware.EcoleContextMiddleware',  # Contexte école pour templates
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
@@ -173,18 +180,40 @@ WSGI_APPLICATION = 'ecole_moderne.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-        # Options pour atténuer les verrous SQLite en prod
-        'OPTIONS': {
-            'timeout': 30,  # secondes
-        },
-        # Fermer la connexion à la fin de chaque requête pour éviter de garder des verrous
-        'CONN_MAX_AGE': 0,
+# Configuration de base de données flexible (SQLite par défaut, PostgreSQL via variables d'environnement)
+DATABASE_ENGINE = os.environ.get('DATABASE_ENGINE', 'sqlite3')
+
+if DATABASE_ENGINE == 'postgresql':
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql',
+            'NAME': os.environ.get('DATABASE_NAME', 'ecole_moderne'),
+            'USER': os.environ.get('DATABASE_USER', 'postgres'),
+            'PASSWORD': os.environ.get('DATABASE_PASSWORD', ''),
+            'HOST': os.environ.get('DATABASE_HOST', 'localhost'),
+            'PORT': os.environ.get('DATABASE_PORT', '5432'),
+            'OPTIONS': {
+                'connect_timeout': 60,
+                'client_encoding': 'UTF8',
+                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            },
+            'CONN_MAX_AGE': 600,  # Réutiliser les connexions pendant 10 minutes
+        }
     }
-}
+else:
+    # Configuration SQLite par défaut
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+            # Options pour atténuer les verrous SQLite en prod
+            'OPTIONS': {
+                'timeout': 30,  # secondes
+            },
+            # Fermer la connexion à la fin de chaque requête pour éviter de garder des verrous
+            'CONN_MAX_AGE': 0,
+        }
+    }
 
 
 # Password validation

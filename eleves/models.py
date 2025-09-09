@@ -4,25 +4,119 @@ from django.core.validators import RegexValidator
 from decimal import Decimal
 
 class Ecole(models.Model):
-    """Modèle pour représenter une école"""
+    """Modèle pour représenter une école dans un système multi-tenant"""
+    STATUT_CHOICES = [
+        ('ACTIVE', 'Active'),
+        ('SUSPENDUE', 'Suspendue'),
+        ('EN_ATTENTE', 'En attente de validation'),
+        ('FERMEE', 'Fermée'),
+    ]
+    
+    TYPE_ECOLE_CHOICES = [
+        ('PUBLIQUE', 'École Publique'),
+        ('PRIVEE', 'École Privée'),
+        ('CONFESSIONNELLE', 'École Confessionnelle'),
+        ('INTERNATIONALE', 'École Internationale'),
+    ]
+    
+    # Informations de base
     nom = models.CharField(max_length=200, verbose_name="Nom de l'école")
+    nom_complet = models.CharField(max_length=300, verbose_name="Nom complet officiel", blank=True, null=True)
+    slug = models.SlugField(max_length=200, unique=True, verbose_name="Identifiant URL", default="ecole-default")
+    type_ecole = models.CharField(max_length=20, choices=TYPE_ECOLE_CHOICES, default='PRIVEE', verbose_name="Type d'école")
+    
+    # Contact et localisation
     adresse = models.TextField(verbose_name="Adresse")
+    ville = models.CharField(max_length=100, verbose_name="Ville", default="Conakry")
+    prefecture = models.CharField(max_length=100, verbose_name="Préfecture", default="Conakry")
     telephone = models.CharField(
         max_length=20, 
         validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
         verbose_name="Téléphone"
     )
-    email = models.EmailField(blank=True, null=True, verbose_name="Email")
-    directeur = models.CharField(max_length=100, verbose_name="Directeur")
-    logo = models.ImageField(upload_to='ecoles/logos/', blank=True, null=True)
+    telephone_2 = models.CharField(
+        max_length=20, 
+        validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
+        verbose_name="Téléphone 2",
+        blank=True, null=True
+    )
+    email = models.EmailField(verbose_name="Email officiel", default="contact@ecole.com")
+    site_web = models.URLField(blank=True, null=True, verbose_name="Site web")
+    
+    # Direction et administration
+    directeur = models.CharField(max_length=100, verbose_name="Directeur/Directrice")
+    directeur_telephone = models.CharField(
+        max_length=20, 
+        validators=[RegexValidator(r'^\+224\d{8,9}$', 'Format: +224XXXXXXXXX')],
+        verbose_name="Téléphone directeur",
+        blank=True, null=True
+    )
+    directeur_email = models.EmailField(blank=True, null=True, verbose_name="Email directeur")
+    
+    # Identité visuelle et documents
+    logo = models.ImageField(upload_to='ecoles/logos/', blank=True, null=True, verbose_name="Logo")
+    couleur_principale = models.CharField(max_length=7, default='#1976d2', verbose_name="Couleur principale (hex)")
+    couleur_secondaire = models.CharField(max_length=7, default='#424242', verbose_name="Couleur secondaire (hex)")
+    
+    # Informations légales
+    numero_autorisation = models.CharField(max_length=100, blank=True, null=True, verbose_name="N° d'autorisation")
+    date_autorisation = models.DateField(blank=True, null=True, verbose_name="Date d'autorisation")
+    ministere_tutelle = models.CharField(max_length=200, default="Ministère de l'Éducation Nationale", verbose_name="Ministère de tutelle")
+    
+    # Gestion du compte
+    statut = models.CharField(max_length=20, choices=STATUT_CHOICES, default='EN_ATTENTE', verbose_name="Statut")
+    utilisateur_admin = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ecole_administree', verbose_name="Administrateur principal", null=True, blank=True)
     date_creation = models.DateTimeField(auto_now_add=True)
+    date_activation = models.DateTimeField(blank=True, null=True, verbose_name="Date d'activation")
+    date_expiration = models.DateField(blank=True, null=True, verbose_name="Date d'expiration")
+    
+    # Paramètres de personnalisation
+    devise = models.CharField(max_length=10, default='GNF', verbose_name="Devise")
+    fuseau_horaire = models.CharField(max_length=50, default='Africa/Conakry', verbose_name="Fuseau horaire")
+    langue_principale = models.CharField(max_length=10, default='fr', verbose_name="Langue principale")
+    
+    # Métadonnées
+    notes_admin = models.TextField(blank=True, null=True, verbose_name="Notes administratives")
     
     class Meta:
         verbose_name = "École"
         verbose_name_plural = "Écoles"
+        ordering = ['nom']
+        indexes = [
+            models.Index(fields=['statut']),
+            models.Index(fields=['slug']),
+            models.Index(fields=['ville', 'prefecture']),
+        ]
     
     def __str__(self):
         return self.nom
+    
+    def save(self, *args, **kwargs):
+        if not self.slug or self.slug == "ecole-default":
+            from django.utils.text import slugify
+            import uuid
+            base_slug = slugify(self.nom)
+            unique_slug = f"{base_slug}-{str(uuid.uuid4())[:8]}"
+            # Vérifier l'unicité
+            counter = 1
+            while Ecole.objects.filter(slug=unique_slug).exclude(pk=self.pk).exists():
+                unique_slug = f"{base_slug}-{str(uuid.uuid4())[:8]}-{counter}"
+                counter += 1
+            self.slug = unique_slug
+        # Assurer des valeurs par défaut pour les champs requis
+        if not self.ville:
+            self.ville = "Conakry"
+        if not self.prefecture:
+            self.prefecture = "Conakry"
+        super().save(*args, **kwargs)
+    
+    @property
+    def nom_affichage(self):
+        return self.nom_complet or self.nom
+    
+    @property
+    def est_active(self):
+        return self.statut == 'ACTIVE'
 
 class Classe(models.Model):
     """Modèle pour représenter une classe"""

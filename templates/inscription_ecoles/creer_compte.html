@@ -1,0 +1,305 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Créer un compte école{% endblock %}
+
+{% block extra_css %}
+<style>
+    .creation-compte-container {
+        max-width: 600px;
+        margin: 2rem auto;
+        padding: 2rem;
+        background: white;
+        border-radius: 10px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+    
+    .code-verification {
+        background: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    .code-status {
+        display: none;
+        padding: 0.5rem;
+        border-radius: 4px;
+        margin-top: 0.5rem;
+    }
+    
+    .code-valid {
+        background: #d4edda;
+        color: #155724;
+        border: 1px solid #c3e6cb;
+    }
+    
+    .code-invalid {
+        background: #f8d7da;
+        color: #721c24;
+        border: 1px solid #f5c6cb;
+    }
+    
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-control {
+        border-radius: 6px;
+        border: 1px solid #ced4da;
+        padding: 0.75rem;
+    }
+    
+    .form-control:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+    }
+    
+    .btn-primary {
+        background: linear-gradient(135deg, #007bff, #0056b3);
+        border: none;
+        padding: 0.75rem 2rem;
+        border-radius: 6px;
+        font-weight: 500;
+    }
+    
+    .password-strength {
+        margin-top: 0.5rem;
+        font-size: 0.875rem;
+    }
+    
+    .strength-weak { color: #dc3545; }
+    .strength-medium { color: #ffc107; }
+    .strength-strong { color: #28a745; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="creation-compte-container">
+        <div class="text-center mb-4">
+            <h2><i class="fas fa-school"></i> Créer un compte école</h2>
+            <p class="text-muted">Utilisez le code d'accès fourni par l'administrateur</p>
+        </div>
+
+        <form method="post" id="creation-compte-form">
+            {% csrf_token %}
+            
+            <!-- Vérification du code d'accès -->
+            <div class="code-verification">
+                <label for="code_acces" class="form-label">
+                    <i class="fas fa-key"></i> Code d'accès *
+                </label>
+                <input type="text" 
+                       class="form-control" 
+                       id="code_acces" 
+                       name="code_acces" 
+                       placeholder="Entrez votre code d'accès"
+                       required
+                       style="text-transform: uppercase;">
+                <div id="code-status" class="code-status"></div>
+            </div>
+
+            <!-- Informations du compte -->
+            <div id="compte-fields" style="display: none;">
+                <div class="form-group">
+                    <label for="username" class="form-label">
+                        <i class="fas fa-user"></i> Nom d'utilisateur *
+                    </label>
+                    <input type="text" 
+                           class="form-control" 
+                           id="username" 
+                           name="username" 
+                           placeholder="Choisissez un nom d'utilisateur"
+                           required>
+                    <small class="form-text text-muted">
+                        Utilisé pour vous connecter au système
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="password" class="form-label">
+                        <i class="fas fa-lock"></i> Mot de passe *
+                    </label>
+                    <input type="password" 
+                           class="form-control" 
+                           id="password" 
+                           name="password" 
+                           placeholder="Créez un mot de passe sécurisé"
+                           required>
+                    <div id="password-strength" class="password-strength"></div>
+                </div>
+
+                <div class="form-group">
+                    <label for="password_confirm" class="form-label">
+                        <i class="fas fa-lock"></i> Confirmer le mot de passe *
+                    </label>
+                    <input type="password" 
+                           class="form-control" 
+                           id="password_confirm" 
+                           name="password_confirm" 
+                           placeholder="Confirmez votre mot de passe"
+                           required>
+                    <div id="password-match" class="mt-1"></div>
+                </div>
+
+                <div class="text-center">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-check"></i> Créer mon compte
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <div class="text-center mt-4">
+            <p class="text-muted">
+                <i class="fas fa-info-circle"></i> 
+                Vous n'avez pas de code d'accès ? 
+                <a href="{% url 'inscription_ecole' %}">Faire une demande d'inscription</a>
+            </p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const codeInput = document.getElementById('code_acces');
+    const codeStatus = document.getElementById('code-status');
+    const compteFields = document.getElementById('compte-fields');
+    const passwordInput = document.getElementById('password');
+    const passwordConfirm = document.getElementById('password_confirm');
+    const passwordStrength = document.getElementById('password-strength');
+    const passwordMatch = document.getElementById('password-match');
+    
+    let codeValid = false;
+    
+    // Vérification du code d'accès
+    codeInput.addEventListener('input', function() {
+        const code = this.value.trim().toUpperCase();
+        this.value = code;
+        
+        if (code.length >= 8) {
+            verifierCodeAcces(code);
+        } else {
+            codeStatus.style.display = 'none';
+            compteFields.style.display = 'none';
+            codeValid = false;
+        }
+    });
+    
+    function verifierCodeAcces(code) {
+        fetch('{% url "verifier_code_acces" %}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify({code_acces: code})
+        })
+        .then(response => response.json())
+        .then(data => {
+            codeStatus.style.display = 'block';
+            
+            if (data.valid) {
+                codeStatus.className = 'code-status code-valid';
+                codeStatus.innerHTML = `
+                    <i class="fas fa-check-circle"></i> 
+                    Code valide pour l'école: <strong>${data.ecole_nom}</strong><br>
+                    Demandeur: ${data.demandeur}
+                `;
+                compteFields.style.display = 'block';
+                codeValid = true;
+            } else {
+                codeStatus.className = 'code-status code-invalid';
+                codeStatus.innerHTML = `
+                    <i class="fas fa-times-circle"></i> 
+                    ${data.message}
+                `;
+                compteFields.style.display = 'none';
+                codeValid = false;
+            }
+        })
+        .catch(error => {
+            console.error('Erreur:', error);
+            codeStatus.style.display = 'block';
+            codeStatus.className = 'code-status code-invalid';
+            codeStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Erreur de vérification';
+            compteFields.style.display = 'none';
+            codeValid = false;
+        });
+    }
+    
+    // Vérification de la force du mot de passe
+    passwordInput.addEventListener('input', function() {
+        const password = this.value;
+        const strength = calculerForceMotDePasse(password);
+        
+        passwordStrength.innerHTML = `Force: <span class="strength-${strength.level}">${strength.text}</span>`;
+        
+        if (passwordConfirm.value) {
+            verifierCorrespondanceMotDePasse();
+        }
+    });
+    
+    // Vérification de la correspondance des mots de passe
+    passwordConfirm.addEventListener('input', verifierCorrespondanceMotDePasse);
+    
+    function verifierCorrespondanceMotDePasse() {
+        const password = passwordInput.value;
+        const confirm = passwordConfirm.value;
+        
+        if (confirm) {
+            if (password === confirm) {
+                passwordMatch.innerHTML = '<span class="text-success"><i class="fas fa-check"></i> Les mots de passe correspondent</span>';
+            } else {
+                passwordMatch.innerHTML = '<span class="text-danger"><i class="fas fa-times"></i> Les mots de passe ne correspondent pas</span>';
+            }
+        } else {
+            passwordMatch.innerHTML = '';
+        }
+    }
+    
+    function calculerForceMotDePasse(password) {
+        let score = 0;
+        
+        if (password.length >= 8) score++;
+        if (password.length >= 12) score++;
+        if (/[a-z]/.test(password)) score++;
+        if (/[A-Z]/.test(password)) score++;
+        if (/[0-9]/.test(password)) score++;
+        if (/[^A-Za-z0-9]/.test(password)) score++;
+        
+        if (score < 3) return {level: 'weak', text: 'Faible'};
+        if (score < 5) return {level: 'medium', text: 'Moyenne'};
+        return {level: 'strong', text: 'Forte'};
+    }
+    
+    // Validation du formulaire
+    document.getElementById('creation-compte-form').addEventListener('submit', function(e) {
+        if (!codeValid) {
+            e.preventDefault();
+            alert('Veuillez entrer un code d\'accès valide.');
+            return;
+        }
+        
+        const password = passwordInput.value;
+        const confirm = passwordConfirm.value;
+        
+        if (password.length < 8) {
+            e.preventDefault();
+            alert('Le mot de passe doit contenir au moins 8 caractères.');
+            return;
+        }
+        
+        if (password !== confirm) {
+            e.preventDefault();
+            alert('Les mots de passe ne correspondent pas.');
+            return;
+        }
+    });
+});
+</script>
+{% endblock %}

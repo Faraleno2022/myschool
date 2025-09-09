@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Personnaliser Documents - {{ ecole.nom }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .document-editor {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+    .template-selector {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+    .template-card {
+        border: 2px solid #e9ecef;
+        border-radius: 10px;
+        padding: 15px;
+        margin: 10px 0;
+        cursor: pointer;
+        transition: all 0.3s;
+    }
+    .template-card:hover {
+        border-color: {{ ecole.couleur_principale|default:"#1976d2" }};
+        background: #f8f9ff;
+    }
+    .template-card.active {
+        border-color: {{ ecole.couleur_principale|default:"#1976d2" }};
+        background: #e3f2fd;
+    }
+    .editor-tabs {
+        border-bottom: 2px solid #e9ecef;
+        margin-bottom: 20px;
+    }
+    .editor-tab {
+        display: inline-block;
+        padding: 10px 20px;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        margin-right: 10px;
+    }
+    .editor-tab.active {
+        border-bottom-color: {{ ecole.couleur_principale|default:"#1976d2" }};
+        color: {{ ecole.couleur_principale|default:"#1976d2" }};
+    }
+    .preview-frame {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        width: 100%;
+        height: 600px;
+        background: white;
+    }
+    .variable-helper {
+        background: #fff3cd;
+        border: 1px solid #ffeaa7;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 10px 0;
+    }
+    .variable-tag {
+        background: #007bff;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 3px;
+        font-family: monospace;
+        font-size: 12px;
+        margin: 2px;
+        display: inline-block;
+        cursor: pointer;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <h1>📄 Personnaliser les Documents PDF</h1>
+            <p class="text-muted">Créez des documents personnalisés avec le logo et les informations de votre école</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Sélecteur de template -->
+        <div class="col-md-3">
+            <div class="template-selector">
+                <h5>📋 Types de documents</h5>
+                
+                <div class="template-card" data-type="FICHE_INSCRIPTION">
+                    <h6>📝 Fiche d'inscription</h6>
+                    <small class="text-muted">Formulaire d'inscription des élèves</small>
+                </div>
+                
+                <div class="template-card" data-type="RECU_PAIEMENT">
+                    <h6>🧾 Reçu de paiement</h6>
+                    <small class="text-muted">Reçu pour les paiements effectués</small>
+                </div>
+                
+                <div class="template-card" data-type="BULLETIN_NOTES">
+                    <h6>📊 Bulletin de notes</h6>
+                    <small class="text-muted">Bulletin scolaire des élèves</small>
+                </div>
+                
+                <div class="template-card" data-type="ABONNEMENT_BUS">
+                    <h6>🚌 Abonnement bus</h6>
+                    <small class="text-muted">Carte d'abonnement transport</small>
+                </div>
+                
+                <div class="template-card" data-type="CERTIFICAT_SCOLARITE">
+                    <h6>🎓 Certificat de scolarité</h6>
+                    <small class="text-muted">Attestation de scolarité</small>
+                </div>
+            </div>
+
+            <!-- Variables disponibles -->
+            <div class="variable-helper">
+                <h6>🏷️ Variables disponibles</h6>
+                <p class="small">Cliquez pour insérer dans l'éditeur :</p>
+                <div id="variables-list">
+                    <!-- Variables seront chargées dynamiquement -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Éditeur -->
+        <div class="col-md-9">
+            <div class="document-editor">
+                <div class="editor-tabs">
+                    <button class="editor-tab active" data-tab="html">📝 HTML</button>
+                    <button class="editor-tab" data-tab="css">🎨 CSS</button>
+                    <button class="editor-tab" data-tab="preview">👁️ Aperçu</button>
+                </div>
+
+                <!-- Onglet HTML -->
+                <div id="html-tab" class="tab-content">
+                    <textarea id="html-editor" class="form-control" rows="20" placeholder="Contenu HTML du document...">
+<!-- Template par défaut - Fiche d'inscription -->
+<div class="document-header">
+    <div class="logo">
+        {% if ecole.logo %}
+        <img src="{{ ecole.logo.url }}" alt="Logo" style="max-height: 60px;">
+        {% endif %}
+    </div>
+    <div class="school-info">
+        <h2>{{ecole_nom}}</h2>
+        <p>{{ecole_adresse}}</p>
+        <p>Tél: {{ecole_telephone}} | Email: {{ecole_email}}</p>
+    </div>
+</div>
+
+<div class="document-title">
+    <h1>FICHE D'INSCRIPTION</h1>
+    <p>Année scolaire {{annee_scolaire}}</p>
+</div>
+
+<div class="student-info">
+    <h3>Informations de l'élève</h3>
+    <table>
+        <tr>
+            <td><strong>Nom :</strong></td>
+            <td>{{eleve_nom}}</td>
+        </tr>
+        <tr>
+            <td><strong>Prénom :</strong></td>
+            <td>{{eleve_prenom}}</td>
+        </tr>
+        <tr>
+            <td><strong>Date de naissance :</strong></td>
+            <td>{{eleve_date_naissance}}</td>
+        </tr>
+        <tr>
+            <td><strong>Classe :</strong></td>
+            <td>{{eleve_classe}}</td>
+        </tr>
+    </table>
+</div>
+
+<div class="footer">
+    <p>Document généré le {{date_generation}}</p>
+</div>
+                    </textarea>
+                </div>
+
+                <!-- Onglet CSS -->
+                <div id="css-tab" class="tab-content" style="display: none;">
+                    <textarea id="css-editor" class="form-control" rows="20" placeholder="Styles CSS...">
+body {
+    font-family: Arial, sans-serif;
+    margin: 20px;
+    color: #333;
+}
+
+.document-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 3px solid {{ ecole.couleur_principale|default:"#1976d2" }};
+    padding-bottom: 20px;
+    margin-bottom: 30px;
+}
+
+.school-info h2 {
+    color: {{ ecole.couleur_principale|default:"#1976d2" }};
+    margin: 0;
+}
+
+.document-title {
+    text-align: center;
+    margin: 30px 0;
+}
+
+.document-title h1 {
+    color: {{ ecole.couleur_principale|default:"#1976d2" }};
+    font-size: 24px;
+    margin-bottom: 10px;
+}
+
+.student-info table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0;
+}
+
+.student-info td {
+    padding: 10px;
+    border-bottom: 1px solid #eee;
+}
+
+.footer {
+    margin-top: 50px;
+    text-align: center;
+    font-size: 12px;
+    color: #666;
+}
+                    </textarea>
+                </div>
+
+                <!-- Onglet Aperçu -->
+                <div id="preview-tab" class="tab-content" style="display: none;">
+                    <iframe id="preview-frame" class="preview-frame"></iframe>
+                </div>
+
+                <!-- Boutons d'action -->
+                <div class="mt-3">
+                    <button class="btn btn-primary" onclick="updatePreview()">
+                        👁️ Mettre à jour l'aperçu
+                    </button>
+                    <button class="btn btn-success" onclick="saveTemplate()">
+                        💾 Enregistrer le template
+                    </button>
+                    <button class="btn btn-info" onclick="testPDF()">
+                        📄 Tester PDF
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentDocumentType = 'FICHE_INSCRIPTION';
+
+// Variables par type de document
+const documentVariables = {
+    'FICHE_INSCRIPTION': [
+        'ecole_nom', 'ecole_adresse', 'ecole_telephone', 'ecole_email',
+        'eleve_nom', 'eleve_prenom', 'eleve_date_naissance', 'eleve_classe',
+        'responsable_nom', 'responsable_telephone', 'annee_scolaire', 'date_generation'
+    ],
+    'RECU_PAIEMENT': [
+        'ecole_nom', 'ecole_adresse', 'ecole_telephone',
+        'numero_recu', 'eleve_nom', 'eleve_classe', 'montant', 'montant_lettres',
+        'type_paiement', 'mode_paiement', 'date_paiement', 'date_generation'
+    ],
+    'BULLETIN_NOTES': [
+        'ecole_nom', 'eleve_nom', 'eleve_classe', 'trimestre',
+        'moyenne_generale', 'rang', 'effectif', 'appreciation',
+        'date_generation'
+    ],
+    'ABONNEMENT_BUS': [
+        'ecole_nom', 'eleve_nom', 'eleve_photo', 'periode',
+        'montant', 'date_expiration', 'date_generation'
+    ]
+};
+
+// Gestion des onglets
+document.querySelectorAll('.editor-tab').forEach(tab => {
+    tab.addEventListener('click', function() {
+        // Retirer la classe active de tous les onglets
+        document.querySelectorAll('.editor-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.style.display = 'none');
+        
+        // Activer l'onglet cliqué
+        this.classList.add('active');
+        const tabName = this.dataset.tab;
+        document.getElementById(tabName + '-tab').style.display = 'block';
+    });
+});
+
+// Gestion des templates
+document.querySelectorAll('.template-card').forEach(card => {
+    card.addEventListener('click', function() {
+        document.querySelectorAll('.template-card').forEach(c => c.classList.remove('active'));
+        this.classList.add('active');
+        
+        currentDocumentType = this.dataset.type;
+        loadTemplateVariables();
+        loadDefaultTemplate();
+    });
+});
+
+function loadTemplateVariables() {
+    const variablesList = document.getElementById('variables-list');
+    const variables = documentVariables[currentDocumentType] || [];
+    
+    variablesList.innerHTML = variables.map(variable => 
+        `<span class="variable-tag" onclick="insertVariable('${variable}')">{{${variable}}}</span>`
+    ).join('');
+}
+
+function insertVariable(variable) {
+    const htmlEditor = document.getElementById('html-editor');
+    const cursorPos = htmlEditor.selectionStart;
+    const textBefore = htmlEditor.value.substring(0, cursorPos);
+    const textAfter = htmlEditor.value.substring(cursorPos);
+    
+    htmlEditor.value = textBefore + '{{' + variable + '}}' + textAfter;
+    htmlEditor.focus();
+    htmlEditor.setSelectionRange(cursorPos + variable.length + 4, cursorPos + variable.length + 4);
+}
+
+function updatePreview() {
+    const htmlContent = document.getElementById('html-editor').value;
+    const cssContent = document.getElementById('css-editor').value;
+    
+    fetch('{% url "inscription_ecoles:apercu_document" %}', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+        },
+        body: JSON.stringify({
+            type_document: currentDocumentType,
+            contenu_html: htmlContent,
+            styles_css: cssContent
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const previewFrame = document.getElementById('preview-frame');
+            const previewDoc = previewFrame.contentDocument || previewFrame.contentWindow.document;
+            
+            previewDoc.open();
+            previewDoc.write(`
+                <html>
+                <head>
+                    <style>${data.css}</style>
+                </head>
+                <body>${data.html}</body>
+                </html>
+            `);
+            previewDoc.close();
+        }
+    });
+}
+
+function saveTemplate() {
+    // Logique pour sauvegarder le template
+    alert('Template sauvegardé avec succès !');
+}
+
+function testPDF() {
+    // Logique pour générer un PDF de test
+    alert('PDF de test généré !');
+}
+
+function loadDefaultTemplate() {
+    // Charger le template par défaut selon le type
+    // Cette fonction sera implémentée pour charger les templates existants
+}
+
+// Initialisation
+document.addEventListener('DOMContentLoaded', function() {
+    loadTemplateVariables();
+    document.querySelector('.template-card').click(); // Activer le premier template
+});
+</script>
+{% endblock %}

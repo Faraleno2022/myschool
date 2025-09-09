@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Tableau de Bord - {{ ecole.nom }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .dashboard-header {
+        background: linear-gradient(135deg, {{ ecole.couleur_principale|default:"#1976d2" }}, {{ ecole.couleur_secondaire|default:"#424242" }});
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        margin-bottom: 30px;
+    }
+    .stat-card {
+        background: white;
+        border-radius: 10px;
+        padding: 25px;
+        text-align: center;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+        transition: transform 0.3s;
+    }
+    .stat-card:hover {
+        transform: translateY(-5px);
+    }
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: {{ ecole.couleur_principale|default:"#1976d2" }};
+    }
+    .quick-actions {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        box-shadow: 0 3px 15px rgba(0,0,0,0.1);
+    }
+    .action-btn {
+        display: block;
+        width: 100%;
+        padding: 15px;
+        margin: 10px 0;
+        border: none;
+        border-radius: 10px;
+        background: {{ ecole.couleur_principale|default:"#1976d2" }};
+        color: white;
+        text-decoration: none;
+        transition: all 0.3s;
+    }
+    .action-btn:hover {
+        background: {{ ecole.couleur_secondaire|default:"#424242" }};
+        color: white;
+        text-decoration: none;
+        transform: translateX(5px);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- En-tête avec logo et informations école -->
+    <div class="dashboard-header">
+        <div class="row align-items-center">
+            <div class="col-md-2">
+                {% if ecole.logo %}
+                    <img src="{{ ecole.logo.url }}" alt="Logo {{ ecole.nom }}" class="img-fluid" style="max-height: 80px;">
+                {% else %}
+                    <div class="bg-white text-primary rounded p-3" style="font-size: 2rem;">🏫</div>
+                {% endif %}
+            </div>
+            <div class="col-md-10">
+                <h1>{{ ecole.nom_affichage }}</h1>
+                <p class="mb-0">{{ ecole.adresse }}, {{ ecole.ville }}</p>
+                <p class="mb-0">📞 {{ ecole.telephone }} | 📧 {{ ecole.email }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques rapides -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.nb_eleves }}</div>
+                <h5>👨‍🎓 Élèves</h5>
+                <small class="text-muted">Actifs cette année</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.nb_classes }}</div>
+                <h5>🏛️ Classes</h5>
+                <small class="text-muted">Tous niveaux</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-number">{{ stats.nb_enseignants }}</div>
+                <h5>👩‍🏫 Enseignants</h5>
+                <small class="text-muted">Personnel actif</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-card">
+                <div class="stat-number">{{ ecole.get_statut_display }}</div>
+                <h5>📊 Statut</h5>
+                <small class="text-muted">État du compte</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Actions rapides -->
+        <div class="col-md-4">
+            <div class="quick-actions">
+                <h4>⚡ Actions rapides</h4>
+                <a href="{% url 'eleves:ajouter' %}" class="action-btn">
+                    👨‍🎓 Ajouter un élève
+                </a>
+                <a href="{% url 'paiements:nouveau' %}" class="action-btn">
+                    💰 Enregistrer un paiement
+                </a>
+                <a href="{% url 'inscription_ecoles:configuration' %}" class="action-btn">
+                    ⚙️ Configuration école
+                </a>
+                <a href="{% url 'inscription_ecoles:personnaliser_documents' %}" class="action-btn">
+                    📄 Personnaliser documents
+                </a>
+            </div>
+        </div>
+
+        <!-- Activités récentes -->
+        <div class="col-md-8">
+            <div class="quick-actions">
+                <h4>📈 Activités récentes</h4>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Action</th>
+                                <th>Détails</th>
+                                <th>Utilisateur</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>{{ "now"|date:"d/m/Y H:i" }}</td>
+                                <td><span class="badge bg-success">Connexion</span></td>
+                                <td>Accès au tableau de bord</td>
+                                <td>{{ user.get_full_name|default:user.username }}</td>
+                            </tr>
+                            <!-- Plus d'activités seront ajoutées dynamiquement -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertes et notifications -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <h5>💡 Conseil du jour</h5>
+                <p>Personnalisez vos documents PDF avec le logo et les couleurs de votre école pour une meilleure image de marque. 
+                   Rendez-vous dans <a href="{% url 'inscription_ecoles:personnaliser_documents' %}">Personnaliser documents</a>.</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -164,6 +164,25 @@
                         </ul>
                     </li>
                     {% endif %}
+                    {% if user.is_superuser %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" id="multiTenantDropdown" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-building me-1"></i>Multi-Écoles
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{% url 'inscription_ecoles:admin_demandes' %}">
+                                <i class="fas fa-inbox me-1"></i>Demandes d'inscription
+                            </a></li>
+                            <li><a class="dropdown-item" href="{% url 'utilisateurs:gestion_utilisateurs' %}">
+                                <i class="fas fa-users me-1"></i>Gestion utilisateurs
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="{% url 'admin:eleves_ecole_changelist' %}">
+                                <i class="fas fa-school me-1"></i>Toutes les écoles
+                            </a></li>
+                        </ul>
+                    </li>
+                    {% endif %}
                 </ul>
                 
                 <ul class="navbar-nav">

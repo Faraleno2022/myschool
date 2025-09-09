@@ -1,0 +1,368 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Inscription École - Formulaire Complet{% endblock %}
+
+{% block extra_css %}
+<style>
+    .step-indicator {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 2rem;
+    }
+    .step {
+        padding: 10px 20px;
+        margin: 0 5px;
+        border-radius: 20px;
+        background: #e9ecef;
+        color: #6c757d;
+        font-weight: 500;
+    }
+    .step.active {
+        background: #007bff;
+        color: white;
+    }
+    .form-section {
+        display: none;
+        background: white;
+        padding: 2rem;
+        border-radius: 10px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 2rem;
+    }
+    .form-section.active {
+        display: block;
+    }
+    .classe-form {
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        background: #f8f9fa;
+    }
+    .btn-add-classe {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        border-radius: 5px;
+        cursor: pointer;
+    }
+    .btn-remove-classe {
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        border-radius: 3px;
+        cursor: pointer;
+        float: right;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="card">
+                <div class="card-header bg-primary text-white">
+                    <h3 class="mb-0">
+                        <i class="fas fa-school"></i>
+                        Inscription École - Formulaire Complet
+                    </h3>
+                    <p class="mb-0">Créez votre école avec classes et échéances personnalisées</p>
+                </div>
+                
+                <div class="card-body">
+                    <!-- Indicateur d'étapes -->
+                    <div class="step-indicator">
+                        <div class="step active" data-step="1">1. École</div>
+                        <div class="step" data-step="2">2. Classes</div>
+                        <div class="step" data-step="3">3. Échéances</div>
+                        <div class="step" data-step="4">4. Confirmation</div>
+                    </div>
+
+                    <form method="post" enctype="multipart/form-data" id="inscription-form">
+                        {% csrf_token %}
+                        
+                        <!-- Étape 1: Informations de l'école -->
+                        <div class="form-section active" id="step-1">
+                            <h4><i class="fas fa-building"></i> Informations de l'École</h4>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form.nom_ecole.label }}</label>
+                                        {{ form.nom_ecole }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form.type_ecole.label }}</label>
+                                        {{ form.type_ecole }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form.nom_demandeur.label }}</label>
+                                        {{ form.nom_demandeur }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form.prenom_demandeur.label }}</label>
+                                        {{ form.prenom_demandeur }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form.email_demandeur.label }}</label>
+                                        {{ form.email_demandeur }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form.telephone_demandeur.label }}</label>
+                                        {{ form.telephone_demandeur }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="text-end">
+                                <button type="button" class="btn btn-primary" onclick="nextStep(2)">
+                                    Suivant <i class="fas fa-arrow-right"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Étape 2: Classes -->
+                        <div class="form-section" id="step-2">
+                            <h4><i class="fas fa-chalkboard"></i> Classes de l'École</h4>
+                            <p class="text-muted">Ajoutez les classes avec leurs tarifications</p>
+                            
+                            <div id="classes-container">
+                                {{ formset_classes.management_form }}
+                                {% for form_classe in formset_classes %}
+                                    <div class="classe-form">
+                                        {% if not forloop.first %}
+                                            <button type="button" class="btn-remove-classe" onclick="removeClasse(this)">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        {% endif %}
+                                        
+                                        <h6>Classe {{ forloop.counter }}</h6>
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                <label>{{ form_classe.nom.label }}</label>
+                                                {{ form_classe.nom }}
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label>{{ form_classe.niveau.label }}</label>
+                                                {{ form_classe.niveau }}
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label>{{ form_classe.capacite_max.label }}</label>
+                                                {{ form_classe.capacite_max }}
+                                            </div>
+                                        </div>
+                                        
+                                        <div class="row mt-2">
+                                            <div class="col-md-3">
+                                                <label>{{ form_classe.frais_inscription.label }}</label>
+                                                {{ form_classe.frais_inscription }}
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label>{{ form_classe.tranche_1.label }}</label>
+                                                {{ form_classe.tranche_1 }}
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label>{{ form_classe.tranche_2.label }}</label>
+                                                {{ form_classe.tranche_2 }}
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label>{{ form_classe.tranche_3.label }}</label>
+                                                {{ form_classe.tranche_3 }}
+                                            </div>
+                                        </div>
+                                        
+                                        {% for hidden in form_classe.hidden_fields %}
+                                            {{ hidden }}
+                                        {% endfor %}
+                                    </div>
+                                {% endfor %}
+                            </div>
+                            
+                            <button type="button" class="btn-add-classe mb-3" onclick="addClasse()">
+                                <i class="fas fa-plus"></i> Ajouter une classe
+                            </button>
+                            
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" onclick="prevStep(1)">
+                                    <i class="fas fa-arrow-left"></i> Précédent
+                                </button>
+                                <button type="button" class="btn btn-primary" onclick="nextStep(3)">
+                                    Suivant <i class="fas fa-arrow-right"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Étape 3: Échéances -->
+                        <div class="form-section" id="step-3">
+                            <h4><i class="fas fa-calendar-alt"></i> Échéancier de Paiement</h4>
+                            <p class="text-muted">Définissez les dates d'échéance pour les paiements</p>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form_echeancier.annee_scolaire.label }}</label>
+                                        {{ form_echeancier.annee_scolaire }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form_echeancier.penalite_retard.label }}</label>
+                                        {{ form_echeancier.penalite_retard }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form_echeancier.date_echeance_inscription.label }}</label>
+                                        {{ form_echeancier.date_echeance_inscription }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form_echeancier.date_echeance_tranche_1.label }}</label>
+                                        {{ form_echeancier.date_echeance_tranche_1 }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form_echeancier.date_echeance_tranche_2.label }}</label>
+                                        {{ form_echeancier.date_echeance_tranche_2 }}
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-group mb-3">
+                                        <label>{{ form_echeancier.date_echeance_tranche_3.label }}</label>
+                                        {{ form_echeancier.date_echeance_tranche_3 }}
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-check mb-3">
+                                {{ form_echeancier.autoriser_paiement_partiel }}
+                                <label class="form-check-label">{{ form_echeancier.autoriser_paiement_partiel.label }}</label>
+                            </div>
+                            
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" onclick="prevStep(2)">
+                                    <i class="fas fa-arrow-left"></i> Précédent
+                                </button>
+                                <button type="button" class="btn btn-primary" onclick="nextStep(4)">
+                                    Suivant <i class="fas fa-arrow-right"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Étape 4: Confirmation -->
+                        <div class="form-section" id="step-4">
+                            <h4><i class="fas fa-check-circle"></i> Confirmation</h4>
+                            <p class="text-muted">Vérifiez vos informations avant soumission</p>
+                            
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                Votre demande sera traitée par notre équipe dans les plus brefs délais.
+                                Vous recevrez un email de confirmation avec vos identifiants de connexion.
+                            </div>
+                            
+                            <div class="d-flex justify-content-between">
+                                <button type="button" class="btn btn-secondary" onclick="prevStep(3)">
+                                    <i class="fas fa-arrow-left"></i> Précédent
+                                </button>
+                                <button type="submit" class="btn btn-success">
+                                    <i class="fas fa-paper-plane"></i> Envoyer la demande
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function nextStep(step) {
+    // Masquer toutes les sections
+    document.querySelectorAll('.form-section').forEach(section => {
+        section.classList.remove('active');
+    });
+    document.querySelectorAll('.step').forEach(stepEl => {
+        stepEl.classList.remove('active');
+    });
+    
+    // Afficher la section suivante
+    document.getElementById('step-' + step).classList.add('active');
+    document.querySelector('[data-step="' + step + '"]').classList.add('active');
+}
+
+function prevStep(step) {
+    nextStep(step);
+}
+
+function addClasse() {
+    // Logique pour ajouter une nouvelle classe (formset Django)
+    const container = document.getElementById('classes-container');
+    const totalForms = document.querySelector('#id_classes-TOTAL_FORMS');
+    const formNum = parseInt(totalForms.value);
+    
+    // Cloner le dernier formulaire et mettre à jour les IDs
+    const lastForm = container.querySelector('.classe-form:last-child');
+    const newForm = lastForm.cloneNode(true);
+    
+    // Mettre à jour les attributs
+    newForm.querySelectorAll('input, select').forEach(input => {
+        const name = input.getAttribute('name');
+        if (name) {
+            input.setAttribute('name', name.replace(/classes-\d+/, 'classes-' + formNum));
+            input.setAttribute('id', 'id_' + name.replace(/classes-\d+/, 'classes-' + formNum));
+            input.value = '';
+        }
+    });
+    
+    // Ajouter le bouton de suppression
+    if (!newForm.querySelector('.btn-remove-classe')) {
+        const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
+        removeBtn.className = 'btn-remove-classe';
+        removeBtn.innerHTML = '<i class="fas fa-times"></i>';
+        removeBtn.onclick = function() { removeClasse(this); };
+        newForm.appendChild(removeBtn);
+    }
+    
+    container.appendChild(newForm);
+    totalForms.value = formNum + 1;
+}
+
+function removeClasse(button) {
+    const form = button.closest('.classe-form');
+    form.remove();
+    
+    // Mettre à jour le compteur
+    const totalForms = document.querySelector('#id_classes-TOTAL_FORMS');
+    totalForms.value = parseInt(totalForms.value) - 1;
+}
+</script>
+{% endblock %}

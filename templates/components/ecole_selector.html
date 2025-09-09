@@ -1,0 +1,79 @@
+{% load static %}
+
+<!-- Sélecteur d'école pour les super admins -->
+{% if user.is_superuser and ecoles_disponibles %}
+<div class="card mb-4 border-primary">
+    <div class="card-header bg-primary text-white">
+        <h6 class="mb-0">
+            <i class="fas fa-school me-2"></i>Sélection d'école (Mode Administrateur)
+        </h6>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{% url 'utilisateurs:changer_ecole' %}" class="d-flex align-items-center gap-3">
+            {% csrf_token %}
+            <div class="flex-grow-1">
+                <select name="ecole_id" class="form-select" onchange="this.form.submit()">
+                    <option value="">-- Toutes les écoles --</option>
+                    {% for ecole in ecoles_disponibles %}
+                        <option value="{{ ecole.id }}" 
+                                {% if ecole_courante and ecole.id == ecole_courante.id %}selected{% endif %}>
+                            {{ ecole.nom }} ({{ ecole.get_type_ecole_display }})
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit" class="btn btn-outline-primary btn-sm">
+                <i class="fas fa-sync-alt"></i> Changer
+            </button>
+        </form>
+        
+        {% if ecole_courante %}
+        <div class="mt-3 p-3 bg-light rounded">
+            <div class="row">
+                <div class="col-md-6">
+                    <strong>École courante :</strong> {{ ecole_courante.nom }}<br>
+                    <small class="text-muted">{{ ecole_courante.adresse }}</small>
+                </div>
+                <div class="col-md-6">
+                    <strong>Type :</strong> {{ ecole_courante.get_type_ecole_display }}<br>
+                    <strong>Statut :</strong> 
+                    <span class="badge bg-{% if ecole_courante.statut == 'ACTIVE' %}success{% else %}warning{% endif %}">
+                        {{ ecole_courante.get_statut_display }}
+                    </span>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="mt-3 p-3 bg-warning bg-opacity-10 rounded">
+            <i class="fas fa-info-circle text-warning me-2"></i>
+            <strong>Mode global :</strong> Vous consultez les données de toutes les écoles.
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Affichage de l'école courante pour les utilisateurs normaux -->
+{% if not user.is_superuser and ecole_courante %}
+<div class="card mb-4 border-info">
+    <div class="card-header bg-info text-white">
+        <h6 class="mb-0">
+            <i class="fas fa-school me-2"></i>{{ ecole_courante.nom }}
+        </h6>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-8">
+                <p class="mb-1"><strong>Adresse :</strong> {{ ecole_courante.adresse }}</p>
+                <p class="mb-1"><strong>Téléphone :</strong> {{ ecole_courante.telephone }}</p>
+                <p class="mb-0"><strong>Email :</strong> {{ ecole_courante.email }}</p>
+            </div>
+            <div class="col-md-4 text-end">
+                <span class="badge bg-{% if ecole_courante.statut == 'ACTIVE' %}success{% else %}warning{% endif %} fs-6">
+                    {{ ecole_courante.get_statut_display }}
+                </span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}

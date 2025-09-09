@@ -1,0 +1,267 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .user-card {
+        transition: transform 0.2s;
+    }
+    .user-card:hover {
+        transform: translateY(-2px);
+    }
+    .role-badge {
+        font-size: 0.8rem;
+    }
+    .permission-indicator {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 4px;
+    }
+    .permission-active {
+        background-color: #28a745;
+    }
+    .permission-inactive {
+        background-color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item active">{{ titre_page }}</li>
+{% endblock %}
+
+{% block content %}
+<!-- Sélecteur d'école pour super admins -->
+{% include 'components/ecole_selector.html' %}
+
+<!-- Filtres et recherche -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-filter me-2"></i>Filtres et recherche
+        </h5>
+    </div>
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-6">
+                <label for="search" class="form-label">Rechercher</label>
+                <input type="text" class="form-control" id="search" name="search" 
+                       value="{{ search }}" placeholder="Nom, prénom, email...">
+            </div>
+            <div class="col-md-4">
+                <label for="role" class="form-label">Rôle</label>
+                <select class="form-select" id="role" name="role">
+                    <option value="">Tous les rôles</option>
+                    {% for value, label in roles_choices %}
+                        <option value="{{ value }}" {% if role_filter == value %}selected{% endif %}>
+                            {{ label }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-primary w-100">
+                    <i class="fas fa-search me-1"></i>Filtrer
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Actions rapides -->
+<div class="card mb-4">
+    <div class="card-header">
+        <h5 class="mb-0">
+            <i class="fas fa-tools me-2"></i>Actions rapides
+        </h5>
+    </div>
+    <div class="card-body">
+        <div class="row g-2">
+            <div class="col-auto">
+                <a href="{% url 'utilisateurs:comptable_create' %}" class="btn btn-success">
+                    <i class="fas fa-user-plus me-1"></i>Nouveau comptable
+                </a>
+            </div>
+            <div class="col-auto">
+                <a href="{% url 'utilisateurs:gestion_permissions' %}" class="btn btn-info">
+                    <i class="fas fa-key me-1"></i>Gérer les permissions
+                </a>
+            </div>
+            {% if user.is_superuser %}
+            <div class="col-auto">
+                <a href="{% url 'admin:utilisateurs_profil_changelist' %}" class="btn btn-outline-primary">
+                    <i class="fas fa-cog me-1"></i>Admin Django
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Liste des utilisateurs -->
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+            <i class="fas fa-users me-2"></i>Utilisateurs
+            <span class="badge bg-primary ms-2">{{ page_obj.paginator.count }}</span>
+        </h5>
+    </div>
+    <div class="card-body">
+        {% if page_obj %}
+            <div class="row">
+                {% for profil in page_obj %}
+                <div class="col-md-6 col-lg-4 mb-4">
+                    <div class="card user-card h-100">
+                        <div class="card-body">
+                            <div class="d-flex align-items-start mb-3">
+                                {% if profil.photo %}
+                                    <img src="{{ profil.photo.url }}" alt="Photo" 
+                                         class="rounded-circle me-3" width="50" height="50">
+                                {% else %}
+                                    <div class="bg-secondary rounded-circle me-3 d-flex align-items-center justify-content-center" 
+                                         style="width: 50px; height: 50px;">
+                                        <i class="fas fa-user text-white"></i>
+                                    </div>
+                                {% endif %}
+                                <div class="flex-grow-1">
+                                    <h6 class="card-title mb-1">{{ profil.nom_complet }}</h6>
+                                    <span class="badge role-badge bg-{% if profil.role == 'ADMIN' %}danger{% elif profil.role == 'DIRECTEUR' %}warning{% elif profil.role == 'COMPTABLE' %}info{% else %}secondary{% endif %}">
+                                        {{ profil.get_role_display }}
+                                    </span>
+                                </div>
+                            </div>
+                            
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-envelope me-1"></i>{{ profil.user.email }}
+                                </small>
+                            </div>
+                            
+                            <div class="mb-2">
+                                <small class="text-muted">
+                                    <i class="fas fa-phone me-1"></i>{{ profil.telephone }}
+                                </small>
+                            </div>
+                            
+                            {% if profil.ecole %}
+                            <div class="mb-3">
+                                <small class="text-muted">
+                                    <i class="fas fa-school me-1"></i>{{ profil.ecole.nom }}
+                                </small>
+                            </div>
+                            {% endif %}
+                            
+                            <!-- Indicateurs de permissions -->
+                            <div class="mb-3">
+                                <small class="text-muted d-block mb-1">Permissions :</small>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <span class="permission-indicator {% if profil.peut_valider_paiements %}permission-active{% else %}permission-inactive{% endif %}" 
+                                          title="Valider paiements"></span>
+                                    <span class="permission-indicator {% if profil.peut_valider_depenses %}permission-active{% else %}permission-inactive{% endif %}" 
+                                          title="Valider dépenses"></span>
+                                    <span class="permission-indicator {% if profil.peut_generer_rapports %}permission-active{% else %}permission-inactive{% endif %}" 
+                                          title="Générer rapports"></span>
+                                    <span class="permission-indicator {% if profil.peut_gerer_utilisateurs %}permission-active{% else %}permission-inactive{% endif %}" 
+                                          title="Gérer utilisateurs"></span>
+                                </div>
+                            </div>
+                            
+                            <!-- Statut -->
+                            <div class="mb-3">
+                                {% if profil.actif %}
+                                    <span class="badge bg-success">Actif</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Inactif</span>
+                                {% endif %}
+                                
+                                {% if profil.user.is_superuser %}
+                                    <span class="badge bg-warning">Super Admin</span>
+                                {% endif %}
+                            </div>
+                            
+                            <!-- Actions -->
+                            <div class="d-flex gap-2">
+                                <a href="{% url 'utilisateurs:update_permissions' profil.id %}" 
+                                   class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-key"></i>
+                                </a>
+                                {% if user.is_superuser %}
+                                <a href="{% url 'admin:utilisateurs_profil_change' profil.id %}" 
+                                   class="btn btn-sm btn-outline-secondary">
+                                    <i class="fas fa-edit"></i>
+                                </a>
+                                {% endif %}
+                            </div>
+                        </div>
+                        
+                        {% if profil.derniere_connexion %}
+                        <div class="card-footer text-muted">
+                            <small>
+                                <i class="fas fa-clock me-1"></i>
+                                Dernière connexion : {{ profil.derniere_connexion|date:"d/m/Y H:i" }}
+                            </small>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            <!-- Pagination -->
+            {% if page_obj.has_other_pages %}
+            <nav aria-label="Navigation des utilisateurs">
+                <ul class="pagination justify-content-center">
+                    {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if search %}&search={{ search }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}">
+                                <i class="fas fa-angle-double-left"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search %}&search={{ search }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}">
+                                <i class="fas fa-angle-left"></i>
+                            </a>
+                        </li>
+                    {% endif %}
+                    
+                    {% for num in page_obj.paginator.page_range %}
+                        {% if page_obj.number == num %}
+                            <li class="page-item active">
+                                <span class="page-link">{{ num }}</span>
+                            </li>
+                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ num }}{% if search %}&search={{ search }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}">{{ num }}</a>
+                            </li>
+                        {% endif %}
+                    {% endfor %}
+                    
+                    {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search %}&search={{ search }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}">
+                                <i class="fas fa-angle-right"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search %}&search={{ search }}{% endif %}{% if role_filter %}&role={{ role_filter }}{% endif %}">
+                                <i class="fas fa-angle-double-right"></i>
+                            </a>
+                        </li>
+                    {% endif %}
+                </ul>
+            </nav>
+            {% endif %}
+        {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                <h5 class="text-muted">Aucun utilisateur trouvé</h5>
+                <p class="text-muted">Essayez de modifier vos critères de recherche.</p>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

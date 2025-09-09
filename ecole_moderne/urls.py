@@ -19,11 +19,24 @@ from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
 from django.views.generic import TemplateView
+from django.http import HttpResponse
+from django.views.decorators.cache import cache_control
+
+# Fonction pour servir le favicon
+@cache_control(max_age=60 * 60 * 24, immutable=True, public=True)
+def favicon_view(request):
+    return HttpResponse(status=204)  # No Content
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
     path('index/', TemplateView.as_view(template_name='home.html'), name='index'),
+    path('favicon.ico', favicon_view, name='favicon'),
+    
+    # Inscription et gestion multi-tenant des écoles
+    path('ecole/', include('inscription_ecoles.urls')),
+    
+    # Modules principaux
     path('eleves/', include('eleves.urls')),
     path('paiements/', include('paiements.urls')),
     path('depenses/', include('depenses.urls')),

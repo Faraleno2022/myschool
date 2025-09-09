@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Demande envoyée - École Moderne{% endblock %}
+
+{% block extra_css %}
+<style>
+    .merci-container {
+        max-width: 600px;
+        margin: 50px auto;
+        text-align: center;
+        padding: 40px;
+        background: white;
+        border-radius: 15px;
+        box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+    }
+    .success-icon {
+        font-size: 80px;
+        color: #4caf50;
+        margin-bottom: 20px;
+    }
+    .next-steps {
+        background: #f8f9fa;
+        border-radius: 10px;
+        padding: 20px;
+        margin: 30px 0;
+        text-align: left;
+    }
+    .step {
+        display: flex;
+        align-items: center;
+        margin: 15px 0;
+    }
+    .step-number {
+        background: #1976d2;
+        color: white;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 15px;
+        font-weight: bold;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="merci-container">
+    <div class="success-icon">✅</div>
+    <h1 class="text-success">Demande envoyée avec succès !</h1>
+    <p class="lead">Merci pour votre demande d'inscription à notre plateforme École Moderne.</p>
+    
+    <div class="next-steps">
+        <h4>📋 Prochaines étapes :</h4>
+        <div class="step">
+            <div class="step-number">1</div>
+            <div>
+                <strong>Vérification de votre demande</strong><br>
+                <small class="text-muted">Nous examinerons vos informations sous 24-48h</small>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-number">2</div>
+            <div>
+                <strong>Validation des documents</strong><br>
+                <small class="text-muted">Vérification des autorisations et documents fournis</small>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-number">3</div>
+            <div>
+                <strong>Création de votre compte</strong><br>
+                <small class="text-muted">Activation de votre espace école personnalisé</small>
+            </div>
+        </div>
+        <div class="step">
+            <div class="step-number">4</div>
+            <div>
+                <strong>Formation et accompagnement</strong><br>
+                <small class="text-muted">Guide d'utilisation et support technique</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <strong>📧 Email de confirmation</strong><br>
+        Un email de confirmation a été envoyé à votre adresse. Vous recevrez une notification dès que votre demande sera traitée.
+    </div>
+
+    <div class="mt-4">
+        <a href="{% url 'home' %}" class="btn btn-primary btn-lg">
+            🏠 Retour à l'accueil
+        </a>
+    </div>
+</div>
+{% endblock %}

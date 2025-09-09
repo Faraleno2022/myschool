@@ -1,0 +1,275 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ titre_page }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .profile-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 0.5rem;
+        padding: 2rem;
+        margin-bottom: 2rem;
+    }
+    .profile-avatar {
+        width: 100px;
+        height: 100px;
+        border: 4px solid white;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .permission-card {
+        border-left: 4px solid #007bff;
+    }
+    .permission-active {
+        color: #28a745;
+    }
+    .permission-inactive {
+        color: #dc3545;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumb_items %}
+<li class="breadcrumb-item active">{{ titre_page }}</li>
+{% endblock %}
+
+{% block content %}
+<!-- En-tête du profil -->
+<div class="profile-header">
+    <div class="row align-items-center">
+        <div class="col-auto">
+            {% if profil.photo %}
+                <img src="{{ profil.photo.url }}" alt="Photo de profil" 
+                     class="rounded-circle profile-avatar">
+            {% else %}
+                <div class="rounded-circle profile-avatar bg-white d-flex align-items-center justify-content-center">
+                    <i class="fas fa-user fa-3x text-primary"></i>
+                </div>
+            {% endif %}
+        </div>
+        <div class="col">
+            <h2 class="mb-1">{{ profil.nom_complet }}</h2>
+            <h5 class="mb-2 opacity-75">{{ profil.get_role_display }}</h5>
+            {% if profil.ecole %}
+                <p class="mb-0 opacity-75">
+                    <i class="fas fa-school me-2"></i>{{ profil.ecole.nom }}
+                </p>
+            {% endif %}
+        </div>
+        <div class="col-auto">
+            {% if profil.actif %}
+                <span class="badge bg-success fs-6">Compte actif</span>
+            {% else %}
+                <span class="badge bg-danger fs-6">Compte inactif</span>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Informations personnelles -->
+    <div class="col-lg-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-user me-2"></i>Informations personnelles
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Nom d'utilisateur</label>
+                        <p class="mb-0">{{ profil.user.username }}</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Email</label>
+                        <p class="mb-0">{{ profil.user.email }}</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Prénom</label>
+                        <p class="mb-0">{{ profil.user.first_name|default:"Non renseigné" }}</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Nom</label>
+                        <p class="mb-0">{{ profil.user.last_name|default:"Non renseigné" }}</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Téléphone</label>
+                        <p class="mb-0">{{ profil.telephone }}</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Rôle</label>
+                        <p class="mb-0">
+                            <span class="badge bg-{% if profil.role == 'ADMIN' %}danger{% elif profil.role == 'DIRECTEUR' %}warning{% elif profil.role == 'COMPTABLE' %}info{% else %}secondary{% endif %}">
+                                {{ profil.get_role_display }}
+                            </span>
+                        </p>
+                    </div>
+                </div>
+                
+                {% if profil.adresse %}
+                <div class="mb-3">
+                    <label class="form-label text-muted">Adresse</label>
+                    <p class="mb-0">{{ profil.adresse }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Informations de l'école -->
+        {% if profil.ecole %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-school me-2"></i>École assignée
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Nom de l'école</label>
+                        <p class="mb-0">{{ profil.ecole.nom }}</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Type</label>
+                        <p class="mb-0">{{ profil.ecole.get_type_ecole_display }}</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Téléphone</label>
+                        <p class="mb-0">{{ profil.ecole.telephone }}</p>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <label class="form-label text-muted">Email</label>
+                        <p class="mb-0">{{ profil.ecole.email }}</p>
+                    </div>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label text-muted">Adresse</label>
+                    <p class="mb-0">{{ profil.ecole.adresse }}</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Permissions et statistiques -->
+    <div class="col-lg-4">
+        <!-- Permissions -->
+        <div class="card permission-card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-key me-2"></i>Permissions
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span>Valider les paiements</span>
+                        <i class="fas fa-{% if profil.peut_valider_paiements %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span>Valider les dépenses</span>
+                        <i class="fas fa-{% if profil.peut_valider_depenses %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span>Générer des rapports</span>
+                        <i class="fas fa-{% if profil.peut_generer_rapports %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                        <span>Gérer les utilisateurs</span>
+                        <i class="fas fa-{% if profil.peut_gerer_utilisateurs %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <h6 class="text-muted mb-3">Permissions détaillées</h6>
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
+                        <small>Ajouter des paiements</small>
+                        <i class="fas fa-{% if profil.peut_ajouter_paiements %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
+                        <small>Modifier des paiements</small>
+                        <i class="fas fa-{% if profil.peut_modifier_paiements %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
+                        <small>Supprimer des paiements</small>
+                        <i class="fas fa-{% if profil.peut_supprimer_paiements %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
+                        <small>Ajouter des dépenses</small>
+                        <i class="fas fa-{% if profil.peut_ajouter_depenses %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
+                        <small>Modifier des dépenses</small>
+                        <i class="fas fa-{% if profil.peut_modifier_depenses %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-center px-0 py-1">
+                        <small>Supprimer des dépenses</small>
+                        <i class="fas fa-{% if profil.peut_supprimer_depenses %}check permission-active{% else %}times permission-inactive{% endif %}"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Informations de connexion -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-clock me-2"></i>Activité
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label text-muted">Compte créé le</label>
+                    <p class="mb-0">{{ profil.date_creation|date:"d/m/Y à H:i" }}</p>
+                </div>
+                
+                {% if profil.derniere_connexion %}
+                <div class="mb-3">
+                    <label class="form-label text-muted">Dernière connexion</label>
+                    <p class="mb-0">{{ profil.derniere_connexion|date:"d/m/Y à H:i" }}</p>
+                </div>
+                {% endif %}
+                
+                <div class="mb-0">
+                    <label class="form-label text-muted">Dernière modification</label>
+                    <p class="mb-0">{{ profil.date_modification|date:"d/m/Y à H:i" }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Actions -->
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <h5 class="card-title">
+                    <i class="fas fa-tools me-2"></i>Actions
+                </h5>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{% url 'utilisateurs:password_change' %}" class="btn btn-primary">
+                        <i class="fas fa-key me-1"></i>Changer le mot de passe
+                    </a>
+                    
+                    {% if user.is_superuser %}
+                    <a href="{% url 'admin:utilisateurs_profil_change' profil.id %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-edit me-1"></i>Modifier le profil
+                    </a>
+                    {% endif %}
+                    
+                    {% if profil.peut_gerer_utilisateurs or user.is_superuser %}
+                    <a href="{% url 'utilisateurs:gestion_utilisateurs' %}" class="btn btn-outline-info">
+                        <i class="fas fa-users me-1"></i>Gérer les utilisateurs
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

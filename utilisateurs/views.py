@@ -3,9 +3,12 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.db.models import Q
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 
 from .forms import ComptableCreationForm
 from .models import Profil
+from .decorators import admin_or_directeur_required
 from eleves.models import Ecole
 
 
@@ -47,6 +50,101 @@ def comptable_create_view(request):
         'form': form,
         'title': "Créer un comptable",
     })
+
+
+@login_required
+@require_POST
+def changer_ecole_view(request):
+    """Vue pour changer l'école sélectionnée (super admins uniquement)"""
+    if not request.user.is_superuser:
+        messages.error(request, "Accès refusé.")
+        return redirect('home')
+    
+    ecole_id = request.POST.get('ecole_id')
+    
+    if ecole_id:
+        try:
+            ecole = Ecole.objects.get(id=ecole_id, statut='ACTIVE')
+            request.session['ecole_selectionnee'] = ecole.id
+            messages.success(request, f"École '{ecole.nom}' sélectionnée.")
+        except Ecole.DoesNotExist:
+            messages.error(request, "École non trouvée ou inactive.")
+    else:
+        # Désélectionner l'école (mode global)
+        if 'ecole_selectionnee' in request.session:
+            del request.session['ecole_selectionnee']
+        messages.info(request, "Mode global activé - toutes les écoles.")
+    
+    # Rediriger vers la page précédente ou l'accueil
+    return redirect(request.META.get('HTTP_REFERER', 'home'))
+
+
+@login_required
+@admin_or_directeur_required
+def gestion_utilisateurs_view(request):
+    """Vue pour la gestion des utilisateurs par école"""
+    # Récupérer les utilisateurs selon le contexte
+    if request.user.is_superuser:
+        # Super admin voit tous les utilisateurs
+        if hasattr(request, 'ecole_courante') and request.ecole_courante:
+            profils = Profil.objects.filter(ecole=request.ecole_courante)
+        else:
+            profils = Profil.objects.all()
+    else:
+        # Admin/Directeur ne voit que les utilisateurs de son école
+        try:
+            profil_user = request.user.profil
+            profils = Profil.objects.filter(ecole=profil_user.ecole)
+        except Profil.DoesNotExist:
+            messages.error(request, "Profil utilisateur non configuré.")
+            return redirect('home')
+    
+    # Recherche
+    search = request.GET.get('search', '')
+    if search:
+        profils = profils.filter(
+            Q(user__username__icontains=search) |
+            Q(user__first_name__icontains=search) |
+            Q(user__last_name__icontains=search) |
+            Q(user__email__icontains=search)
+        )
+    
+    # Filtrage par rôle
+    role_filter = request.GET.get('role', '')
+    if role_filter:
+        profils = profils.filter(role=role_filter)
+    
+    # Pagination
+    paginator = Paginator(profils.select_related('user', 'ecole'), 20)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'page_obj': page_obj,
+        'search': search,
+        'role_filter': role_filter,
+        'roles_choices': Profil.ROLE_CHOICES,
+        'titre_page': 'Gestion des utilisateurs',
+    }
+    
+    return render(request, 'utilisateurs/gestion_utilisateurs.html', context)
+
+
+@login_required
+def profil_view(request):
+    """Vue pour afficher et modifier le profil utilisateur"""
+    try:
+        profil = request.user.profil
+    except Profil.DoesNotExist:
+        messages.error(request, "Profil utilisateur non configuré.")
+        return redirect('home')
+    
+    context = {
+        'profil': profil,
+        'titre_page': 'Mon profil',
+    }
+    
+    return render(request, 'utilisateurs/profil.html', context)
 
 
 @login_required
