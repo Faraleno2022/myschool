@@ -35,7 +35,14 @@ SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'dev-unsafe-key')
 # Piloté par la variable d'environnement DJANGO_DEBUG: 'true'/'false'
 DEBUG = os.environ.get('DJANGO_DEBUG', 'true').lower() == 'true'
 
-ALLOWED_HOSTS = ['127.0.0.1', 'localhost', 'testserver', 'gshadjakanfingdiane.pythonanywhere.com']
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+    'testserver',
+    'gshadjakanfingdiane.pythonanywhere.com',
+    'myschoolgn.pythonanywhere.com',
+    'faraleno2022.pythonanywhere.com'
+]
 
 # CSRF trusted origins: use production origin in prod, local http origins in dev
 if DEBUG:
@@ -44,7 +51,11 @@ if DEBUG:
         'http://localhost:8000',
     ]
 else:
-    CSRF_TRUSTED_ORIGINS = ['https://gshadjakanfingdiane.pythonanywhere.com']
+    CSRF_TRUSTED_ORIGINS = [
+        'https://gshadjakanfingdiane.pythonanywhere.com',
+        'https://myschoolgn.pythonanywhere.com',
+        'https://faraleno2022.pythonanywhere.com'
+    ]
 
 # ===== PARAMÈTRES DE SÉCURITÉ RENFORCÉS =====
 

@@ -164,7 +164,8 @@ cython_debug/
 db_backup.sqlite3
 logs/
 staticfiles/
-media/eleves/photos/
+# media/eleves/photos/ - Commenté pour inclure les images d'exemple
+# Décommentez cette ligne en production pour exclure les vraies photos d'élèves
 .DS_Store
 Thumbs.db
 
