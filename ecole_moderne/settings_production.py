@@ -32,7 +32,7 @@ DATABASES = {
         'NAME': 'myschoolgn$myschool',
         'USER': 'myschoolgn',
         'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': 'myschoolgn.mysql.pythonanywhere-services.com',
+        'HOST': 'myschoolgn.mysql.pythonanywhere.com',
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
