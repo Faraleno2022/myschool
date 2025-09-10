@@ -17,6 +17,7 @@ DEBUG = False
 
 # Hosts autorisés pour PythonAnywhere
 ALLOWED_HOSTS = [
+    'myschoolgn.pythonanywhere.com',
     'www.myschoolgn.space',
     'myschoolgn.space',
     'webapp-2750169.pythonanywhere.com',
