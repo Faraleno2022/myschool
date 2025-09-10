@@ -29,7 +29,7 @@ ALLOWED_HOSTS = [
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'myschoolgn$myschool',
+        'NAME': 'myschoolgn$myschooldb',
         'USER': 'myschoolgn',
         'PASSWORD': os.environ.get('DB_PASSWORD', ''),
         'HOST': 'myschoolgn.mysql.pythonanywhere-services.com',
