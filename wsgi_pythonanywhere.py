@@ -1,17 +1,17 @@
 """
-WSGI config pour PythonAnywhere
-Ce fichier doit être placé dans le répertoire racine du projet sur PythonAnywhere
+WSGI config pour PythonAnywhere - École Moderne
+Ce fichier doit être copié dans /var/www/www_myschoolgn_space_wsgi.py
 """
 
 import os
 import sys
 
 # Ajouter le chemin du projet
-path = '/home/faraleno2022/myschool'
+path = '/home/myschoolgn/monécole'
 if path not in sys.path:
     sys.path.insert(0, path)
 
-# Configurer Django
+# Utiliser les settings de production
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ecole_moderne.settings_production')
 
 from django.core.wsgi import get_wsgi_application

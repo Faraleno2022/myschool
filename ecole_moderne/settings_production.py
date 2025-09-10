@@ -5,6 +5,10 @@ import os
 from pathlib import Path
 from .settings import *
 
+# Configuration PyMySQL pour remplacer MySQLdb
+import pymysql
+pymysql.install_as_MySQLdb()
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -13,8 +17,9 @@ DEBUG = False
 
 # Hosts autorisés pour PythonAnywhere
 ALLOWED_HOSTS = [
-    'faraleno2022.pythonanywhere.com',
-    'www.faraleno2022.pythonanywhere.com',
+    'www.myschoolgn.space',
+    'myschoolgn.space',
+    'webapp-2750169.pythonanywhere.com',
     'localhost',
     '127.0.0.1',
 ]
@@ -24,10 +29,10 @@ ALLOWED_HOSTS = [
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'faraleno2022$myschool',
-        'USER': 'faraleno2022',
+        'NAME': 'myschoolgn$myschool',
+        'USER': 'myschoolgn',
         'PASSWORD': os.environ.get('DB_PASSWORD', ''),
-        'HOST': 'faraleno2022.mysql.pythonanywhere-services.com',
+        'HOST': 'myschoolgn.mysql.pythonanywhere-services.com',
         'OPTIONS': {
             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
             'charset': 'utf8mb4',
@@ -106,7 +111,7 @@ EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
 EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@myschool.com')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'noreply@myschoolgn.space')
 
 # Désactiver les migrations automatiques en production
 # MIGRATION_MODULES = {app: None for app in INSTALLED_APPS}
