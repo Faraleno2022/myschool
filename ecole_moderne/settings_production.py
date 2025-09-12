@@ -25,6 +25,13 @@ ALLOWED_HOSTS = [
     '127.0.0.1',
 ]
 
+# Origines de confiance pour CSRF (doivent inclure le schéma https)
+CSRF_TRUSTED_ORIGINS = [
+    'https://myschoolgn.pythonanywhere.com',
+    'https://www.myschoolgn.space',
+    'https://myschoolgn.space',
+]
+
 # Configuration de la base de données pour production
 # PythonAnywhere utilise MySQL par défaut
 DATABASES = {
@@ -68,6 +75,15 @@ SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SESSION_COOKIE_HTTPONLY = True
 CSRF_COOKIE_HTTPONLY = True
+
+# Cookies SameSite en production: Lax est recommandé pour les sites standards
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+
+# Signal au proxy (PythonAnywhere) que le client utilise HTTPS pour éviter des
+# incohérences de schéma (détections HTTP/HTTPS, cookies Secure, CSRF, etc.)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
 
 # Configuration des logs pour production
 LOGGING = {
