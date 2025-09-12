@@ -15,4 +15,11 @@ urlpatterns = [
     path('<int:depense_id>/valider/', views.valider_depense, name='valider_depense'),
     path('<int:depense_id>/marquer-payee/', views.marquer_payee, name='marquer_payee'),
     
+    # Gestion des catégories
+    path('categories/', views.gestion_categories, name='gestion_categories'),
+    path('categories/ajouter/', views.ajouter_categorie, name='ajouter_categorie'),
+    
+    # Gestion des fournisseurs
+    path('fournisseurs/', views.gestion_fournisseurs, name='gestion_fournisseurs'),
+    
 ]

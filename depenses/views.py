@@ -302,3 +302,40 @@ def marquer_payee(request, depense_id):
     
     return redirect('depenses:detail_depense', depense_id=depense_id)
 
+@login_required
+def gestion_categories(request):
+    """Vue pour la gestion des catégories de dépenses"""
+    categories = CategorieDepense.objects.all().order_by('nom')
+    
+    context = {
+        'categories': categories,
+    }
+    return render(request, 'depenses/gestion_categories.html', context)
+
+@login_required
+def ajouter_categorie(request):
+    """Vue pour ajouter une nouvelle catégorie"""
+    if request.method == 'POST':
+        form = CategorieDepenseForm(request.POST)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Catégorie ajoutée avec succès.')
+            return redirect('depenses:gestion_categories')
+    else:
+        form = CategorieDepenseForm()
+    
+    context = {
+        'form': form,
+        'title': 'Ajouter une catégorie'
+    }
+    return render(request, 'depenses/form_categorie.html', context)
+
+@login_required
+def gestion_fournisseurs(request):
+    """Vue pour la gestion des fournisseurs"""
+    fournisseurs = Fournisseur.objects.all().order_by('nom')
+    
+    context = {
+        'fournisseurs': fournisseurs,
+    }
+    return render(request, 'depenses/gestion_fournisseurs.html', context)

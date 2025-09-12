@@ -1,0 +1,43 @@
+{% load static %}
+
+<!-- Sélecteur d'école compact pour le menu utilisateur -->
+{% if user.is_superuser and ecoles_disponibles %}
+    <li><h6 class="dropdown-header">
+        <i class="fas fa-school me-1"></i>Sélection d'école
+    </h6></li>
+    
+    <li class="px-3 py-2">
+        <form method="post" action="{% url 'utilisateurs:changer_ecole' %}" class="d-flex align-items-center gap-2">
+            {% csrf_token %}
+            <select name="ecole_id" class="form-select form-select-sm" onchange="this.form.submit()" style="font-size: 0.875rem;">
+                <option value="">-- Toutes les écoles --</option>
+                {% for ecole in ecoles_disponibles %}
+                    <option value="{{ ecole.id }}" 
+                            {% if ecole_courante and ecole.id == ecole_courante.id %}selected{% endif %}>
+                        {{ ecole.nom }}
+                    </option>
+                {% endfor %}
+            </select>
+        </form>
+    </li>
+    
+    {% if ecole_courante %}
+    <li class="px-3 py-1">
+        <small class="text-muted d-block">
+            <i class="fas fa-check-circle text-success me-1"></i>
+            {{ ecole_courante.nom }}
+        </small>
+        <small class="text-muted d-block">
+            {{ ecole_courante.get_type_ecole_display }}
+        </small>
+    </li>
+    {% else %}
+    <li class="px-3 py-1">
+        <small class="text-warning">
+            <i class="fas fa-globe me-1"></i>Mode global (toutes écoles)
+        </small>
+    </li>
+    {% endif %}
+    
+    <li><hr class="dropdown-divider"></li>
+{% endif %}

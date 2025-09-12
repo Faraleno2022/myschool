@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+
+{% block title %}Gestion des Catégories - {{ block.super }}{% endblock %}
+
+{% block breadcrumb_items %}
+    <li class="breadcrumb-item"><a href="{% url 'depenses:tableau_bord' %}">Dépenses</a></li>
+    <li class="breadcrumb-item active">Catégories</li>
+{% endblock %}
+
+{% block page_actions %}
+    <div>
+        <a href="{% url 'depenses:ajouter_categorie' %}" class="btn btn-primary">
+            <i class="fas fa-plus me-1"></i>Ajouter une catégorie
+        </a>
+        <a href="{% url 'depenses:tableau_bord' %}" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-1"></i>Retour
+        </a>
+    </div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="card-title mb-0">
+                        <i class="fas fa-tags me-2"></i>Liste des catégories de dépenses
+                    </h5>
+                </div>
+                <div class="card-body">
+                    {% if categories %}
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Code</th>
+                                        <th>Nom</th>
+                                        <th>Description</th>
+                                        <th>Statut</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for categorie in categories %}
+                                    <tr>
+                                        <td>
+                                            <span class="badge bg-info">{{ categorie.code }}</span>
+                                        </td>
+                                        <td>
+                                            <strong>{{ categorie.nom }}</strong>
+                                        </td>
+                                        <td>
+                                            {{ categorie.description|default:"Aucune description"|truncatechars:50 }}
+                                        </td>
+                                        <td>
+                                            {% if categorie.actif %}
+                                                <span class="badge bg-success">Actif</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">Inactif</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <button type="button" class="btn btn-outline-warning" title="Modifier">
+                                                    <i class="fas fa-edit"></i>
+                                                </button>
+                                                {% if not categorie.depenses.exists %}
+                                                <button type="button" class="btn btn-outline-danger" title="Supprimer">
+                                                    <i class="fas fa-trash"></i>
+                                                </button>
+                                                {% endif %}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <i class="fas fa-tags fa-3x text-muted mb-3"></i>
+                            <h5 class="text-muted">Aucune catégorie configurée</h5>
+                            <p class="text-muted">Commencez par ajouter des catégories pour organiser vos dépenses.</p>
+                            <a href="{% url 'depenses:ajouter_categorie' %}" class="btn btn-primary">
+                                <i class="fas fa-plus me-1"></i>Ajouter la première catégorie
+                            </a>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

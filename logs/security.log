@@ -53,3 +53,4 @@ Traceback (most recent call last):
   File "C:\Users\faral\Desktop\amc_systeme\.venv\Lib\site-packages\django\http\request.py", line 202, in get_host
     raise DisallowedHost(msg)
 django.core.exceptions.DisallowedHost: Invalid HTTP_HOST header: 'testserver'. You may need to add 'testserver' to ALLOWED_HOSTS.
+[SECURITY] WARNING 2025-09-11 21:19:05,673 - Forbidden (CSRF token from POST incorrect.): /utilisateurs/login/
