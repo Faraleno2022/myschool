@@ -32,6 +32,7 @@ urlpatterns = [
     path('', TemplateView.as_view(template_name='home.html'), name='home'),
     path('index/', TemplateView.as_view(template_name='home.html'), name='index'),
     path('favicon.ico', favicon_view, name='favicon'),
+    path('robots.txt', TemplateView.as_view(template_name='robots.txt', content_type='text/plain'), name='robots'),
     
     # Inscription et gestion multi-tenant des écoles
     path('ecole/', include('inscription_ecoles.urls')),

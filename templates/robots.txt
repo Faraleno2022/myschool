@@ -1,0 +1,12 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /utilisateurs/
+Disallow: /paiements/
+Disallow: /depenses/
+Disallow: /salaires/
+Disallow: /rapports/
+Disallow: /notes/
+Disallow: /bus/
+Allow: /
+
+Sitemap: https://www.myschoolgn.space/sitemap.xml
