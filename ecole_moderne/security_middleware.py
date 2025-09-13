@@ -376,10 +376,10 @@ class CSPMiddleware(MiddlewareMixin):
             # - images depuis 'self' + data: (logos encodés), fonts depuis self et data:
             csp = [
                 "default-src 'self'",
-                "script-src 'self' 'unsafe-inline'",
-                "style-src 'self' 'unsafe-inline'",
+                "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+                "style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
                 "img-src 'self' data: https:",
-                "font-src 'self' data:",
+                "font-src 'self' data: https://cdnjs.cloudflare.com",
                 "connect-src 'self'",
                 "frame-ancestors 'none'",
                 "base-uri 'self'",
