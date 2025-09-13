@@ -376,7 +376,7 @@ class CSPMiddleware(MiddlewareMixin):
             # - images depuis 'self' + data: (logos encodés), fonts depuis self et data:
             csp = [
                 "default-src 'self'",
-                "script-src 'self'",
+                "script-src 'self' 'unsafe-inline'",
                 "style-src 'self' 'unsafe-inline'",
                 "img-src 'self' data: https:",
                 "font-src 'self' data:",
