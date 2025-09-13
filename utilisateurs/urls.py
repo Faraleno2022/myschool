@@ -5,6 +5,7 @@ from .views import (
     gestion_utilisateurs_view, profil_view
 )
 from .security_views import secure_login, secure_logout, SecurePasswordChangeView, verify_phone
+from .simple_login import simple_login
 from .permission_views import (
     gestion_permissions, update_permissions, ajax_toggle_permission,
     bulk_update_permissions, ajax_user_permissions, export_permissions_csv
@@ -14,7 +15,8 @@ app_name = 'utilisateurs'
 
 urlpatterns = [
     # Auth sécurisé (utiliser les vues custom pour limiter les écritures DB)
-    path('login/', secure_login, name='login'),
+    path('login/', simple_login, name='login'),  # Temporaire pour diagnostic
+    path('login-secure/', secure_login, name='login_secure'),
     path('logout/', secure_logout, name='logout'),
     path('password/change/', SecurePasswordChangeView.as_view(), name='password_change'),
     path('verify-phone/', verify_phone, name='verify_phone'),
